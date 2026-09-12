@@ -1,0 +1,7 @@
+John Doe
+Email: john@example.com
+Phone: 555-1234
+
+Skills: Python, React, SQL
+
+Education: B.S. Computer Science, University of Technology
