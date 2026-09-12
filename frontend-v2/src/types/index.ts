@@ -207,3 +207,165 @@ export interface BulkEmailRequest {
   resume_ids: number[];
   template_id: number;
 }
+
+// ---------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------
+export interface AppSettingsResponse {
+  id: number;
+  org_name?: string | null;
+  min_candidates_to_screen?: number | null;
+  max_candidates_to_screen?: number | null;
+  semantic_gap_threshold?: number | null;
+  auto_email_on_shortlist: boolean;
+  shortlist_email_template_id?: number | null;
+  auto_email_on_interview_scheduled: boolean;
+  interview_scheduled_email_template_id?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export type AppSettingsUpdate = Partial<Omit<AppSettingsResponse, 'id' | 'created_at' | 'updated_at'>>;
+
+// ---------------------------------------------------------------------------
+// Integrations
+// ---------------------------------------------------------------------------
+export interface IntegrationsStatusResponse {
+  resend: { configured: boolean; detail: { from_email: string | null } };
+  dograh: {
+    configured: boolean;
+    detail: {
+      base_url: string | null;
+      embed_token_set: boolean;
+      webhook_secret_set: boolean;
+      public_app_url: string | null;
+    };
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Talent Pool
+// ---------------------------------------------------------------------------
+export interface TalentPoolEntry {
+  id: number;
+  resume_id: number;
+  added_from_job_id?: number | null;
+  tags: string[];
+  notes?: string | null;
+  added_at?: string | null;
+  updated_at?: string | null;
+  display_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  job_id?: number | null;
+  job_title?: string | null;
+}
+
+export interface TalentPoolEntryCreate {
+  resume_id: number;
+  added_from_job_id?: number | null;
+  tags?: string[];
+  notes?: string | null;
+}
+
+export interface TalentPoolEntryUpdate {
+  tags?: string[];
+  notes?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Analytics
+// ---------------------------------------------------------------------------
+export interface FunnelResponse {
+  job_id?: number | null;
+  uploaded: number;
+  processed: number;
+  screened: number;
+  shortlisted: number;
+  interviewed: number;
+  completed: number;
+}
+
+export interface DecisionCount {
+  decision?: string | null;
+  count: number;
+}
+
+export interface DecisionBreakdownResponse {
+  items: DecisionCount[];
+  total: number;
+}
+
+export interface ThroughputPoint {
+  date: string;
+  count: number;
+}
+
+export interface ThroughputResponse {
+  items: ThroughputPoint[];
+}
+
+export interface TimeInStageResponse {
+  resume_to_screened_seconds_approx?: number | null;
+  screened_to_interview_seconds_approx?: number | null;
+}
+
+export interface JobVolumeItem {
+  job_id: number;
+  job_title: string;
+  resume_count: number;
+}
+
+export interface JobVolumeResponse {
+  items: JobVolumeItem[];
+}
+
+// ---------------------------------------------------------------------------
+// Global Interviews
+// ---------------------------------------------------------------------------
+export interface GlobalInterviewResponse extends Interview {
+  created_at?: string | null;
+  updated_at?: string | null;
+  job_title: string;
+  candidate_name?: string | null;
+  resume_filename?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Interview Analysis
+// ---------------------------------------------------------------------------
+export interface InterviewAnalysisSummaryResponse {
+  job_id?: number | null;
+  total_interviews: number;
+  completed_interviews: number;
+  completion_rate: number;
+  avg_call_duration_seconds?: number | null;
+  disposition_breakdown: Record<string, number>;
+}
+
+export interface InterviewAnalysisItem {
+  id: number;
+  job_id: number;
+  resume_id: number;
+  status: string;
+  job_title: string;
+  candidate_name?: string | null;
+  source: string;
+  workflow_run_id?: string | null;
+  call_disposition: string;
+  gathered_context: Record<string, any>;
+  cost_info: Record<string, any>;
+  user_recording_url?: string | null;
+  bot_recording_url?: string | null;
+  created_at?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Emails (additions)
+// ---------------------------------------------------------------------------
+export type EmailTemplateUpdate = Partial<EmailTemplateCreate>;
+
+export interface EmailMessageGlobalResponse extends EmailMessage {
+  job_title?: string | null;
+  candidate_name?: string | null;
+}

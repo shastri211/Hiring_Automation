@@ -10,11 +10,15 @@ import { JobWorkspace } from '../pages/JobWorkspace';
 import { JobUpload } from '../pages/JobUpload';
 import { JobProcessing } from '../pages/JobProcessing';
 import { JobCandidates } from '../pages/JobCandidates';
-import {
-  GlobalCandidates, GlobalInterviews, TalentPool,
-  Outreach, AIScreening, InterviewAnalysis,
-  Analytics, Integrations, Settings
-} from '../pages/Placeholders';
+import { GlobalCandidates } from '../pages/GlobalCandidates';
+import { GlobalInterviews } from '../pages/GlobalInterviews';
+import { TalentPool } from '../pages/TalentPool';
+import { Outreach } from '../pages/Outreach';
+import { AIScreening } from '../pages/AIScreening';
+import { InterviewAnalysis } from '../pages/InterviewAnalysis';
+import { Analytics } from '../pages/Analytics';
+import { Integrations } from '../pages/Integrations';
+import { Settings } from '../pages/Settings';
 import { EmailTemplates } from '../pages/EmailTemplates';
 
 const RouteError = () => {

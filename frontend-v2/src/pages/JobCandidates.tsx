@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import { Loader2, Search, ChevronLeft, ChevronRight, CheckCircle2, XCircle, Clock, Mail } from 'lucide-react';
+import { Loader2, Search, ChevronLeft, ChevronRight, CheckCircle2, XCircle, Clock, Mail, PackagePlus } from 'lucide-react';
 import { jobsApi } from '../api/jobs';
 import { queryKeys } from '../api/queryKeys';
 import { useDecisionMutation } from '../hooks/useDecisionMutation';
+import { useAddToTalentPool } from '../hooks/useTalentPool';
 import type { CandidateDecision } from '../types';
 import { CandidateDrawer } from '../components/CandidateDrawer';
 import { BulkEmailModal } from '../components/BulkEmailModal';
@@ -40,6 +41,7 @@ export const JobCandidates = () => {
   });
 
   const decisionMutation = useDecisionMutation(jobId);
+  const addToPool = useAddToTalentPool();
 
   const handleDecision = (resumeId: number, decision: CandidateDecision | null) => {
     decisionMutation.mutate({ resumeId, decision });
@@ -298,7 +300,7 @@ export const JobCandidates = () => {
                         >
                           <XCircle className="w-5 h-5" />
                         </button>
-                        <button 
+                        <button
                           onClick={(e) => { e.stopPropagation(); handleDecision(c.resume_id, null); }}
                           disabled={decisionMutation.isPending}
                           aria-label={`Clear decision for resume ${c.resume_id}`}
@@ -306,6 +308,15 @@ export const JobCandidates = () => {
                           title="Clear Decision"
                         >
                           Clear
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); addToPool.mutate({ resume_id: c.resume_id, added_from_job_id: jobId }); }}
+                          disabled={addToPool.isPending}
+                          aria-label={`Add resume ${c.resume_id} to Talent Pool`}
+                          className="p-1.5 rounded-full transition-colors hover:bg-gray-100 text-gray-400 hover:text-indigo-600"
+                          title="Add to Talent Pool"
+                        >
+                          <PackagePlus className="w-5 h-5" />
                         </button>
                       </div>
                     </td>
