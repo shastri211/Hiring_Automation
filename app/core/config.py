@@ -1,0 +1,125 @@
+from pydantic_settings import BaseSettings
+
+class Settings(BaseSettings):
+    PROJECT_NAME: str = "Resume Screener"
+    
+    # Database
+    POSTGRES_USER: str = "screener"
+    POSTGRES_PASSWORD: str = "screener_password"
+    POSTGRES_SERVER: str = "localhost"
+    POSTGRES_PORT: str = "5432"
+    POSTGRES_DB: str = "resume_screener"
+    
+    @property
+    def SQLALCHEMY_DATABASE_URI(self) -> str:
+        import urllib.parse
+        encoded_password = urllib.parse.quote_plus(self.POSTGRES_PASSWORD)
+        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{encoded_password}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+    
+    # Redis
+    REDIS_HOST: str = "127.0.0.1"
+    REDIS_PORT: int = 6379
+    
+    @property
+    def REDIS_URL(self) -> str:
+        return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0"
+        
+    # Qdrant
+    QDRANT_URL: str = "http://localhost:6333"
+    QDRANT_API_KEY: str = ""
+    
+    # Embedding Configuration
+    # (These represent the active default profile, fallback is managed via EmbeddingRouter)
+    EMBEDDING_MODEL: str = "gemini-embedding-2"
+    EMBEDDING_DIMENSION: int = 768
+    SENTENCE_TRANSFORMERS_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
+    QDRANT_COLLECTION: str = "resume_candidates_768"
+    QDRANT_COLLECTION_V2: str = "resume_candidates_v2_768"
+    QDRANT_COLLECTION_LOCAL_V2: str = "resume_candidates_local_v2_384"
+    
+    # LLM Providers (API Keys)
+    GROQ_API_KEY: str | None = None
+    GEMINI_API_KEY: str | None = None
+    OPENROUTER_API_KEY: str | None = None
+    NVIDIA_API_KEY: str | None = None
+    
+    # LLM Providers (Models - comma separated)
+    GROQ_MODELS: str = "qwen/qwen3.8-27b"
+    GEMINI_MODELS: str = "gemini-3.6-flash"
+    OPENROUTER_MODELS: str = "google/gemma-4-31b-it:free"
+    NVIDIA_MODELS: str = "nvidia/llama-3.1-nemotron-70b-instruct"
+
+    # Gemini OCR / document-extraction model.
+    # This is the model used by GeminiOCREngine (image → text), which requires a
+    # multimodal-capable Gemini model.  It is intentionally separate from the LLM
+    # screening pool (GEMINI_MODELS) so the two roles can be configured independently.
+    # Defaults to the first model listed in GEMINI_MODELS.
+    GEMINI_OCR_MODEL: str = ""
+
+    # Email Settings
+    RESEND_API_KEY: str | None = None
+    RESEND_FROM_EMAIL: str = "noreply@automatedhiring.com"
+
+
+    @property
+    def gemini_ocr_model(self) -> str:
+        """Effective Gemini model for document OCR/image extraction.
+
+        Uses GEMINI_OCR_MODEL from the environment when explicitly set.
+        Falls back to the first model in GEMINI_MODELS so that the default
+        runtime value remains unchanged after the Phase 10 pool migration.
+        """
+        explicit = self.GEMINI_OCR_MODEL.strip()
+        if explicit:
+            return explicit
+        # Fall back to the first model in the GEMINI LLM pool.
+        # The pool is comma-separated; the first entry is the highest-priority model.
+        first = next(
+            (m.strip() for m in self.GEMINI_MODELS.split(",") if m.strip()),
+            None,
+        )
+        if first:
+            return first
+        raise ValueError(
+            "No Gemini OCR model configured. Set GEMINI_OCR_MODEL or GEMINI_MODELS in your environment."
+        )
+    
+    # LLM Routing Priority
+    # Example: "groq,gemini,openrouter,nvidia"
+    LLM_PROVIDER_PRIORITY: str = "groq,gemini,openrouter,nvidia"
+    
+    # Resilience Settings
+    LLM_COOLDOWN_SECONDS: int = 60
+    LLM_TIMEOUT_SECONDS: int = 30
+    # Caps the output tokens requested from Groq so a single call can't exceed
+    # low-tier OTPM (output-tokens-per-minute) limits on models like the qwen3 preview tier.
+    GROQ_MAX_OUTPUT_TOKENS: int = 1000
+    
+    # Storage & Screening Config
+    STORAGE_LOCAL_DIR: str = "uploads"
+    RETRIEVAL_TOP_K: int = 50
+    
+    # Adaptive Semantic Gate
+    MIN_CANDIDATES_TO_SCREEN: int = 5
+    MAX_CANDIDATES_TO_SCREEN: int = 20
+    SEMANTIC_GAP_THRESHOLD: float = 0.05
+
+    # Local (deterministic) resume profiler: confidence score (0-95) below which
+    # extraction is considered insufficient and an LLM enrichment fallback is used.
+    LOCAL_PROFILE_CONFIDENCE_THRESHOLD: int = 45
+
+    # CORS: comma-separated list of allowed origins for the frontend.
+    CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
+
+    WORKER_ID: str = "resume-worker-1"
+    WORKER_MAX_RETRIES: int = 3
+    WORKER_RETRY_BACKOFF_SECONDS: int = 60
+    WORKER_CONSUMER_GROUP: str = "resume-screeners"
+    WORKER_CONCURRENCY: int = 5
+    
+    class Config:
+        case_sensitive = True
+        env_file = ".env"
+        extra = "ignore"
+
+settings = Settings()
