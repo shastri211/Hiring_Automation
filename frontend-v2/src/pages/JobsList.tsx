@@ -5,12 +5,14 @@ import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { queryKeys } from '../api/queryKeys';
 import { Button, Card, CardHeader, CardTitle, CardContent, CardFooter, Badge, EmptyState, Spinner, Input } from '../components/ui';
+import { useConfirm } from '../hooks/useConfirm';
 import type { Job } from '../types';
 
 export const JobsList = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ACTIVE' | 'PAUSED' | 'ARCHIVED'>('ACTIVE');
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
 
   const { data: jobs, isLoading, error } = useQuery({
     queryKey: queryKeys.jobs(),
@@ -139,10 +141,14 @@ export const JobsList = () => {
               onPause={() => pauseMutation.mutate(job.id)}
               onResume={() => resumeMutation.mutate(job.id)}
               onArchive={() => archiveMutation.mutate(job.id)}
-              onDelete={() => {
-                if (window.confirm(`Delete "${job.title}" and all associated data? This cannot be undone.`)) {
-                  deleteMutation.mutate(job.id);
-                }
+              onDelete={async () => {
+                const ok = await confirm({
+                  title: 'Delete job?',
+                  description: `Delete "${job.title}" and all associated data? This cannot be undone.`,
+                  confirmLabel: 'Delete',
+                  danger: true,
+                });
+                if (ok) deleteMutation.mutate(job.id);
               }}
             />
           ))}
@@ -172,10 +178,10 @@ const JobCard = ({ job, isPending, onPause, onResume, onArchive, onDelete }: Job
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="flex-1 min-w-0">{job.title}</CardTitle>
           {status === 'PAUSED' && (
-            <span className="shrink-0 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">Paused</span>
+            <Badge variant="warning" className="shrink-0">Paused</Badge>
           )}
           {status === 'ARCHIVED' && (
-            <span className="shrink-0 px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-200 text-slate-600">Archived</span>
+            <Badge variant="neutral" className="shrink-0">Archived</Badge>
           )}
         </div>
         <div className="flex flex-wrap gap-2 mt-2">

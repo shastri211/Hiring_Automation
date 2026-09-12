@@ -6,21 +6,21 @@ import { cn } from '../../utils/cn';
 // -----------------------------------------------------------------------------
 export const Card = forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn("bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden", className)} {...props} />
+    <div ref={ref} className={cn("bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-xl shadow-sm overflow-hidden", className)} {...props} />
   )
 );
 Card.displayName = "Card";
 
 export const CardHeader = forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn("px-6 py-4 border-b border-slate-100 flex flex-col gap-1", className)} {...props} />
+    <div ref={ref} className={cn("px-6 py-4 border-b border-[var(--border-light)] flex flex-col gap-1", className)} {...props} />
   )
 );
 CardHeader.displayName = "CardHeader";
 
 export const CardTitle = forwardRef<HTMLHeadingElement, React.HTMLAttributes<HTMLHeadingElement>>(
   ({ className, ...props }, ref) => (
-    <h3 ref={ref} className={cn("text-lg font-semibold text-slate-900 leading-none tracking-tight", className)} {...props} />
+    <h3 ref={ref} className={cn("text-lg font-semibold text-[var(--text-primary)] leading-none tracking-tight", className)} {...props} />
   )
 );
 CardTitle.displayName = "CardTitle";
@@ -34,7 +34,7 @@ CardContent.displayName = "CardContent";
 
 export const CardFooter = forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn("px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center", className)} {...props} />
+    <div ref={ref} className={cn("px-6 py-4 bg-[var(--bg-app)] border-t border-[var(--border-light)] flex items-center", className)} {...props} />
   )
 );
 CardFooter.displayName = "CardFooter";
@@ -48,11 +48,11 @@ export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
 export const Badge = forwardRef<HTMLSpanElement, BadgeProps>(
   ({ className, variant = 'neutral', ...props }, ref) => {
     const variantClasses = {
-      neutral: 'bg-slate-100 text-slate-700 border-slate-200',
-      success: 'bg-green-50 text-green-700 border-green-200',
-      warning: 'bg-amber-50 text-amber-700 border-amber-200',
-      danger: 'bg-red-50 text-red-700 border-red-200',
-      primary: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+      neutral: 'bg-[var(--color-neutral-subtle-bg)] text-[var(--color-neutral-subtle-text)] border-slate-200',
+      success: 'bg-[var(--color-success-subtle-bg)] text-[var(--color-success-subtle-text)] border-green-200',
+      warning: 'bg-[var(--color-warning-subtle-bg)] text-[var(--color-warning-subtle-text)] border-amber-200',
+      danger: 'bg-[var(--color-danger-subtle-bg)] text-[var(--color-danger-subtle-text)] border-red-200',
+      primary: 'bg-[var(--color-primary-subtle-bg)] text-[var(--color-primary-subtle-text)] border-indigo-200',
     };
     return (
       <span ref={ref} className={cn('inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border', variantClasses[variant], className)} {...props} />

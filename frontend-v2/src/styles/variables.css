@@ -71,4 +71,70 @@
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.05), 0 4px 6px -4px rgb(0 0 0 / 0.05);
   --shadow-focus: 0 0 0 2px var(--bg-surface), 0 0 0 4px var(--border-focus);
+
+  /* Subtle badge tokens — light values chosen to exactly match Badge's
+     previous literal Tailwind classes, so light mode is pixel-identical. */
+  --color-success-subtle-bg: var(--color-success-50);
+  --color-success-subtle-text: #15803d; /* green-700 */
+  --color-warning-subtle-bg: var(--color-warning-50);
+  --color-warning-subtle-text: #b45309; /* amber-700 */
+  --color-danger-subtle-bg: var(--color-danger-50);
+  --color-danger-subtle-text: #b91c1c; /* red-700 */
+  --color-primary-subtle-bg: var(--color-primary-50);
+  --color-primary-subtle-text: var(--color-primary-700);
+  --color-neutral-subtle-bg: var(--color-neutral-100);
+  --color-neutral-subtle-text: var(--color-neutral-700);
+}
+
+/* Dark mode via system preference — applies only when the user hasn't made an
+   explicit choice. ThemeProvider (src/hooks/useTheme.tsx) always stamps
+   data-theme to a concrete resolved value ("light" or "dark"), so in normal
+   operation this block is a defensive fallback for the instant before
+   hydration / no-JS, not the primary mechanism — the explicit-choice block
+   below is what actually drives the toggle. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg-app: #0f172a;
+    --bg-surface: #1e293b;
+    --bg-hover: #334155;
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --text-tertiary: #64748b;
+    --border-light: #334155;
+    --border-strong: #475569;
+
+    --color-success-subtle-bg: rgba(34, 197, 94, 0.15);
+    --color-success-subtle-text: #4ade80;
+    --color-warning-subtle-bg: rgba(245, 158, 11, 0.15);
+    --color-warning-subtle-text: #fbbf24;
+    --color-danger-subtle-bg: rgba(239, 68, 68, 0.15);
+    --color-danger-subtle-text: #f87171;
+    --color-primary-subtle-bg: rgba(99, 102, 241, 0.18);
+    --color-primary-subtle-text: #a5b4fc;
+    --color-neutral-subtle-bg: rgba(148, 163, 184, 0.15);
+    --color-neutral-subtle-text: #cbd5e1;
+  }
+}
+
+/* Dark mode via explicit user choice — always wins over system preference. */
+:root[data-theme="dark"] {
+  --bg-app: #0f172a;
+  --bg-surface: #1e293b;
+  --bg-hover: #334155;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-tertiary: #64748b;
+  --border-light: #334155;
+  --border-strong: #475569;
+
+  --color-success-subtle-bg: rgba(34, 197, 94, 0.15);
+  --color-success-subtle-text: #4ade80;
+  --color-warning-subtle-bg: rgba(245, 158, 11, 0.15);
+  --color-warning-subtle-text: #fbbf24;
+  --color-danger-subtle-bg: rgba(239, 68, 68, 0.15);
+  --color-danger-subtle-text: #f87171;
+  --color-primary-subtle-bg: rgba(99, 102, 241, 0.18);
+  --color-primary-subtle-text: #a5b4fc;
+  --color-neutral-subtle-bg: rgba(148, 163, 184, 0.15);
+  --color-neutral-subtle-text: #cbd5e1;
 }

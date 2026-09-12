@@ -4,7 +4,8 @@ import { Loader2, Play, Clock } from 'lucide-react';
 import { jobsApi } from '../api/jobs';
 import { queryKeys } from '../api/queryKeys';
 import { Button } from '../components/ui/Button';
-import { Progress } from '../components/ui';
+import { Progress, Badge } from '../components/ui';
+import type { BadgeVariant } from '../utils/decision';
 import type { BatchProgressDetail } from '../types';
 import { toast } from 'sonner';
 
@@ -150,6 +151,15 @@ const BatchCard = ({ batch, jobId, onNavigate }: { batch: BatchProgressDetail, j
     return 'border-slate-200';
   };
 
+  // Screening runs and upload batches use different color semantics for the
+  // same underlying status (a "COMPLETED" screening run is success/green; a
+  // "COMPLETED" upload batch is "READY" and stays primary/indigo like today).
+  const statusBadgeVariant: BadgeVariant = batch.status === 'FAILED'
+    ? 'danger'
+    : batch.status === 'COMPLETED'
+      ? (isScreening ? 'success' : 'primary')
+      : (isScreening ? 'primary' : 'neutral');
+
   if (isScreening) {
     return (
       <div className={`bg-white border rounded-xl p-5 shadow-sm ${getBorderColor()}`}>
@@ -160,13 +170,7 @@ const BatchCard = ({ batch, jobId, onNavigate }: { batch: BatchProgressDetail, j
           </div>
           <div className="flex items-center gap-2">
             {isLive && <Loader2 className="w-4 h-4 text-[var(--color-primary-500)] animate-spin" />}
-            <span className={`text-xs font-medium px-2 py-1 rounded ${
-              batch.status === 'COMPLETED' ? 'bg-green-100 text-green-700' :
-              batch.status === 'FAILED' ? 'bg-red-100 text-red-700' :
-              'bg-[var(--color-primary-100)] text-[var(--color-primary-700)]'
-            }`}>
-              {statusLabel}
-            </span>
+            <Badge variant={statusBadgeVariant}>{statusLabel}</Badge>
           </div>
         </div>
         <div className="flex gap-4">
@@ -202,13 +206,7 @@ const BatchCard = ({ batch, jobId, onNavigate }: { batch: BatchProgressDetail, j
         </div>
         <div className="flex items-center gap-2">
           {isLive && <Loader2 className="w-4 h-4 text-[var(--color-primary-500)] animate-spin" />}
-          <span className={`text-xs font-medium px-2 py-1 rounded ${
-            batch.status === 'COMPLETED' ? 'bg-[var(--color-primary-100)] text-[var(--color-primary-700)]' :
-            batch.status === 'FAILED' ? 'bg-red-100 text-red-700' :
-            'bg-slate-100 text-slate-700'
-          }`}>
-            {statusLabel}
-          </span>
+          <Badge variant={statusBadgeVariant}>{statusLabel}</Badge>
         </div>
       </div>
       

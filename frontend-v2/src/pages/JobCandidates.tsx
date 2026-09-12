@@ -8,6 +8,7 @@ import { useDecisionMutation } from '../hooks/useDecisionMutation';
 import type { CandidateDecision } from '../types';
 import { CandidateDrawer } from '../components/CandidateDrawer';
 import { BulkEmailModal } from '../components/BulkEmailModal';
+import { variantButtonClasses } from '../utils/decision';
 
 export const JobCandidates = () => {
   const { id } = useParams<{ id: string }>();
@@ -274,7 +275,7 @@ export const JobCandidates = () => {
                           onClick={(e) => { e.stopPropagation(); handleDecision(c.resume_id, 'SHORTLIST'); }}
                           disabled={decisionMutation.isPending}
                           aria-label={`Shortlist resume ${c.resume_id}`}
-                          className={`p-1.5 rounded-full transition-colors ${c.decision === 'SHORTLIST' ? 'bg-green-100 text-green-700' : 'hover:bg-gray-100 text-gray-400 hover:text-green-600'}`}
+                          className={`p-1.5 rounded-full transition-colors ${c.decision === 'SHORTLIST' ? variantButtonClasses.success : 'hover:bg-gray-100 text-gray-400 hover:text-green-600'}`}
                           title="Shortlist"
                         >
                           <CheckCircle2 className="w-5 h-5" />
@@ -283,7 +284,7 @@ export const JobCandidates = () => {
                           onClick={(e) => { e.stopPropagation(); handleDecision(c.resume_id, 'REVIEW'); }}
                           disabled={decisionMutation.isPending}
                           aria-label={`Mark resume ${c.resume_id} for review`}
-                          className={`p-1.5 rounded-full transition-colors ${c.decision === 'REVIEW' ? 'bg-amber-100 text-amber-700' : 'hover:bg-gray-100 text-gray-400 hover:text-amber-600'}`}
+                          className={`p-1.5 rounded-full transition-colors ${c.decision === 'REVIEW' ? variantButtonClasses.warning : 'hover:bg-gray-100 text-gray-400 hover:text-amber-600'}`}
                           title="Review"
                         >
                           <Clock className="w-5 h-5" />
@@ -292,7 +293,7 @@ export const JobCandidates = () => {
                           onClick={(e) => { e.stopPropagation(); handleDecision(c.resume_id, 'REJECT'); }}
                           disabled={decisionMutation.isPending}
                           aria-label={`Reject resume ${c.resume_id}`}
-                          className={`p-1.5 rounded-full transition-colors ${c.decision === 'REJECT' ? 'bg-red-100 text-red-700' : 'hover:bg-gray-100 text-gray-400 hover:text-red-600'}`}
+                          className={`p-1.5 rounded-full transition-colors ${c.decision === 'REJECT' ? variantButtonClasses.danger : 'hover:bg-gray-100 text-gray-400 hover:text-red-600'}`}
                           title="Reject"
                         >
                           <XCircle className="w-5 h-5" />
