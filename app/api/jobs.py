@@ -31,6 +31,9 @@ from app.services.extractor.factory import get_extractor
 from app.services.vector_store import vector_store
 from app.services.model_registry import model_registry
 from app.services.outreach import outreach_service
+from app.services.interview import interview_adapter
+from app.services.dograh import dograh_client
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -446,6 +449,61 @@ async def get_candidate_detail(
         screening=screening_response,
         interview=InterviewResponse.model_validate(interview) if interview else None,
     )
+
+
+# -- manual Dograh resync (bounded safety net; webhooks aren't guaranteed --
+# -- exactly-once-ever delivery) -----------------------------------------------
+
+@router.post("/{job_id}/interviews/{resume_id}/resync", response_model=dict)
+async def resync_interview(
+    job_id: int,
+    resume_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    await _get_job_or_404(job_id, db)
+
+    result = await db.execute(
+        select(Interview).where(
+            Interview.resume_id == resume_id,
+            Interview.job_id == job_id,
+        )
+    )
+    interview = result.scalar_one_or_none()
+    if not interview:
+        raise HTTPException(status_code=404, detail="Interview not found for this candidate")
+
+    if not interview.provider_run_id:
+        raise HTTPException(
+            status_code=400,
+            detail="No Dograh run recorded yet for this interview (the candidate may not have joined the call).",
+        )
+
+    if not settings.DOGRAH_WORKFLOW_ID:
+        raise HTTPException(status_code=400, detail="DOGRAH_WORKFLOW_ID is not configured")
+
+    try:
+        run_data = await dograh_client.get_run(settings.DOGRAH_WORKFLOW_ID, interview.provider_run_id)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch run from Dograh: {e}")
+
+    gathered_context = run_data.get("gathered_context") or {}
+    evaluation_data = {
+        "source": "dograh",
+        "workflow_run_id": run_data.get("id"),
+        "call_disposition": gathered_context.get("call_disposition", ""),
+        "gathered_context": gathered_context,
+        "cost_info": run_data.get("cost_info"),
+        "transcript_url": run_data.get("transcript_url"),
+        "recording_url": run_data.get("recording_url"),
+        "user_recording_url": run_data.get("user_recording_url"),
+        "bot_recording_url": run_data.get("bot_recording_url"),
+    }
+
+    # Reuses receive_evaluation's merge/idempotency logic rather than
+    # duplicating it - applies exactly the fields the webhook would have applied.
+    await interview_adapter.receive_evaluation(resume_id, job_id, evaluation_data)
+
+    return {"success": True, "message": "Interview resynced from Dograh"}
 
 
 # -- update decision -----------------------------------------------------------

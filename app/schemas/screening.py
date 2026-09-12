@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, computed_field
 from typing import List, Optional, Any, Literal
 from datetime import datetime
 
@@ -79,7 +79,31 @@ class InterviewResponse(BaseModel):
     transcript: Optional[str] = None
     evaluation: Optional[Any] = None
 
+    provider: Optional[str] = None
+    provider_run_id: Optional[str] = None
+    public_token: Optional[str] = None
+    link_expires_at: Optional[datetime] = None
+    transcript_url: Optional[str] = None
+    recording_url: Optional[str] = None
+    scheduled_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
     model_config = ConfigDict(from_attributes=True)
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def interview_link(self) -> Optional[str]:
+        """Full candidate-facing interview room URL, pre-built server-side so
+        the frontend's "copy interview link" action never needs to assemble a
+        base URL itself. None until trigger_interview has minted a token, or
+        if PUBLIC_APP_BASE_URL isn't configured."""
+        if not self.public_token:
+            return None
+        from app.core.config import settings
+
+        if not settings.PUBLIC_APP_BASE_URL:
+            return None
+        return f"{settings.PUBLIC_APP_BASE_URL}/interview-room/{self.public_token}"
 
 
 class CandidateDetailResponse(BaseModel):
