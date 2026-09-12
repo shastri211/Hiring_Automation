@@ -20,6 +20,7 @@ import { Analytics } from '../pages/Analytics';
 import { Integrations } from '../pages/Integrations';
 import { Settings } from '../pages/Settings';
 import { EmailTemplates } from '../pages/EmailTemplates';
+import { InterviewRoom } from '../pages/InterviewRoom';
 
 const RouteError = () => {
   const error = useRouteError();
@@ -133,6 +134,13 @@ const router = createBrowserRouter([
         element: <Settings />
       }
     ]
+  },
+  // Public, unauthenticated candidate-facing route - deliberately a sibling of
+  // the AppLayout root, not a child, since it has no sidebar/header chrome.
+  {
+    path: '/interview-room/:token',
+    element: <InterviewRoom />,
+    errorElement: <RouteError />
   }
 ]);
 

@@ -86,7 +86,50 @@ export interface Interview {
   status: string;
   transcript?: string | null;
   evaluation?: any | null;
+
+  // Dograh browser/web-interview provider fields (A10).
+  provider?: string | null;
+  provider_run_id?: string | null;
+  public_token?: string | null;
+  link_expires_at?: string | null;
+  transcript_url?: string | null;
+  recording_url?: string | null;
+  scheduled_at?: string | null;
+  completed_at?: string | null;
+  /** Pre-built full candidate-facing interview URL (null until public_token + PUBLIC_APP_BASE_URL are set). */
+  interview_link?: string | null;
 }
+
+// Canonical Dograh evaluation envelope (see app/services/interview.py::_normalize_evaluation_data).
+// Legacy/unrecognized evaluation JSON won't match this shape - always check `source` before relying on it.
+export interface DograhEvaluationEnvelope {
+  source: 'dograh';
+  workflow_run_id?: string | number | null;
+  call_disposition?: string | null;
+  gathered_context?: Record<string, any> | string | null;
+  cost_info?: Record<string, any> | string | null;
+  transcript_url?: string | null;
+  recording_url?: string | null;
+  user_recording_url?: string | null;
+  bot_recording_url?: string | null;
+}
+
+// GET /public/interview/{token}
+export interface PublicInterviewRoomResponse {
+  candidate_name: string;
+  job_title: string;
+  dograh_base_url: string | null;
+  dograh_embed_token: string | null;
+  dograh_environment: string | null;
+  dograh_api_endpoint: string | null;
+  initial_context: {
+    job_id: number;
+    resume_id: number;
+    interview_id: number;
+  };
+}
+
+export type PublicInterviewErrorReason = 'not_found' | 'expired' | 'already_completed';
 
 // API Error handling interface
 export interface ApiError {
