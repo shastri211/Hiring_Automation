@@ -1,7 +1,19 @@
 import { useState } from 'react';
 import { useEmailTemplates, useBulkSendEmails } from '../hooks/useEmails';
-import { Loader2, Mail, X } from 'lucide-react';
-import { Button } from './ui/Button';
+import { Loader2, Mail } from 'lucide-react';
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+  Label,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from './ui';
 
 export const BulkEmailModal = ({
   jobId,
@@ -20,7 +32,7 @@ export const BulkEmailModal = ({
 
   const handleSend = () => {
     if (!selectedTemplate) return;
-    
+
     bulkSendMutation.mutate({
       resume_ids: selectedResumeIds,
       template_id: selectedTemplate
@@ -32,35 +44,34 @@ export const BulkEmailModal = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-      <div className="bg-white rounded-xl shadow-xl max-w-lg w-full overflow-hidden">
-        <div className="flex justify-between items-center p-4 border-b border-slate-200">
-          <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-            <Mail className="w-5 h-5 text-blue-600" />
-            Send Email
-          </h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
-        </div>
-        
-        <div className="p-6">
-          <p className="text-slate-600 mb-4">
-            You are about to send an email to <span className="font-bold">{selectedResumeIds.length} candidate(s)</span>.
-          </p>
-          
-          <label className="block text-sm font-medium text-slate-700 mb-2">Select Template</label>
+    <Dialog open onOpenChange={(next) => { if (!next) onClose(); }}>
+      <DialogContent className="max-w-lg">
+        <DialogTitle className="flex items-center gap-2">
+          <Mail className="w-5 h-5 text-[var(--color-primary-600)]" />
+          Send Email
+        </DialogTitle>
+        <DialogDescription>
+          You are about to send an email to <span className="font-bold text-slate-700">{selectedResumeIds.length} candidate(s)</span>.
+        </DialogDescription>
+
+        <div>
+          <Label className="block mb-2">Select Template</Label>
           {isLoading ? (
-            <div className="flex justify-center p-4"><Loader2 className="w-6 h-6 animate-spin text-blue-500" /></div>
+            <div className="flex justify-center p-4"><Loader2 className="w-6 h-6 animate-spin text-[var(--color-primary-500)]" /></div>
           ) : (
-            <select
-              className="w-full border-slate-300 rounded-md shadow-sm text-sm focus-ring p-2 border"
-              value={selectedTemplate || ''}
-              onChange={(e) => setSelectedTemplate(Number(e.target.value))}
+            <Select
+              value={selectedTemplate ? String(selectedTemplate) : undefined}
+              onValueChange={(value) => setSelectedTemplate(Number(value))}
             >
-              <option value="" disabled>-- Choose a template --</option>
-              {templates?.map(t => (
-                <option key={t.id} value={t.id}>{t.name} (Subject: {t.subject})</option>
-              ))}
-            </select>
+              <SelectTrigger>
+                <SelectValue placeholder="-- Choose a template --" />
+              </SelectTrigger>
+              <SelectContent>
+                {templates?.map(t => (
+                  <SelectItem key={t.id} value={String(t.id)}>{t.name} (Subject: {t.subject})</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
 
           {bulkSendMutation.isError && (
@@ -69,11 +80,11 @@ export const BulkEmailModal = ({
             </div>
           )}
         </div>
-        
-        <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-3">
+
+        <div className="flex justify-end gap-3 pt-2 border-t border-[var(--border-light)] mt-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button 
-            onClick={handleSend} 
+          <Button
+            onClick={handleSend}
             disabled={!selectedTemplate || bulkSendMutation.isPending}
             className="flex items-center gap-2"
           >
@@ -81,7 +92,7 @@ export const BulkEmailModal = ({
             Send {selectedResumeIds.length} Emails
           </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };

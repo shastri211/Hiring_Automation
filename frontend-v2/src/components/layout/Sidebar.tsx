@@ -79,10 +79,10 @@ export const Sidebar = ({
         />
       )}
       <aside className={clsx(
-        'w-64 bg-white border-r border-slate-200 flex flex-col z-40 transition-transform duration-300 md:relative md:translate-x-0 fixed inset-y-0 left-0',
+        'w-64 bg-[var(--bg-surface)] border-r border-[var(--border-light)] flex flex-col z-40 transition-transform duration-300 md:relative md:translate-x-0 fixed inset-y-0 left-0',
         isMobileOpen ? 'translate-x-0' : '-translate-x-full'
       )}>
-        <div className="h-16 flex items-center justify-between px-4 border-b border-slate-200">
+        <div className="h-16 flex items-center justify-between px-4 border-b border-[var(--border-light)]">
           <div className="flex items-center gap-2 font-bold text-lg text-[var(--color-primary-700)]">
             <Briefcase size={24} className="text-[var(--color-primary-600)]" />
             <span>RecruitPro</span>
@@ -94,7 +94,7 @@ export const Sidebar = ({
         <nav id="main-navigation" aria-label="Primary navigation" className="flex-1 p-4 flex flex-col gap-6 overflow-y-auto">
           {navGroups.map((group, i) => (
             <div key={i} className="flex flex-col gap-1">
-              <h3 className="px-3 mb-1 text-xs font-semibold text-slate-400 tracking-wider uppercase">
+              <h3 className="px-3 mb-1 text-xs font-semibold text-[var(--text-tertiary)] tracking-wider uppercase">
                 {group.title}
               </h3>
               {group.items.map((item) => (
@@ -108,11 +108,11 @@ export const Sidebar = ({
                   }}
                   className={({ isActive }) => clsx(
                     'flex items-center gap-3 px-3 py-2.5 rounded-md font-medium transition-colors focus-ring',
-                    item.disabled 
-                      ? 'text-slate-400 cursor-not-allowed opacity-70' 
-                      : isActive 
-                        ? 'bg-[var(--color-primary-50)] text-[var(--color-primary-700)]' 
-                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                    item.disabled
+                      ? 'text-[var(--text-tertiary)] cursor-not-allowed opacity-70'
+                      : isActive
+                        ? 'bg-[var(--color-primary-50)] text-[var(--color-primary-700)]'
+                        : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
                   )}
                   title={item.disabled ? "Coming Soon" : ""}
                 >

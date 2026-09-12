@@ -26,7 +26,7 @@ export const AppLayout = () => {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-50 text-slate-900">
+    <div className="flex h-screen w-screen overflow-hidden bg-[var(--bg-app)] text-[var(--text-primary)]">
       <Sidebar isMobileOpen={isMobileOpen} setMobileOpen={setMobileOpen} />
       <div className="flex flex-1 flex-col min-w-0 h-screen overflow-hidden">
         <Header title={getPageTitle()} onMenuClick={() => setMobileOpen(true)} isMenuOpen={isMobileOpen} />

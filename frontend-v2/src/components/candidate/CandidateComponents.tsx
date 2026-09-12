@@ -1,6 +1,7 @@
 
 import { CheckCircle2, X, Clock, AlertTriangle, ShieldOff } from 'lucide-react';
 import type { CandidateDecision, ScreeningResultResponse, CandidateProfileDetail } from '../../types';
+import { variantButtonClasses } from '../../utils/decision';
 
 export const ScoreVisualizer = ({ screening }: { screening?: ScreeningResultResponse | null }) => {
   if (!screening) return null;
@@ -61,8 +62,8 @@ export const DecisionControlBar = ({
         disabled={isPending}
         aria-pressed={decision === 'SHORTLIST'}
         className={`px-4 py-2 rounded-md text-sm font-medium transition-colors border focus-ring ${
-          decision === 'SHORTLIST' 
-            ? 'bg-green-100 text-green-800 border-green-200' 
+          decision === 'SHORTLIST'
+            ? `${variantButtonClasses.success} border-green-200`
             : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
         }`}
       >
@@ -74,8 +75,8 @@ export const DecisionControlBar = ({
         disabled={isPending}
         aria-pressed={decision === 'REVIEW'}
         className={`px-4 py-2 rounded-md text-sm font-medium transition-colors border focus-ring ${
-          decision === 'REVIEW' 
-            ? 'bg-amber-100 text-amber-800 border-amber-200' 
+          decision === 'REVIEW'
+            ? `${variantButtonClasses.warning} border-amber-200`
             : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
         }`}
       >
@@ -87,8 +88,8 @@ export const DecisionControlBar = ({
         disabled={isPending}
         aria-pressed={decision === 'REJECT'}
         className={`px-4 py-2 rounded-md text-sm font-medium transition-colors border focus-ring ${
-          decision === 'REJECT' 
-            ? 'bg-red-100 text-red-800 border-red-200' 
+          decision === 'REJECT'
+            ? `${variantButtonClasses.danger} border-red-200`
             : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
         }`}
       >

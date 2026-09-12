@@ -4,11 +4,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Upload, Users, ChevronLeft, Pause, Play, Archive, Trash2 } from 'lucide-react';
 import { api } from '../api';
 import { queryKeys } from '../api/queryKeys';
-import { Button, Card, EmptyState, Spinner } from '../components/ui';
+import { Button, Card, EmptyState, Spinner, Badge } from '../components/ui';
+import { useConfirm } from '../hooks/useConfirm';
 
 export const JobWorkspace = () => {
   const { id } = useParams<{ id: string }>();
   const jobId = parseInt(id || '0', 10);
+  const confirm = useConfirm();
 
   const { data: job, isLoading: jobLoading, error: jobError } = useQuery({
     queryKey: ['job', jobId],
@@ -87,15 +89,9 @@ export const JobWorkspace = () => {
             <h2 className="text-3xl font-bold text-slate-900">
               {job.title}
             </h2>
-            {job.status === 'PAUSED' && (
-              <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">PAUSED</span>
-            )}
-            {job.status === 'ARCHIVED' && (
-              <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-200 text-slate-700">ARCHIVED</span>
-            )}
-            {(!job.status || job.status === 'ACTIVE') && (
-              <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">ACTIVE</span>
-            )}
+            <Badge variant={job.status === 'PAUSED' ? 'warning' : job.status === 'ARCHIVED' ? 'neutral' : 'success'}>
+              {job.status || 'ACTIVE'}
+            </Badge>
           </div>
           <div className="flex flex-wrap gap-4 text-sm font-medium text-slate-500">
             {job.department && <span>{job.department}</span>}
@@ -119,10 +115,14 @@ export const JobWorkspace = () => {
               <Archive size={16} className="mr-2" /> Archive
             </Button>
           )}
-          <Button variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => {
-            if (window.confirm("Are you sure you want to delete this job and all associated data? This cannot be undone.")) {
-              deleteMutation.mutate();
-            }
+          <Button variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={async () => {
+            const ok = await confirm({
+              title: 'Delete job?',
+              description: 'Are you sure you want to delete this job and all associated data? This cannot be undone.',
+              confirmLabel: 'Delete',
+              danger: true,
+            });
+            if (ok) deleteMutation.mutate();
           }} disabled={deleteMutation.isPending}>
             <Trash2 size={16} className="mr-2" /> Delete
           </Button>
@@ -173,9 +173,9 @@ export const JobWorkspace = () => {
             {job.required_skills && job.required_skills.length > 0 ? (
               <div className="flex flex-wrap gap-2">
                 {job.required_skills.map((skill, index) => (
-                  <span key={index} className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
+                  <Badge key={index} variant="success" className="text-sm px-3 py-1">
                     {skill}
-                  </span>
+                  </Badge>
                 ))}
               </div>
             ) : <span className="text-slate-500 italic">None specified</span>}
@@ -186,9 +186,9 @@ export const JobWorkspace = () => {
             {job.preferred_skills && job.preferred_skills.length > 0 ? (
               <div className="flex flex-wrap gap-2">
                 {job.preferred_skills.map((skill, index) => (
-                  <span key={index} className="bg-slate-100 text-slate-700 px-3 py-1 rounded-full text-sm font-medium">
+                  <Badge key={index} variant="neutral" className="text-sm px-3 py-1">
                     {skill}
-                  </span>
+                  </Badge>
                 ))}
               </div>
             ) : <span className="text-slate-500 italic">None specified</span>}

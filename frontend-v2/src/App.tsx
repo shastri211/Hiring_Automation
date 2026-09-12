@@ -2,6 +2,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import { AppRoutes } from './routes';
+import { ThemeProvider } from './hooks/useTheme';
+import { ConfirmProvider } from './hooks/useConfirm';
 import './styles/global.css';
 
 const queryClient = new QueryClient({
@@ -16,10 +18,14 @@ const queryClient = new QueryClient({
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AppRoutes />
-      <Toaster position="top-right" richColors closeButton />
-    </QueryClientProvider>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <ConfirmProvider>
+          <AppRoutes />
+          <Toaster position="top-right" richColors closeButton />
+        </ConfirmProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 }
 
