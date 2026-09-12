@@ -4,8 +4,10 @@ services:
   postgres:
     image: postgres:15-alpine
     environment:
+      # Password is sourced from the project-root .env (see .env.example);
+      # Docker Compose auto-loads it for ${VAR} interpolation.
       POSTGRES_USER: screener
-      POSTGRES_PASSWORD: chavi@123
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: resume_screener
     ports:
       - "5432:5432"
