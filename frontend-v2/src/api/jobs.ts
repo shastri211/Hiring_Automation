@@ -73,5 +73,9 @@ export const jobsApi = {
 
   deleteJob: (jobId: number) => {
     return apiClient.delete<any>(`/jobs/${jobId}`) as unknown as Promise<void>;
+  },
+
+  resyncInterview: (jobId: number, resumeId: number) => {
+    return apiClient.post<any>(`/jobs/${jobId}/interviews/${resumeId}/resync`) as unknown as Promise<{ success: boolean; message: string }>;
   }
 };
