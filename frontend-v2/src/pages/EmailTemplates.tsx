@@ -1,24 +1,54 @@
 import { useState } from 'react';
-import { useEmailTemplates, useCreateTemplate } from '../hooks/useEmails';
+import { useEmailTemplates, useCreateTemplate, useUpdateTemplate, useDeleteTemplate } from '../hooks/useEmails';
+import { useConfirm } from '../hooks/useConfirm';
 import { Loader2, Plus, Mail, Pencil, Trash2 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
+import type { EmailTemplate } from '../types';
 
 export const EmailTemplates = () => {
   const { data: templates, isLoading } = useEmailTemplates();
   const createMutation = useCreateTemplate();
-  
+  const updateMutation = useUpdateTemplate();
+  const deleteMutation = useDeleteTemplate();
+  const confirm = useConfirm();
+
   const [isCreating, setIsCreating] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [formData, setFormData] = useState({ name: '', subject: '', body_content: '' });
+
+  const resetFormAndClose = () => {
+    setIsCreating(false);
+    setEditingId(null);
+    setFormData({ name: '', subject: '', body_content: '' });
+  };
+
+  const startEdit = (template: EmailTemplate) => {
+    setFormData({ name: template.name, subject: template.subject, body_content: template.body_content });
+    setEditingId(template.id);
+    setIsCreating(true);
+  };
+
+  const handleDelete = async (template: EmailTemplate) => {
+    const ok = await confirm({
+      title: 'Delete template?',
+      description: `Delete "${template.name}"? Past sent emails keep their content but lose this template link. This cannot be undone.`,
+      danger: true,
+      confirmLabel: 'Delete',
+    });
+    if (ok) deleteMutation.mutate(template.id);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    createMutation.mutate(formData, {
-      onSuccess: () => {
-        setIsCreating(false);
-        setFormData({ name: '', subject: '', body_content: '' });
-      }
-    });
+    if (editingId != null) {
+      updateMutation.mutate({ id: editingId, patch: formData }, { onSuccess: resetFormAndClose });
+    } else {
+      createMutation.mutate(formData, { onSuccess: resetFormAndClose });
+    }
   };
+
+  const isSaving = createMutation.isPending || updateMutation.isPending;
+  const isBusy = isSaving || deleteMutation.isPending;
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
@@ -29,14 +59,17 @@ export const EmailTemplates = () => {
           </h1>
           <p className="text-slate-500 text-sm mt-1">Manage reusable templates for candidate outreach.</p>
         </div>
-        <Button onClick={() => setIsCreating(true)} className="flex items-center gap-2">
+        <Button
+          onClick={() => { setEditingId(null); setFormData({ name: '', subject: '', body_content: '' }); setIsCreating(true); }}
+          className="flex items-center gap-2"
+        >
           <Plus className="w-4 h-4" /> New Template
         </Button>
       </div>
 
       {isCreating && (
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-8">
-          <h2 className="text-lg font-semibold text-slate-800 mb-4">Create Template</h2>
+          <h2 className="text-lg font-semibold text-slate-800 mb-4">{editingId != null ? 'Edit Template' : 'Create Template'}</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Template Name</label>
@@ -73,13 +106,13 @@ export const EmailTemplates = () => {
               />
             </div>
             <div className="flex justify-end gap-3 pt-2">
-              <Button type="button" variant="secondary" onClick={() => setIsCreating(false)}>Cancel</Button>
-              <Button type="submit" disabled={createMutation.isPending}>
-                {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Template'}
+              <Button type="button" variant="secondary" onClick={resetFormAndClose}>Cancel</Button>
+              <Button type="submit" disabled={isSaving}>
+                {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Template'}
               </Button>
             </div>
-            {createMutation.isError && (
-              <p className="text-red-500 text-sm mt-2">Failed to create template.</p>
+            {(createMutation.isError || updateMutation.isError) && (
+              <p className="text-red-500 text-sm mt-2">Failed to save template.</p>
             )}
           </form>
         </div>
@@ -94,8 +127,24 @@ export const EmailTemplates = () => {
               <div className="flex justify-between items-start mb-4">
                 <h3 className="font-semibold text-slate-800 text-lg">{t.name}</h3>
                 <div className="flex gap-2">
-                  <button className="text-slate-400 hover:text-blue-600"><Pencil className="w-4 h-4" /></button>
-                  <button className="text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                  <button
+                    onClick={() => startEdit(t)}
+                    disabled={isBusy}
+                    title="Edit template"
+                    aria-label={`Edit template ${t.name}`}
+                    className="text-slate-400 hover:text-blue-600 disabled:opacity-50"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(t)}
+                    disabled={isBusy}
+                    title="Delete template"
+                    aria-label={`Delete template ${t.name}`}
+                    className="text-slate-400 hover:text-red-600 disabled:opacity-50"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
               <div className="text-sm font-medium text-slate-600 mb-2 truncate">Subj: {t.subject}</div>

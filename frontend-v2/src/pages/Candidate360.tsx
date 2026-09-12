@@ -1,10 +1,11 @@
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
-import { ArrowLeft, ExternalLink, Briefcase, GraduationCap } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Briefcase, GraduationCap, PackagePlus } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { jobsApi } from '../api/jobs';
 import { resumesApi } from '../api/resumes';
 import { queryKeys } from '../api/queryKeys';
 import { useDecisionMutation } from '../hooks/useDecisionMutation';
+import { useAddToTalentPool } from '../hooks/useTalentPool';
 import { Button } from '../components/ui/Button';
 import { 
   ScoreVisualizer, 
@@ -29,6 +30,7 @@ export const Candidate360 = () => {
   });
 
   const decisionMutation = useDecisionMutation(jobId);
+  const addToPool = useAddToTalentPool();
 
   const handleBack = () => {
     // Navigate back to the previous list with preserved state, or fallback to job detail
@@ -92,6 +94,14 @@ export const Candidate360 = () => {
               <ExternalLink className="w-4 h-4 opacity-50" /> Original Resume Unavailable
             </span>
           )}
+          <Button
+            variant="secondary"
+            onClick={() => addToPool.mutate({ resume_id: resumeId, added_from_job_id: jobId })}
+            disabled={addToPool.isPending}
+            className="flex items-center gap-2"
+          >
+            <PackagePlus className="w-4 h-4" /> Add to Talent Pool
+          </Button>
           <Link to={`/interview/${jobId}/${resumeId}`}>
             <Button>Interview Workspace</Button>
           </Link>

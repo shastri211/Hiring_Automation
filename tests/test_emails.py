@@ -76,15 +76,17 @@ async def test_queue_bulk_emails_enqueues_via_shared_queue_service(mock_session_
 
 @pytest.mark.asyncio
 @patch("app.services.email.AsyncSessionLocal", new_callable=MagicMock)
-async def test_queue_bulk_emails_blocks_interview_link_placeholder(mock_session_local):
-    """A template requiring {{interview_link}} must be blocked with a clear error,
-    since there is no real Dograh link-generation step yet."""
+async def test_queue_bulk_emails_skips_candidate_without_interview_link(mock_session_local):
+    """A template requiring {{interview_link}} but with no Interview/public_token
+    yet for this (job_id, resume_id) must skip only that candidate (log +
+    continue) rather than blocking the whole batch or raising."""
     from app.services.email import email_service
 
     mock_session = _mock_session_local(mock_session_local)
 
     template = MagicMock(spec=EmailTemplate)
     template.id = 1
+    template.subject = "Interview"
     template.body_content = "Book your interview: {{interview_link}}"
     template_exec = MagicMock()
     template_exec.scalar_one_or_none.return_value = template
@@ -103,21 +105,150 @@ async def test_queue_bulk_emails_blocks_interview_link_placeholder(mock_session_
     job_exec = MagicMock()
     job_exec.scalar_one_or_none.return_value = job
 
+    interview_exec = MagicMock()
+    interview_exec.scalar_one_or_none.return_value = None  # no Interview row yet
+
     mock_session.execute = AsyncMock(
-        side_effect=[template_exec, existing_exec, candidate_exec, job_exec]
+        side_effect=[template_exec, existing_exec, candidate_exec, job_exec, interview_exec]
     )
 
     mock_queue_service = MagicMock()
     mock_queue_service.enqueue_task = AsyncMock()
 
-    with pytest.raises(ValueError, match="interview_link"):
-        await email_service.queue_bulk_emails(
+    queued_count = await email_service.queue_bulk_emails(
+        job_id=1,
+        resume_ids=[7],
+        template_id=1,
+        queue_service=mock_queue_service,
+    )
+
+    assert queued_count == 0
+    mock_queue_service.enqueue_task.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@patch("app.services.email.AsyncSessionLocal", new_callable=MagicMock)
+@patch("app.services.email.settings.PUBLIC_APP_BASE_URL", "https://app.example.com")
+async def test_queue_bulk_emails_renders_interview_link_when_present(mock_session_local):
+    """Once trigger_interview has minted a public_token, {{interview_link}}
+    must render to the real candidate-facing URL."""
+    from app.services.email import email_service
+    import datetime as dt
+
+    mock_session = _mock_session_local(mock_session_local)
+
+    template = MagicMock(spec=EmailTemplate)
+    template.id = 1
+    template.subject = "Interview"
+    template.body_content = "Book your interview: {{interview_link}}"
+    template_exec = MagicMock()
+    template_exec.scalar_one_or_none.return_value = template
+
+    existing_exec = MagicMock()
+    existing_exec.scalar_one_or_none.return_value = None
+
+    candidate = MagicMock(spec=CandidateProfile)
+    candidate.email = "jane@example.com"
+    candidate.name = "Jane Doe"
+    candidate_exec = MagicMock()
+    candidate_exec.scalar_one_or_none.return_value = candidate
+
+    job = MagicMock(spec=Job)
+    job.title = "Backend Engineer"
+    job_exec = MagicMock()
+    job_exec.scalar_one_or_none.return_value = job
+
+    interview = MagicMock()
+    interview.public_token = "tok_abc123"
+    interview.link_expires_at = dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=1)
+    interview_exec = MagicMock()
+    interview_exec.scalar_one_or_none.return_value = interview
+
+    mock_session.execute = AsyncMock(
+        side_effect=[template_exec, existing_exec, candidate_exec, job_exec, interview_exec]
+    )
+
+    new_msg = MagicMock()
+
+    def _add(obj):
+        obj.id = 99
+
+    mock_session.add = MagicMock(side_effect=_add)
+    mock_session.flush = AsyncMock()
+    mock_session.commit = AsyncMock()
+
+    mock_queue_service = MagicMock()
+    mock_queue_service.enqueue_task = AsyncMock()
+
+    queued_count = await email_service.queue_bulk_emails(
+        job_id=1,
+        resume_ids=[7],
+        template_id=1,
+        queue_service=mock_queue_service,
+    )
+
+    assert queued_count == 1
+    mock_queue_service.enqueue_task.assert_awaited_once_with(
+        {"action": "SEND_EMAIL", "email_message_id": 99}
+    )
+    # Assert the rendered body contains the real, fully-built URL.
+    added_msg = mock_session.add.call_args[0][0]
+    assert added_msg.body_content == "Book your interview: https://app.example.com/interview-room/tok_abc123"
+
+
+@pytest.mark.asyncio
+@patch("app.services.email.AsyncSessionLocal", new_callable=MagicMock)
+async def test_queue_bulk_emails_skips_when_link_expired(mock_session_local):
+    """An expired interview link must never be emailed - skip rather than
+    rendering a dead link."""
+    from app.services.email import email_service
+    import datetime as dt
+
+    mock_session = _mock_session_local(mock_session_local)
+
+    template = MagicMock(spec=EmailTemplate)
+    template.id = 1
+    template.subject = "Interview"
+    template.body_content = "Book your interview: {{interview_link}}"
+    template_exec = MagicMock()
+    template_exec.scalar_one_or_none.return_value = template
+
+    existing_exec = MagicMock()
+    existing_exec.scalar_one_or_none.return_value = None
+
+    candidate = MagicMock(spec=CandidateProfile)
+    candidate.email = "jane@example.com"
+    candidate.name = "Jane Doe"
+    candidate_exec = MagicMock()
+    candidate_exec.scalar_one_or_none.return_value = candidate
+
+    job = MagicMock(spec=Job)
+    job.title = "Backend Engineer"
+    job_exec = MagicMock()
+    job_exec.scalar_one_or_none.return_value = job
+
+    interview = MagicMock()
+    interview.public_token = "tok_abc123"
+    interview.link_expires_at = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1)
+    interview_exec = MagicMock()
+    interview_exec.scalar_one_or_none.return_value = interview
+
+    mock_session.execute = AsyncMock(
+        side_effect=[template_exec, existing_exec, candidate_exec, job_exec, interview_exec]
+    )
+
+    mock_queue_service = MagicMock()
+    mock_queue_service.enqueue_task = AsyncMock()
+
+    with patch("app.services.email.settings.PUBLIC_APP_BASE_URL", "https://app.example.com"):
+        queued_count = await email_service.queue_bulk_emails(
             job_id=1,
             resume_ids=[7],
             template_id=1,
             queue_service=mock_queue_service,
         )
 
+    assert queued_count == 0
     mock_queue_service.enqueue_task.assert_not_awaited()
 
 

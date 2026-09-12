@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useShortlistedCandidates } from '../hooks/useShortlistedCandidates';
-import { Loader2, Users, FileText, CheckCircle2 } from 'lucide-react';
+import { useAddToTalentPool } from '../hooks/useTalentPool';
+import { Loader2, Users, FileText, CheckCircle2, PackagePlus } from 'lucide-react';
 import { useState } from 'react';
 import { CandidateDrawer } from '../components/CandidateDrawer';
 import type { GlobalScreeningResultResponse } from '../types';
@@ -9,6 +10,7 @@ export const Shortlisted = () => {
   const { candidates, isLoading, isError } = useShortlistedCandidates();
   const navigate = useNavigate();
   const [selectedCandidate, setSelectedCandidate] = useState<{jobId: number, resumeId: number} | null>(null);
+  const addToPool = useAddToTalentPool();
 
   if (isLoading) {
     return (
@@ -108,9 +110,20 @@ export const Shortlisted = () => {
                       )}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <span className="text-sm font-medium text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                        View 360 &rarr;
-                      </span>
+                      <div className="flex items-center justify-end gap-3">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); addToPool.mutate({ resume_id: candidate.resume_id, added_from_job_id: candidate.job_id }); }}
+                          disabled={addToPool.isPending}
+                          aria-label={`Add resume ${candidate.resume_id} to Talent Pool`}
+                          title="Add to Talent Pool"
+                          className="p-1.5 rounded-full text-slate-400 hover:bg-slate-100 hover:text-indigo-600 transition-colors disabled:opacity-50"
+                        >
+                          <PackagePlus className="w-4 h-4" />
+                        </button>
+                        <span className="text-sm font-medium text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                          View 360 &rarr;
+                        </span>
+                      </div>
                     </td>
                   </tr>
                 ))}

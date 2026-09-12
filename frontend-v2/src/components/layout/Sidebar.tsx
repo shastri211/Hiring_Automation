@@ -38,32 +38,32 @@ export const Sidebar = ({
       title: 'RECRUITING',
       items: [
         { to: '/jobs', label: 'Jobs', icon: Briefcase },
-        { to: '/candidates', label: 'Candidates', icon: Users, disabled: true },
+        { to: '/candidates', label: 'Candidates', icon: Users },
         { to: '/shortlisted', label: 'Shortlisted', icon: Star },
-        { to: '/interviews', label: 'Interviews', icon: Calendar, disabled: true },
-        { to: '/talent-pool', label: 'Talent Pool', icon: Database, disabled: true },
+        { to: '/interviews', label: 'Interviews', icon: Calendar },
+        { to: '/talent-pool', label: 'Talent Pool', icon: Database },
       ]
     },
     {
       title: 'COMMUNICATION',
       items: [
-        { to: '/outreach', label: 'Email / Outreach', icon: Mail, disabled: true },
+        { to: '/outreach', label: 'Email / Outreach', icon: Mail },
         { to: '/templates', label: 'Templates', icon: FileText },
       ]
     },
     {
       title: 'INTELLIGENCE',
       items: [
-        { to: '/ai-screening', label: 'AI Screening', icon: Brain, disabled: true },
-        { to: '/interview-analysis', label: 'Interview Analysis', icon: MessageSquare, disabled: true },
-        { to: '/analytics', label: 'Analytics', icon: BarChart, disabled: true },
+        { to: '/ai-screening', label: 'AI Screening', icon: Brain },
+        { to: '/interview-analysis', label: 'Interview Analysis', icon: MessageSquare },
+        { to: '/analytics', label: 'Analytics', icon: BarChart },
       ]
     },
     {
       title: 'SYSTEM',
       items: [
-        { to: '/integrations', label: 'Integrations', icon: Puzzle, disabled: true },
-        { to: '/settings', label: 'Settings', icon: Settings, disabled: true },
+        { to: '/integrations', label: 'Integrations', icon: Puzzle },
+        { to: '/settings', label: 'Settings', icon: Settings },
       ]
     }
   ];
