@@ -30,6 +30,7 @@ from app.services.queue import queue_service
 from app.services.extractor.factory import get_extractor
 from app.services.vector_store import vector_store
 from app.services.model_registry import model_registry
+from app.services.outreach import outreach_service
 
 logger = logging.getLogger(__name__)
 
@@ -491,7 +492,10 @@ async def update_screening_decision(
         
     await db.commit()
     await db.refresh(screening)
-    
+
+    if update_data.get("decision") == "SHORTLIST":
+        await outreach_service.on_decision_shortlisted(job_id, [resume_id])
+
     profile_res = await db.execute(
         select(CandidateProfile).where(CandidateProfile.resume_id == resume_id)
     )
@@ -561,6 +565,10 @@ async def bulk_update_decision(
             screening.decision = payload.decision
             
     await db.commit()
+
+    if payload.decision == "SHORTLIST":
+        await outreach_service.on_decision_shortlisted(job_id, payload.resume_ids)
+
     return {"message": f"Updated {len(screenings)} candidates", "updated_count": len(screenings)}
 
 

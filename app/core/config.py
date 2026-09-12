@@ -60,6 +60,14 @@ class Settings(BaseSettings):
     RESEND_API_KEY: str | None = None
     RESEND_FROM_EMAIL: str = "noreply@automatedhiring.com"
 
+    # Dograh voice-interview integration (placeholder stubs; the full config set
+    # is added by a separate work stream implementing A10. These three are
+    # added defensively so app/api/integrations_status.py has something to read
+    # even before that work lands. pydantic-settings tolerates additive fields.
+    DOGRAH_BASE_URL: str | None = None
+    DOGRAH_EMBED_TOKEN: str | None = None
+    DOGRAH_WEBHOOK_SECRET: str | None = None
+
 
     @property
     def gemini_ocr_model(self) -> str:

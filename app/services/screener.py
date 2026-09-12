@@ -124,11 +124,16 @@ class ScreenerService:
         # --- Pre-Screening Layer (The Gate) ---
         # Sort candidates so the gate works properly.
         # candidates is a list of (candidate_id, semantic_score, payload)
+        # Thresholds are sourced via SettingsService (DB-configurable, each
+        # field falling back individually to the env default when NULL) -
+        # the gate algorithm itself (_adaptive_pre_screen) is unchanged.
+        from app.services.settings import settings_service
+        min_keep, max_keep, gap_threshold = await settings_service.get_effective_screening_config(db)
         passed_gate = _adaptive_pre_screen(
-            candidates, 
-            min_keep=settings.MIN_CANDIDATES_TO_SCREEN, 
-            max_keep=settings.MAX_CANDIDATES_TO_SCREEN, 
-            gap_threshold=settings.SEMANTIC_GAP_THRESHOLD
+            candidates,
+            min_keep=min_keep,
+            max_keep=max_keep,
+            gap_threshold=gap_threshold,
         )
         
         # Create a set of IDs that passed
