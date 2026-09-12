@@ -60,30 +60,13 @@ class Settings(BaseSettings):
     RESEND_API_KEY: str | None = None
     RESEND_FROM_EMAIL: str = "noreply@automatedhiring.com"
 
-    # Dograh voice-interview integration (browser/web widget, not phone — see
-    # app/services/dograh.py and app/api/public_interview.py for the full
-    # architecture note). DOGRAH_BASE_URL/DOGRAH_EMBED_TOKEN/PUBLIC_APP_BASE_URL
-    # are the three fields actually needed to produce a working candidate link
-    # + widget (checked by DograhClient.is_configured); the rest support the
-    # manual resync endpoint and the outbound webhook receiver.
+    # Dograh voice-interview integration (placeholder stubs; the full config set
+    # is added by a separate work stream implementing A10. These three are
+    # added defensively so app/api/integrations_status.py has something to read
+    # even before that work lands. pydantic-settings tolerates additive fields.
     DOGRAH_BASE_URL: str | None = None
     DOGRAH_EMBED_TOKEN: str | None = None
     DOGRAH_WEBHOOK_SECRET: str | None = None
-    DOGRAH_API_KEY: str | None = None
-    DOGRAH_WORKFLOW_ID: str | None = None
-    # "production" or "development" per whatever the target Dograh instance
-    # expects for its embed widget script (?environment= query param). Most
-    # deployments can leave this at the default.
-    DOGRAH_ENVIRONMENT: str = "production"
-    # none | api_key | bearer_token | basic_auth | custom_header — matches
-    # Dograh's real webhook credential enum.
-    DOGRAH_WEBHOOK_AUTH_TYPE: str = "none"
-    DOGRAH_WEBHOOK_HEADER_NAME: str = "X-API-Key"
-    # Our deployed frontend's public origin (e.g. https://app.example.com, or
-    # a dev ngrok URL) — used to build the candidate-facing interview link and
-    # must be registered in Dograh's Allowed Domains for the embed token to work.
-    PUBLIC_APP_BASE_URL: str | None = None
-    DOGRAH_INTERVIEW_LINK_TTL_HOURS: int = 168
 
 
     @property

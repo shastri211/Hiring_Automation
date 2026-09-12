@@ -21,14 +21,6 @@ def _make_interview(id=1, job_id=1, resume_id=1, status="SCHEDULED"):
     i.evaluation = None
     i.created_at = datetime.datetime.utcnow()
     i.updated_at = None
-    i.provider = None
-    i.provider_run_id = None
-    i.public_token = None
-    i.link_expires_at = None
-    i.transcript_url = None
-    i.recording_url = None
-    i.scheduled_at = None
-    i.completed_at = None
     return i
 
 

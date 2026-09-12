@@ -1,13 +1,12 @@
 import httpx
 import logging
 from typing import List, Optional
-from datetime import datetime, timezone
+from datetime import datetime
 from sqlalchemy import select, update
 from app.db.session import AsyncSessionLocal
 from app.models.email import EmailTemplate, EmailMessage
 from app.models.profile import CandidateProfile
 from app.models.job import Job
-from app.models.interview import Interview
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -115,49 +114,15 @@ class EmailService:
                 if not job:
                     continue
 
-                # A real interview link only exists once trigger_interview has
-                # minted a public_token for this (job_id, resume_id). If the
-                # template needs {{interview_link}} but no active, non-expired
-                # link exists yet, skip only this candidate (log + continue) -
-                # matching the existing "no email on file -> skip" pattern -
-                # rather than blocking the whole batch, and rather than ever
-                # emailing a dead/expired link.
-                interview_link = None
-                needs_interview_link = (
-                    "{{interview_link}}" in template.body_content
-                    or "{{interview_link}}" in template.subject
-                )
-                if needs_interview_link:
-                    interview_res = await session.execute(
-                        select(Interview).where(
-                            Interview.job_id == job_id,
-                            Interview.resume_id == resume_id,
-                        )
-                    )
-                    interview = interview_res.scalar_one_or_none()
-                    now = datetime.now(timezone.utc)
-                    link_expires_at = interview.link_expires_at if interview else None
-                    if link_expires_at is not None and link_expires_at.tzinfo is None:
-                        link_expires_at = link_expires_at.replace(tzinfo=timezone.utc)
-                    link_is_live = (
-                        interview is not None
-                        and interview.public_token
-                        and settings.PUBLIC_APP_BASE_URL
-                        and (link_expires_at is None or link_expires_at > now)
-                    )
-                    if link_is_live:
-                        interview_link = f"{settings.PUBLIC_APP_BASE_URL}/interview-room/{interview.public_token}"
-                    else:
-                        logger.warning(
-                            f"Skipping resume {resume_id}: template requires {{{{interview_link}}}} but no "
-                            "active, non-expired interview link exists yet."
-                        )
-                        continue
+                # Dograh does not yet expose a way to generate a real interview link
+                # ahead of sending (see app/services/interview.py). Block sending
+                # rather than emailing a placeholder/broken link.
+                if "{{interview_link}}" in template.body_content:
+                    raise ValueError(f"Template requires {{interview_link}} but Dograh integration is not yet active for resume {resume_id}.")
 
                 context = {
                     "candidate_name": candidate.name or "Candidate",
                     "job_title": job.title,
-                    "interview_link": interview_link or "",
                 }
                 
                 # Render content
