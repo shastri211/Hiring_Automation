@@ -5,7 +5,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import jobs, resumes, health, integration, candidates, emails
 from app.api import settings as settings_api
 from app.api import integrations_status, talent_pool, analytics, interviews, interview_analysis
-from app.api import public_interview
 from app.core.config import settings
 from app.core.logging import setup_logging
 
@@ -51,4 +50,3 @@ app.include_router(talent_pool.router, prefix="/talent-pool", tags=["talent-pool
 app.include_router(analytics.router, prefix="/analytics", tags=["analytics"])
 app.include_router(interviews.router, prefix="/interviews", tags=["interviews"])
 app.include_router(interview_analysis.router, prefix="/interview-analysis", tags=["interview-analysis"])
-app.include_router(public_interview.router, prefix="/public/interview", tags=["public-interview"])

@@ -10,19 +10,9 @@ class Interview(Base):
     job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False, index=True)
     resume_id = Column(Integer, ForeignKey("resumes.id"), nullable=False, index=True)
 
-    status = Column(String(50), default="PENDING") # PENDING, SCHEDULED, IN_PROGRESS, COMPLETED, FAILED
+    status = Column(String(50), default="PENDING") # PENDING, SCHEDULED, COMPLETED, FAILED
     transcript = Column(Text, nullable=True)
     evaluation = Column(JSON, nullable=True)
-
-    # Provider integration fields (A10 - Dograh browser/web interview).
-    provider = Column(String(50), nullable=True)  # e.g. "dograh"
-    provider_run_id = Column(String(100), nullable=True)  # Dograh workflow_run_id, filled in once the webhook/resync arrives
-    public_token = Column(String(64), unique=True, index=True, nullable=True)  # our own opaque candidate-facing link token
-    link_expires_at = Column(DateTime(timezone=True), nullable=True)
-    transcript_url = Column(String, nullable=True)
-    recording_url = Column(String, nullable=True)
-    scheduled_at = Column(DateTime(timezone=True), nullable=True)
-    completed_at = Column(DateTime(timezone=True), nullable=True)
-
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
