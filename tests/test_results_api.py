@@ -276,8 +276,15 @@ async def test_duplicate_screening_idempotent():
         count_exec = MagicMock()
         count_exec.scalar_one.return_value = 1
 
+        # screen_job now also sources the adaptive-gate thresholds via
+        # settings_service.get_effective_screening_config(db) (one extra
+        # db.execute call, between the count query and the per-candidate
+        # idempotency check) - no AppSettings row -> falls back to env defaults.
+        settings_exec = MagicMock()
+        settings_exec.scalar_one_or_none.return_value = None
+
         mock_db.execute = AsyncMock(
-            side_effect=[count_exec, existing_exec]
+            side_effect=[count_exec, settings_exec, existing_exec]
         )
         mock_db.add = MagicMock()
         mock_db.commit = AsyncMock()

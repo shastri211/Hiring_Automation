@@ -5,3 +5,5 @@ from app.models.profile import CandidateProfile
 from app.models.screening import ScreeningResult
 from app.models.interview import Interview
 from app.models.email import EmailTemplate, EmailMessage
+from app.models.settings import AppSettings
+from app.models.talent_pool import TalentPoolEntry
