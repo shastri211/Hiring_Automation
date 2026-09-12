@@ -1,6 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import base64
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from app.core.config import settings
 from app.db.session import get_db
 from app.models.resume import Resume
 from app.services.interview import interview_adapter
@@ -12,7 +16,57 @@ from app.schemas.integration import (
     IntegrationResponse,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+
+async def verify_dograh_webhook(request: Request) -> None:
+    """Verify inbound Dograh webhook requests per DOGRAH_WEBHOOK_AUTH_TYPE.
+
+    Implements all 5 real Dograh auth types confirmed against
+    docs/developer/webhooks.mdx and api/enums.py in the Dograh source:
+    none | api_key | bearer_token | basic_auth | custom_header.
+
+    api_key/custom_header both collapse to "does the configured header equal
+    the configured secret" - they differ only in which header name an
+    operator configures (DOGRAH_WEBHOOK_HEADER_NAME), so they share this one
+    code path rather than being read via a fixed FastAPI Header() alias
+    (which can't be config-driven).
+    """
+    auth_type = (settings.DOGRAH_WEBHOOK_AUTH_TYPE or "none").lower()
+    secret = settings.DOGRAH_WEBHOOK_SECRET or ""
+
+    if auth_type == "none":
+        return
+
+    if auth_type == "basic_auth":
+        authorization = request.headers.get("authorization", "")
+        if not authorization.startswith("Basic "):
+            raise HTTPException(status_code=401, detail="Missing or invalid Basic auth")
+        try:
+            decoded = base64.b64decode(authorization[len("Basic "):]).decode("utf-8")
+        except Exception:
+            raise HTTPException(status_code=401, detail="Malformed Basic auth header")
+        if decoded != secret:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        return
+
+    if auth_type == "bearer_token":
+        authorization = request.headers.get("authorization", "")
+        if authorization != f"Bearer {secret}":
+            raise HTTPException(status_code=401, detail="Invalid or missing bearer token")
+        return
+
+    if auth_type in ("api_key", "custom_header"):
+        header_name = settings.DOGRAH_WEBHOOK_HEADER_NAME or "X-API-Key"
+        value = request.headers.get(header_name)
+        if value != secret or not secret:
+            raise HTTPException(status_code=401, detail="Invalid or missing webhook credentials")
+        return
+
+    logger.warning("Unknown DOGRAH_WEBHOOK_AUTH_TYPE=%r; rejecting webhook request.", auth_type)
+    raise HTTPException(status_code=401, detail="Webhook authentication misconfigured")
 
 async def validate_ownership(job_id: int, resume_id: int, db: AsyncSession):
     """
@@ -43,7 +97,11 @@ async def trigger_interview(
     raise HTTPException(status_code=400, detail="Failed to trigger interview")
 
 
-@router.post("/interview/status", response_model=IntegrationResponse)
+@router.post(
+    "/interview/status",
+    response_model=IntegrationResponse,
+    dependencies=[Depends(verify_dograh_webhook)],
+)
 async def update_interview_status(
     req: InterviewStatusRequest, db: AsyncSession = Depends(get_db)
 ):
@@ -57,7 +115,11 @@ async def update_interview_status(
     return IntegrationResponse(success=True, message="Interview status updated")
 
 
-@router.post("/interview/transcript", response_model=IntegrationResponse)
+@router.post(
+    "/interview/transcript",
+    response_model=IntegrationResponse,
+    dependencies=[Depends(verify_dograh_webhook)],
+)
 async def receive_interview_transcript(
     req: InterviewTranscriptRequest, db: AsyncSession = Depends(get_db)
 ):
@@ -71,7 +133,11 @@ async def receive_interview_transcript(
     return IntegrationResponse(success=True, message="Interview transcript updated")
 
 
-@router.post("/interview/evaluation", response_model=IntegrationResponse)
+@router.post(
+    "/interview/evaluation",
+    response_model=IntegrationResponse,
+    dependencies=[Depends(verify_dograh_webhook)],
+)
 async def receive_interview_evaluation(
     req: InterviewEvaluationRequest, db: AsyncSession = Depends(get_db)
 ):
