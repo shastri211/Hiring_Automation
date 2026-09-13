@@ -6,7 +6,7 @@ import { cn } from '../../utils/cn';
 // -----------------------------------------------------------------------------
 export const Card = forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn("bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-xl shadow-sm overflow-hidden", className)} {...props} />
+    <div ref={ref} className={cn("bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-xl shadow-[var(--shadow-sm)] overflow-hidden", className)} {...props} />
   )
 );
 Card.displayName = "Card";
@@ -103,7 +103,7 @@ Label.displayName = "Label";
 // Utilities
 // -----------------------------------------------------------------------------
 export const Skeleton = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("animate-pulse rounded-md bg-slate-200", className)} {...props} />
+  <div className={cn("animate-pulse rounded-md bg-[var(--bg-hover)]", className)} {...props} />
 );
 
 export const Spinner = ({ className, size = 24 }: { className?: string, size?: number }) => (

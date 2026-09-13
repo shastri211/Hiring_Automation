@@ -10,7 +10,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant = 'primary', size = 'md', type = 'button', ...props }, ref) => {
     
-    const baseClasses = "inline-flex items-center justify-center gap-2 font-medium rounded-md border border-transparent cursor-pointer transition-all duration-200 whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed";
+    const baseClasses = "inline-flex items-center justify-center gap-2 font-medium rounded-md border border-transparent cursor-pointer transition-base whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed";
     
     const sizeClasses = {
       md: "px-4 py-2 text-sm",

@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 import { jobsApi } from '../api/jobs';
 import { api } from '../api';
 import { queryKeys } from '../api/queryKeys';
-import { Button, Badge } from '../components/ui';
+import { Button, Badge, PageHeader } from '../components/ui';
 import { getInterviewStatusBadgeVariant } from '../utils/status';
 import type { DograhEvaluationEnvelope, IntegrationResponse } from '../types';
 
@@ -48,8 +48,8 @@ const LifecycleStepper = ({ status, scheduledAt, completedAt }: { status: string
         <div className="bg-[var(--color-danger-subtle-bg)] w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3">
           <AlertCircle className="w-6 h-6 text-[var(--color-danger-600)]" />
         </div>
-        <h4 className="text-sm font-medium text-slate-900 mb-1">Interview Failed</h4>
-        <p className="text-xs text-slate-500 leading-relaxed">
+        <h4 className="text-sm font-medium text-[var(--text-primary)] mb-1">Interview Failed</h4>
+        <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
           The interview could not be scheduled or completed. Try triggering it again.
         </p>
       </div>
@@ -66,23 +66,23 @@ const LifecycleStepper = ({ status, scheduledAt, completedAt }: { status: string
         return (
           <li key={step.key} className="flex items-start gap-3">
             <span
-              className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${
+              className={`transition-base mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${
                 done
                   ? 'bg-[var(--color-primary-600)] text-white'
-                  : 'bg-slate-100 text-slate-400 border border-slate-200'
+                  : 'bg-[var(--bg-hover)] text-[var(--text-tertiary)] border border-[var(--border-light)]'
               }`}
             >
               {done ? '✓' : i + 1}
             </span>
             <div>
-              <p className={`text-sm font-medium ${isCurrent ? 'text-slate-900' : done ? 'text-slate-600' : 'text-slate-400'}`}>
+              <p className={`text-sm font-medium ${isCurrent ? 'text-[var(--text-primary)]' : done ? 'text-[var(--text-secondary)]' : 'text-[var(--text-tertiary)]'}`}>
                 {step.label}
               </p>
               {step.key === 'SCHEDULED' && scheduledAt && (
-                <p className="text-xs text-slate-400">{formatDistanceToNow(new Date(scheduledAt), { addSuffix: true })}</p>
+                <p className="text-xs text-[var(--text-tertiary)]">{formatDistanceToNow(new Date(scheduledAt), { addSuffix: true })}</p>
               )}
               {step.key === 'COMPLETED' && completedAt && (
-                <p className="text-xs text-slate-400">{formatDistanceToNow(new Date(completedAt), { addSuffix: true })}</p>
+                <p className="text-xs text-[var(--text-tertiary)]">{formatDistanceToNow(new Date(completedAt), { addSuffix: true })}</p>
               )}
             </div>
           </li>
@@ -157,57 +157,64 @@ export const InterviewWorkspace = () => {
   const callDuration = costInfo && typeof costInfo.call_duration_seconds === 'number' ? costInfo.call_duration_seconds : null;
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-slate-50 overflow-hidden">
+    <div className="flex-1 flex flex-col h-full bg-[var(--bg-app)] overflow-hidden">
       {/* Header */}
-      <div className="bg-white border-b border-slate-200 px-8 py-4 shrink-0 flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={handleBack}
-            className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div>
-            <h1 className="text-xl font-bold text-slate-900 flex items-center gap-3">
+      <div className="bg-[var(--bg-surface)] border-b border-[var(--border-light)] px-8 py-4 shrink-0">
+        <PageHeader
+          size="section"
+          leading={
+            <button
+              onClick={handleBack}
+              className="transition-base p-2 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] rounded-lg"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+          }
+          title={
+            <span className="flex items-center gap-3">
               Interview Workspace
               {interview ? (
                 <Badge variant={getInterviewStatusBadgeVariant(interview.status)}>{interview.status}</Badge>
               ) : (
                 <Badge variant="neutral">Not scheduled</Badge>
               )}
-            </h1>
-            <p className="text-sm text-slate-500">
+            </span>
+          }
+          subtitle={
+            <>
               {isLoadingCandidate ? 'Loading candidate...' : candidate?.profile?.name || `Candidate #${resumeId}`} &bull; Job #{jobId}
-              {interview?.provider === 'dograh' && <span className="ml-2 text-xs text-slate-400">via Dograh</span>}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {interview?.interview_link && (
-            <Button variant="secondary" size="sm" onClick={handleCopyLink}>
-              <Copy className="w-4 h-4 mr-1" /> Copy Interview Link
-            </Button>
-          )}
-          {interview?.provider_run_id && interview.status !== 'COMPLETED' && (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => resyncMutation.mutate()}
-              disabled={resyncMutation.isPending}
-            >
-              <RefreshCw className={`w-4 h-4 mr-1 ${resyncMutation.isPending ? 'animate-spin' : ''}`} /> Resync
-            </Button>
-          )}
-          <Button
-            onClick={() => triggerMutation.mutate()}
-            disabled={triggerMutation.isPending}
-            className="bg-purple-600 hover:bg-purple-700 text-white border-transparent"
-          >
-            {triggerMutation.isPending ? 'Creating link...' : (
-              <><Mic className="w-4 h-4 mr-2" /> {interview ? 'Resend Interview Link' : 'Create Interview Link'}</>
-            )}
-          </Button>
-        </div>
+              {interview?.provider === 'dograh' && <span className="ml-2 text-xs text-[var(--text-tertiary)]">via Dograh</span>}
+            </>
+          }
+          actions={
+            <>
+              {interview?.interview_link && (
+                <Button variant="secondary" size="sm" onClick={handleCopyLink}>
+                  <Copy className="w-4 h-4 mr-1" /> Copy Interview Link
+                </Button>
+              )}
+              {interview?.provider_run_id && interview.status !== 'COMPLETED' && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => resyncMutation.mutate()}
+                  disabled={resyncMutation.isPending}
+                >
+                  <RefreshCw className={`w-4 h-4 mr-1 ${resyncMutation.isPending ? 'animate-spin' : ''}`} /> Resync
+                </Button>
+              )}
+              <Button
+                onClick={() => triggerMutation.mutate()}
+                disabled={triggerMutation.isPending}
+                className="bg-[var(--color-primary-600)] hover:bg-[var(--color-primary-700)] text-white border-transparent"
+              >
+                {triggerMutation.isPending ? 'Creating link...' : (
+                  <><Mic className="w-4 h-4 mr-2" /> {interview ? 'Resend Interview Link' : 'Create Interview Link'}</>
+                )}
+              </Button>
+            </>
+          }
+        />
       </div>
 
       {/* Content */}
@@ -215,24 +222,24 @@ export const InterviewWorkspace = () => {
         <div className="max-w-5xl mx-auto space-y-6">
 
           {candidateError && (
-            <div className="bg-red-50 border border-red-200 text-red-800 rounded-lg p-4 flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
+            <div className="bg-[var(--color-danger-subtle-bg)] border border-[var(--border-light)] text-[var(--color-danger-subtle-text)] rounded-lg p-4 flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-[var(--color-danger-600)] mt-0.5" />
               <div>
                 <h4 className="font-medium">Could not load candidate</h4>
-                <p className="text-sm mt-1 text-red-700">{(candidateError as { message?: string }).message || 'Please try again.'}</p>
+                <p className="text-sm mt-1 text-[var(--color-danger-subtle-text)]">{(candidateError as { message?: string }).message || 'Please try again.'}</p>
               </div>
             </div>
           )}
 
           {/* Mutation Status Banner */}
           {triggerResponse && (
-            <div className="bg-green-50 border border-green-200 text-green-800 rounded-lg p-4 flex items-start gap-3">
-              <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5" />
+            <div className="bg-[var(--color-success-subtle-bg)] border border-[var(--border-light)] text-[var(--color-success-subtle-text)] rounded-lg p-4 flex items-start gap-3">
+              <CheckCircle2 className="w-5 h-5 text-[var(--color-success-600)] mt-0.5" />
               <div>
                 <h4 className="font-medium">Interview Link Ready</h4>
-                <p className="text-sm mt-1 text-green-700">{triggerResponse.message}</p>
+                <p className="text-sm mt-1 text-[var(--color-success-subtle-text)]">{triggerResponse.message}</p>
                 {interview?.interview_link && (
-                  <p className="text-xs mt-2 text-green-700 break-all flex items-center gap-1">
+                  <p className="text-xs mt-2 text-[var(--color-success-subtle-text)] break-all flex items-center gap-1">
                     <LinkIcon className="w-3 h-3 shrink-0" /> {interview.interview_link}
                   </p>
                 )}
@@ -241,11 +248,11 @@ export const InterviewWorkspace = () => {
           )}
 
           {triggerError && (
-            <div className="bg-red-50 border border-red-200 text-red-800 rounded-lg p-4 flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
+            <div className="bg-[var(--color-danger-subtle-bg)] border border-[var(--border-light)] text-[var(--color-danger-subtle-text)] rounded-lg p-4 flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-[var(--color-danger-600)] mt-0.5" />
               <div>
                 <h4 className="font-medium">Trigger Failed</h4>
-                <p className="text-sm mt-1 text-red-700">{triggerError}</p>
+                <p className="text-sm mt-1 text-[var(--color-danger-subtle-text)]">{triggerError}</p>
               </div>
             </div>
           )}
@@ -253,19 +260,19 @@ export const InterviewWorkspace = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
             {/* Timeline */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 col-span-1">
-              <h3 className="text-sm font-semibold text-slate-900 mb-6 flex items-center gap-2">
-                <Clock className="w-4 h-4 text-slate-400" /> Lifecycle Status
+            <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-light)] shadow-[var(--shadow-sm)] p-6 col-span-1">
+              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-6 flex items-center gap-2">
+                <Clock className="w-4 h-4 text-[var(--text-tertiary)]" /> Lifecycle Status
               </h3>
               {interview ? (
                 <LifecycleStepper status={interview.status} scheduledAt={interview.scheduled_at} completedAt={interview.completed_at} />
               ) : (
                 <div className="text-center py-10 px-4">
-                  <div className="bg-slate-50 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <Clock className="w-6 h-6 text-slate-300" />
+                  <div className="bg-[var(--bg-app)] w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <Clock className="w-6 h-6 text-[var(--text-tertiary)]" />
                   </div>
-                  <h4 className="text-sm font-medium text-slate-900 mb-1">No Interview Scheduled</h4>
-                  <p className="text-xs text-slate-500 leading-relaxed">
+                  <h4 className="text-sm font-medium text-[var(--text-primary)] mb-1">No Interview Scheduled</h4>
+                  <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
                     Create an interview link to begin the process.
                   </p>
                 </div>
@@ -275,9 +282,9 @@ export const InterviewWorkspace = () => {
             {/* Audio / Evaluation */}
             <div className="col-span-1 md:col-span-2 space-y-6">
 
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-                <h3 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                  <PlayCircle className="w-4 h-4 text-slate-400" /> Recording &amp; Transcript
+              <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-light)] shadow-[var(--shadow-sm)] p-6">
+                <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-2">
+                  <PlayCircle className="w-4 h-4 text-[var(--text-tertiary)]" /> Recording &amp; Transcript
                 </h3>
                 {interview?.recording_url || interview?.transcript_url || interview?.transcript ? (
                   <div className="space-y-3">
@@ -297,42 +304,42 @@ export const InterviewWorkspace = () => {
                       </a>
                     )}
                     {!interview.transcript_url && interview.transcript && (
-                      <div className="bg-slate-50 p-4 rounded-lg text-sm text-slate-700 whitespace-pre-wrap font-mono">
+                      <div className="bg-[var(--bg-app)] p-4 rounded-lg text-sm text-[var(--text-secondary)] whitespace-pre-wrap font-mono">
                         {interview.transcript}
                       </div>
                     )}
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center py-12 px-4 border-2 border-dashed border-slate-100 rounded-lg bg-slate-50/50">
-                    <FileText className="w-8 h-8 text-slate-300 mb-3" />
-                    <h4 className="text-sm font-medium text-slate-700 mb-1">No Recording Yet</h4>
-                    <p className="text-xs text-slate-500 max-w-sm text-center">
+                  <div className="flex flex-col items-center justify-center py-12 px-4 border-2 border-dashed border-[var(--border-light)] rounded-lg bg-[var(--bg-app)]">
+                    <FileText className="w-8 h-8 text-[var(--text-tertiary)] mb-3" />
+                    <h4 className="text-sm font-medium text-[var(--text-secondary)] mb-1">No Recording Yet</h4>
+                    <p className="text-xs text-[var(--text-secondary)] max-w-sm text-center">
                       Once the candidate completes their browser interview, the recording and transcript will appear here.
                     </p>
                   </div>
                 )}
               </div>
 
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-                <h3 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                  <BarChart3 className="w-4 h-4 text-slate-400" /> Interview Evaluation
+              <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-light)] shadow-[var(--shadow-sm)] p-6">
+                <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-[var(--text-tertiary)]" /> Interview Evaluation
                 </h3>
                 {isDograhEvaluation ? (
                   <div className="space-y-3">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs text-slate-500">Disposition:</span>
+                      <span className="text-xs text-[var(--text-secondary)]">Disposition:</span>
                       <Badge variant="primary">{(rawEvaluation as DograhEvaluationEnvelope).call_disposition || 'unknown'}</Badge>
-                      <span className="text-xs text-slate-500 ml-3">Call duration:</span>
-                      <span className="text-xs font-medium text-slate-700">{formatDuration(callDuration)}</span>
+                      <span className="text-xs text-[var(--text-secondary)] ml-3">Call duration:</span>
+                      <span className="text-xs font-medium text-[var(--text-secondary)]">{formatDuration(callDuration)}</span>
                     </div>
                     {gatheredContext && Object.keys(gatheredContext).length > 0 && (
-                      <div className="bg-slate-50 rounded-lg p-4">
-                        <p className="text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wide">Gathered Context</p>
+                      <div className="bg-[var(--bg-app)] rounded-lg p-4">
+                        <p className="text-xs font-semibold text-[var(--text-secondary)] mb-2 uppercase tracking-wide">Gathered Context</p>
                         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
                           {Object.entries(gatheredContext).map(([key, value]) => (
                             <div key={key}>
-                              <dt className="text-xs text-slate-400">{key}</dt>
-                              <dd className="text-sm text-slate-700 break-words">{String(value)}</dd>
+                              <dt className="text-xs text-[var(--text-tertiary)]">{key}</dt>
+                              <dd className="text-sm text-[var(--text-secondary)] break-words">{String(value)}</dd>
                             </div>
                           ))}
                         </dl>
@@ -340,16 +347,16 @@ export const InterviewWorkspace = () => {
                     )}
                   </div>
                 ) : interview?.evaluation ? (
-                  <div className="bg-slate-50 p-4 rounded-lg text-sm text-slate-700">
+                  <div className="bg-[var(--bg-app)] p-4 rounded-lg text-sm text-[var(--text-secondary)]">
                     <pre className="whitespace-pre-wrap font-mono text-xs">
                       {JSON.stringify(interview.evaluation, null, 2)}
                     </pre>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center py-12 px-4 border-2 border-dashed border-slate-100 rounded-lg bg-slate-50/50">
-                    <BarChart3 className="w-8 h-8 text-slate-300 mb-3" />
-                    <h4 className="text-sm font-medium text-slate-700 mb-1">No Evaluation Available</h4>
-                    <p className="text-xs text-slate-500 max-w-sm text-center">
+                  <div className="flex flex-col items-center justify-center py-12 px-4 border-2 border-dashed border-[var(--border-light)] rounded-lg bg-[var(--bg-app)]">
+                    <BarChart3 className="w-8 h-8 text-[var(--text-tertiary)] mb-3" />
+                    <h4 className="text-sm font-medium text-[var(--text-secondary)] mb-1">No Evaluation Available</h4>
+                    <p className="text-xs text-[var(--text-secondary)] max-w-sm text-center">
                       AI evaluation results and scoring will appear here once the interview completes.
                     </p>
                   </div>
@@ -357,7 +364,7 @@ export const InterviewWorkspace = () => {
               </div>
 
               {interview?.link_expires_at && interview.status !== 'COMPLETED' && (
-                <p className="text-xs text-slate-400 text-right">
+                <p className="text-xs text-[var(--text-tertiary)] text-right">
                   Link expires {format(new Date(interview.link_expires_at), 'PPp')}
                 </p>
               )}

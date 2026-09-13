@@ -2,41 +2,25 @@
 import { CheckCircle2, X, Clock, AlertTriangle, ShieldOff } from 'lucide-react';
 import type { CandidateDecision, ScreeningResultResponse, CandidateProfileDetail } from '../../types';
 import { variantButtonClasses } from '../../utils/decision';
+import { ScoreRing } from '../ui/ScoreRing';
 
 export const ScoreVisualizer = ({ screening }: { screening?: ScreeningResultResponse | null }) => {
   if (!screening) return null;
   const score = screening.score;
-  
+
   if (score === null || score === undefined) return null;
-  
+
   return (
-    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-5">
-      <div className="relative w-16 h-16 flex items-center justify-center">
-        <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 100 100" role="img" aria-label={`${Math.round(score)} percent match`}>
-          <circle cx="50" cy="50" r="45" fill="none" className="stroke-slate-100" strokeWidth="8" />
-          <circle 
-            cx="50" cy="50" r="45" fill="none" 
-            className={
-              score >= 75 ? 'stroke-emerald-500' : 
-              score >= 50 ? 'stroke-amber-500' : 'stroke-red-500'
-            } 
-            strokeWidth="8" 
-            strokeDasharray={`${2.827 * score} 282.7`} 
-            strokeLinecap="round" 
-          />
-        </svg>
-        <div className="text-center">
-          <div className="text-lg font-bold text-slate-900 leading-none">{Math.round(score)}</div>
-        </div>
-      </div>
+    <div className="bg-[var(--bg-surface)] p-5 rounded-xl border border-[var(--border-light)] shadow-[var(--shadow-sm)] flex items-center gap-5">
+      <ScoreRing score={score} size="lg" />
       <div>
-        <h3 className="font-semibold text-slate-900 mb-1">
-          {score >= 75 ? 'Excellent Match' : 
+        <h3 className="font-semibold text-[var(--text-primary)] mb-1">
+          {score >= 75 ? 'Excellent Match' :
            score >= 50 ? 'Potential Match' : 'Poor Match'}
         </h3>
-        <p className="text-xs text-slate-500 leading-relaxed">
-          {screening.evidence && screening.evidence.length > 0 
-            ? screening.evidence[0] 
+        <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+          {screening.evidence && screening.evidence.length > 0
+            ? screening.evidence[0]
             : 'Based on job requirements analysis.'}
         </p>
       </div>

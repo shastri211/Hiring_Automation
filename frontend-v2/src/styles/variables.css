@@ -72,6 +72,30 @@
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.05), 0 4px 6px -4px rgb(0 0 0 / 0.05);
   --shadow-focus: 0 0 0 2px var(--bg-surface), 0 0 0 4px var(--border-focus);
 
+  /* Type scale — single source of truth for text sizing across the app.
+     Five semantic levels (page title / section heading / card title / body /
+     caption) are built from these in global.css so pages stop picking
+     text-sm/text-lg/text-2xl ad hoc. Values match Tailwind's own scale so
+     nothing visually shifts where these replace existing text-* utilities. */
+  --font-size-xs: 0.75rem;
+  --line-height-xs: 1rem;
+  --font-size-sm: 0.875rem;
+  --line-height-sm: 1.25rem;
+  --font-size-base: 1rem;
+  --line-height-base: 1.5rem;
+  --font-size-lg: 1.125rem;
+  --line-height-lg: 1.75rem;
+  --font-size-xl: 1.25rem;
+  --line-height-xl: 1.75rem;
+  --font-size-2xl: 1.5rem;
+  --line-height-2xl: 2rem;
+  --font-size-3xl: 1.875rem;
+  --line-height-3xl: 2.25rem;
+
+  /* Motion — one standard easing/duration for hover/focus transitions,
+     instead of each component picking its own. */
+  --transition-base: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+
   /* Subtle badge tokens — light values chosen to exactly match Badge's
      previous literal Tailwind classes, so light mode is pixel-identical. */
   --color-success-subtle-bg: var(--color-success-50);
