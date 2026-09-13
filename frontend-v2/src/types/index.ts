@@ -131,6 +131,27 @@ export interface PublicInterviewRoomResponse {
 
 export type PublicInterviewErrorReason = 'not_found' | 'expired' | 'already_completed';
 
+// ---------------------------------------------------------------------------
+// Auth
+// ---------------------------------------------------------------------------
+export interface UserResponse {
+  id: number;
+  email: string;
+  name: string;
+  created_at: string | null;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface UserCreate {
+  email: string;
+  password: string;
+  name: string;
+}
+
 // API Error handling interface
 export interface ApiError {
   message: string;

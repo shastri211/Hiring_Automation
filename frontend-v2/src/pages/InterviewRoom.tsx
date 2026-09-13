@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Loader2, AlertCircle, CheckCircle2, Mic, Briefcase } from 'lucide-react';
+import { Loader2, AlertCircle, CheckCircle2, Mic } from 'lucide-react';
 import { publicInterviewApi } from '../api/publicInterview';
 import { Button } from '../components/ui/Button';
+import { PublicPageShell } from '../components/layout/PublicPageShell';
 import type { PublicInterviewErrorReason } from '../types';
 
 type CallPhase = 'idle' | 'connecting' | 'in_call' | 'ended' | 'widget_error';
@@ -22,23 +23,6 @@ const ERROR_COPY: Record<PublicInterviewErrorReason, { title: string; descriptio
     description: "This interview has already been completed, so this link can't be used again. If you think this is a mistake, please contact the recruiter.",
   },
 };
-
-const PublicPageShell = ({ children }: { children: React.ReactNode }) => (
-  <div className="min-h-screen flex flex-col items-center justify-center bg-[var(--bg-app)] px-4 py-12">
-    <div className="w-full max-w-lg">
-      <div className="flex items-center justify-center gap-2 mb-6 text-[var(--color-primary-700)] font-bold text-lg">
-        <Briefcase size={22} />
-        <span>RecruitPro</span>
-      </div>
-      <div className="bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-xl shadow-sm p-8">
-        {children}
-      </div>
-      <p className="text-center text-xs text-[var(--text-tertiary)] mt-4">
-        Having trouble? Contact the recruiter who sent you this link.
-      </p>
-    </div>
-  </div>
-);
 
 const DOGRAH_SCRIPT_ID = 'dograh-widget-script';
 const DOGRAH_INLINE_CONTAINER_ID = 'dograh-inline-container';

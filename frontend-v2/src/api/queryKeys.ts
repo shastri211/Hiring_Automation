@@ -19,6 +19,8 @@ export const queryKeys = {
   settings: () => ['settings'] as const,
   integrationsStatus: () => ['integrations-status'] as const,
 
+  authUsers: () => ['auth-users'] as const,
+
   talentPool: (params?: TalentPoolListParams) =>
     params ? (['talent-pool', params] as const) : (['talent-pool'] as const),
 

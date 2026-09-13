@@ -1,14 +1,50 @@
 
-import { Menu } from 'lucide-react';
+import { Menu, LogOut } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '../ui';
 import { ThemeToggle } from './ThemeToggle';
+import { useAuth } from '../../hooks/useAuth';
 
-export const Header = ({ 
-  title, 
+const getInitials = (name: string) =>
+  name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('') || '?';
+
+const UserMenu = () => {
+  const { user, logout } = useAuth();
+  if (!user) return null;
+
+  return (
+    <div className="flex items-center gap-2 pl-2 ml-1 border-l border-[var(--border-light)]">
+      <div
+        className="w-8 h-8 rounded-full bg-[var(--color-primary-subtle-bg)] text-[var(--color-primary-subtle-text)] flex items-center justify-center text-xs font-semibold shrink-0"
+        title={user.email}
+      >
+        {getInitials(user.name)}
+      </div>
+      <span className="hidden sm:inline text-sm font-medium text-[var(--text-primary)] max-w-[10rem] truncate">
+        {user.name}
+      </span>
+      <button
+        onClick={() => logout()}
+        className="focus-ring rounded p-1.5 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-app)] transition-colors"
+        title="Log out"
+        aria-label="Log out"
+      >
+        <LogOut size={16} />
+      </button>
+    </div>
+  );
+};
+
+export const Header = ({
+  title,
   onMenuClick,
   isMenuOpen = false,
-}: { 
+}: {
   title?: string;
   onMenuClick: () => void;
   isMenuOpen?: boolean;
@@ -34,6 +70,7 @@ export const Header = ({
             + New Job
           </Button>
         </Link>
+        <UserMenu />
       </div>
     </header>
   );
