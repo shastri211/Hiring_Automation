@@ -94,7 +94,7 @@ export const Shortlisted = () => {
                           {candidate.score != null ? Math.round(candidate.score) : '—'}
                         </div>
                         <div className="text-xs text-slate-400">
-                          Semantic: {candidate.semantic_score != null ? Math.round(candidate.semantic_score) : '—'}
+                          Semantic: {candidate.semantic_score != null ? `${Math.round(candidate.semantic_score * 100)}%` : '—'}
                         </div>
                       </div>
                     </td>
