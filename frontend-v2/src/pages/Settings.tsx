@@ -3,15 +3,16 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import { Loader2, Settings as SettingsIcon } from 'lucide-react';
+import { Loader2, Settings as SettingsIcon, Users, UserPlus } from 'lucide-react';
 import { useSettings, useUpdateSettings } from '../hooks/useSettings';
 import { useEmailTemplates } from '../hooks/useEmails';
+import { useAuthUsers, useCreateAuthUser } from '../hooks/useAuthUsers';
 import { ScreeningThresholdFields } from '../components/settings/ScreeningThresholdFields';
 import {
   Button, Input, Label,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../components/ui';
-import type { AppSettingsResponse, AppSettingsUpdate } from '../types';
+import type { AppSettingsResponse, AppSettingsUpdate, ApiError } from '../types';
 
 // Threshold + org_name fields are modeled as plain strings (see
 // ScreeningThresholdFields.tsx for why) — an empty string means "use the
@@ -88,6 +89,106 @@ function toPatch(values: FormValues): AppSettingsUpdate {
     interview_scheduled_email_template_id: values.interview_scheduled_email_template_id,
   };
 }
+
+const inviteSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  email: z.string().min(1, 'Email is required').email('Enter a valid email address'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+});
+type InviteFormValues = z.infer<typeof inviteSchema>;
+const inviteDefaults: InviteFormValues = { name: '', email: '', password: '' };
+
+const formatJoinedDate = (value: string | null) => {
+  if (!value) return 'Unknown';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 'Unknown' : date.toLocaleDateString();
+};
+
+const TeamSection = () => {
+  const { data: users, isLoading, isError, refetch } = useAuthUsers();
+  const createUserMutation = useCreateAuthUser();
+
+  const inviteForm = useForm<InviteFormValues>({ resolver: zodResolver(inviteSchema), defaultValues: inviteDefaults });
+
+  const onInvite = (values: InviteFormValues) => {
+    createUserMutation.mutate(values, {
+      onSuccess: () => {
+        toast.success(`Invited ${values.name}.`);
+        inviteForm.reset(inviteDefaults);
+      },
+      onError: (e: ApiError) => toast.error(e.message || 'Failed to create the account.'),
+    });
+  };
+
+  return (
+    <section className="bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-xl shadow-sm p-6 space-y-6">
+      <div className="flex items-center gap-2">
+        <Users className="w-4 h-4 text-[var(--text-secondary)]" />
+        <h2 className="text-sm font-semibold text-[var(--text-primary)]">Team</h2>
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-[var(--color-primary-500)]" /></div>
+      ) : isError ? (
+        <div className="text-center py-8">
+          <p className="text-sm text-[var(--color-danger-600)] mb-3">Failed to load the team list.</p>
+          <Button variant="secondary" size="sm" onClick={() => refetch()}>Retry</Button>
+        </div>
+      ) : !users || users.length === 0 ? (
+        <p className="text-sm text-[var(--text-secondary)]">No teammates yet.</p>
+      ) : (
+        <ul className="divide-y divide-[var(--border-light)]">
+          {users.map((u) => (
+            <li key={u.id} className="flex items-center justify-between py-3">
+              <div>
+                <p className="text-sm font-medium text-[var(--text-primary)]">{u.name}</p>
+                <p className="text-xs text-[var(--text-secondary)]">{u.email}</p>
+              </div>
+              <span className="text-xs text-[var(--text-tertiary)]">Joined {formatJoinedDate(u.created_at)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="border-t border-[var(--border-light)] pt-5">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)] mb-3 flex items-center gap-1.5">
+          <UserPlus className="w-3.5 h-3.5" /> Invite teammate
+        </h3>
+        <form
+          onSubmit={inviteForm.handleSubmit(onInvite)}
+          className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start"
+        >
+          <div>
+            <Label htmlFor="invite-name">Name</Label>
+            <Input id="invite-name" className="mt-1.5" placeholder="Jane Doe" {...inviteForm.register('name')} />
+            {inviteForm.formState.errors.name && (
+              <p className="text-xs text-[var(--color-danger-600)] mt-1">{inviteForm.formState.errors.name.message}</p>
+            )}
+          </div>
+          <div>
+            <Label htmlFor="invite-email">Email</Label>
+            <Input id="invite-email" type="email" className="mt-1.5" placeholder="jane@company.com" {...inviteForm.register('email')} />
+            {inviteForm.formState.errors.email && (
+              <p className="text-xs text-[var(--color-danger-600)] mt-1">{inviteForm.formState.errors.email.message}</p>
+            )}
+          </div>
+          <div>
+            <Label htmlFor="invite-password">Temporary password</Label>
+            <Input id="invite-password" type="password" className="mt-1.5" placeholder="••••••••" {...inviteForm.register('password')} />
+            {inviteForm.formState.errors.password && (
+              <p className="text-xs text-[var(--color-danger-600)] mt-1">{inviteForm.formState.errors.password.message}</p>
+            )}
+          </div>
+          <div className="sm:col-span-3 flex justify-end">
+            <Button type="submit" size="sm" disabled={createUserMutation.isPending}>
+              {createUserMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Send invite'}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </section>
+  );
+};
 
 export const Settings = () => {
   const { data: settings, isLoading, isError, refetch } = useSettings();
@@ -220,6 +321,10 @@ export const Settings = () => {
           </div>
         </form>
       )}
+
+      <div className="mt-8">
+        <TeamSection />
+      </div>
     </div>
   );
 };

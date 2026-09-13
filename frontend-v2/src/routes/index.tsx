@@ -21,6 +21,8 @@ import { Integrations } from '../pages/Integrations';
 import { Settings } from '../pages/Settings';
 import { EmailTemplates } from '../pages/EmailTemplates';
 import { InterviewRoom } from '../pages/InterviewRoom';
+import { Login } from '../pages/Login';
+import { RequireAuth } from '../components/auth/RequireAuth';
 
 const RouteError = () => {
   const error = useRouteError();
@@ -43,103 +45,120 @@ const RouteError = () => {
 const router = createBrowserRouter([
   {
     path: '/',
-    element: <AppLayout />,
+    // RequireAuth sits above AppLayout so every route under it needs a valid
+    // HR session; the existing `children` array (and AppLayout itself) is
+    // unchanged - RequireAuth just renders it via <Outlet /> once a user is
+    // confirmed.
+    element: <RequireAuth />,
     errorElement: <RouteError />,
     children: [
       {
-        index: true,
-        element: <Dashboard />
-      },
-      // RECRUITING
-      {
-        path: 'jobs',
-        element: <JobsList />
-      },
-      {
-        path: 'jobs/new',
-        element: <JobWizard />
-      },
-      {
-        path: 'jobs/:id',
-        element: <JobWorkspace />
-      },
-      {
-        path: 'jobs/:id/upload',
-        element: <JobUpload />
-      },
-      {
-        path: 'jobs/:id/processing',
-        element: <JobProcessing />
-      },
-      {
-        path: 'jobs/:id/candidates',
-        element: <JobCandidates />
-      },
-      {
-        path: 'jobs/:id/candidates/:resumeId',
-        element: <Candidate360 />
-      },
-      {
-        path: 'candidates',
-        element: <GlobalCandidates />
-      },
-      {
-        path: 'shortlisted',
-        element: <Shortlisted />
-      },
-      {
-        path: 'interviews',
-        element: <GlobalInterviews />
-      },
-      {
-        path: 'interview/:jobId/:resumeId',
-        element: <InterviewWorkspace />
-      },
-      {
-        path: 'talent-pool',
-        element: <TalentPool />
-      },
-      
-      // COMMUNICATION
-      {
-        path: 'outreach',
-        element: <Outreach />
-      },
-      {
-        path: 'templates',
-        element: <EmailTemplates />
-      },
+        element: <AppLayout />,
+        children: [
+          {
+            index: true,
+            element: <Dashboard />
+          },
+          // RECRUITING
+          {
+            path: 'jobs',
+            element: <JobsList />
+          },
+          {
+            path: 'jobs/new',
+            element: <JobWizard />
+          },
+          {
+            path: 'jobs/:id',
+            element: <JobWorkspace />
+          },
+          {
+            path: 'jobs/:id/upload',
+            element: <JobUpload />
+          },
+          {
+            path: 'jobs/:id/processing',
+            element: <JobProcessing />
+          },
+          {
+            path: 'jobs/:id/candidates',
+            element: <JobCandidates />
+          },
+          {
+            path: 'jobs/:id/candidates/:resumeId',
+            element: <Candidate360 />
+          },
+          {
+            path: 'candidates',
+            element: <GlobalCandidates />
+          },
+          {
+            path: 'shortlisted',
+            element: <Shortlisted />
+          },
+          {
+            path: 'interviews',
+            element: <GlobalInterviews />
+          },
+          {
+            path: 'interview/:jobId/:resumeId',
+            element: <InterviewWorkspace />
+          },
+          {
+            path: 'talent-pool',
+            element: <TalentPool />
+          },
 
-      // INTELLIGENCE
-      {
-        path: 'ai-screening',
-        element: <AIScreening />
-      },
-      {
-        path: 'interview-analysis',
-        element: <InterviewAnalysis />
-      },
-      {
-        path: 'analytics',
-        element: <Analytics />
-      },
+          // COMMUNICATION
+          {
+            path: 'outreach',
+            element: <Outreach />
+          },
+          {
+            path: 'templates',
+            element: <EmailTemplates />
+          },
 
-      // SYSTEM
-      {
-        path: 'integrations',
-        element: <Integrations />
-      },
-      {
-        path: 'settings',
-        element: <Settings />
+          // INTELLIGENCE
+          {
+            path: 'ai-screening',
+            element: <AIScreening />
+          },
+          {
+            path: 'interview-analysis',
+            element: <InterviewAnalysis />
+          },
+          {
+            path: 'analytics',
+            element: <Analytics />
+          },
+
+          // SYSTEM
+          {
+            path: 'integrations',
+            element: <Integrations />
+          },
+          {
+            path: 'settings',
+            element: <Settings />
+          }
+        ]
       }
     ]
   },
   // Public, unauthenticated candidate-facing route - deliberately a sibling of
-  // the AppLayout root, not a child, since it has no sidebar/header chrome.
+  // the RequireAuth root, not a child, since it has no sidebar/header chrome
+  // and must never be gated by HR auth.
   {
     path: '/interview-room/:token',
     element: <InterviewRoom />,
+    errorElement: <RouteError />
+  },
+  // Public HR login page - also a sibling of the RequireAuth root, since it
+  // must be reachable by a logged-out visitor.
+  {
+    path: '/login',
+    element: <Login />,
     errorElement: <RouteError />
   }
 ]);
