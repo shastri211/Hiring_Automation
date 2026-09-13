@@ -93,6 +93,12 @@ export const JobsList = () => {
     });
   };
 
+  const allFilteredSelected = (jobs: Job[]) => jobs.length > 0 && jobs.every((job) => selectedIds.has(job.id));
+
+  const toggleSelectAll = (jobs: Job[]) => {
+    setSelectedIds(allFilteredSelected(jobs) ? new Set() : new Set(jobs.map((job) => job.id)));
+  };
+
   const handleBulkAction = async (action: BulkAction) => {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
@@ -204,13 +210,26 @@ export const JobsList = () => {
         />
       ) : (
         <>
-          {selectedIds.size > 0 && (
-            <div className="bg-[var(--color-primary-subtle-bg)] border border-[var(--color-primary-200)] p-4 rounded-xl mb-4 flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+            <label className="flex items-center gap-2 text-sm font-medium text-[var(--text-secondary)] cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={allFilteredSelected(filteredJobs)}
+                onChange={() => toggleSelectAll(filteredJobs)}
+                aria-label="Select all jobs"
+                className="rounded border-[var(--border-strong)] text-[var(--color-primary-600)] focus:ring-[var(--color-primary-600)]"
+              />
+              Select all ({filteredJobs.length})
+            </label>
+            {selectedIds.size > 0 && (
               <div className="flex items-center gap-4">
                 <span className="text-[var(--color-primary-subtle-text)] font-medium text-sm">{selectedIds.size} job{selectedIds.size === 1 ? '' : 's'} selected</span>
-                <div className="h-4 w-px bg-[var(--color-primary-200)]" />
                 <button onClick={() => setSelectedIds(new Set())} className="transition-base text-sm text-[var(--color-primary-600)] hover:text-[var(--color-primary-700)]">Clear</button>
               </div>
+            )}
+          </div>
+          {selectedIds.size > 0 && (
+            <div className="bg-[var(--color-primary-subtle-bg)] border border-[var(--color-primary-200)] p-4 rounded-xl mb-4 flex items-center justify-end flex-wrap gap-3">
               <div className="flex gap-2 flex-wrap">
                 {statusFilter === 'ACTIVE' && (
                   <button onClick={() => handleBulkAction('pause')} disabled={bulkMutation.isPending} className="transition-base px-3 py-1.5 bg-[var(--bg-surface)] text-[var(--color-warning-subtle-text)] border border-[var(--border-light)] rounded text-sm hover:bg-[var(--color-warning-subtle-bg)] focus-ring font-medium disabled:opacity-50">Pause</button>

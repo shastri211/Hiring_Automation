@@ -69,7 +69,7 @@ export const Input = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTML
     <input
       ref={ref}
       className={cn(
-        "flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus-ring disabled:cursor-not-allowed disabled:opacity-50 transition-shadow",
+        "flex h-10 w-full rounded-md border border-[var(--border-strong)] bg-[var(--bg-surface)] text-[var(--text-primary)] px-3 py-2 text-sm placeholder:text-[var(--text-tertiary)] focus-ring disabled:cursor-not-allowed disabled:opacity-50 transition-shadow",
         className
       )}
       {...props}
@@ -83,7 +83,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttrib
     <textarea
       ref={ref}
       className={cn(
-        "flex min-h-[80px] w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus-ring disabled:cursor-not-allowed disabled:opacity-50 transition-shadow",
+        "flex min-h-[80px] w-full rounded-md border border-[var(--border-strong)] bg-[var(--bg-surface)] text-[var(--text-primary)] px-3 py-2 text-sm placeholder:text-[var(--text-tertiary)] focus-ring disabled:cursor-not-allowed disabled:opacity-50 transition-shadow",
         className
       )}
       {...props}
@@ -94,7 +94,7 @@ Textarea.displayName = "Textarea";
 
 export const Label = forwardRef<HTMLLabelElement, React.LabelHTMLAttributes<HTMLLabelElement>>(
   ({ className, ...props }, ref) => (
-    <label ref={ref} className={cn("text-sm font-medium leading-none text-slate-700 peer-disabled:cursor-not-allowed peer-disabled:opacity-70", className)} {...props} />
+    <label ref={ref} className={cn("text-sm font-medium leading-none text-[var(--text-secondary)] peer-disabled:cursor-not-allowed peer-disabled:opacity-70", className)} {...props} />
   )
 );
 Label.displayName = "Label";

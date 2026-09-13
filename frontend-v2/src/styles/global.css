@@ -11,44 +11,53 @@
   --color-primary-900: var(--color-primary-900);
 }
 
-*, *::before, *::after {
-  box-sizing: border-box;
-}
+/* Wrapped in Tailwind's `base` layer (rather than left unlayered) so these
+   resets stay beneath `@layer utilities` in the cascade. An unlayered rule
+   always wins over a layered one regardless of specificity, so e.g. a plain
+   `a { color: inherit }` here would silently defeat any `text-[...]` color
+   utility applied directly to an <a> (this broke the active Sidebar NavLink:
+   its `text-[var(--color-primary-700)]` utility was being overridden back to
+   the inherited body color). */
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
 
-body {
-  margin: 0;
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  background-color: var(--bg-app);
-  color: var(--text-primary);
-  line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
+  body {
+    margin: 0;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--bg-app);
+    color: var(--text-primary);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 
-h1, h2, h3, h4, h5, h6 {
-  margin: 0;
-  font-weight: 600;
-  color: var(--text-primary);
-  letter-spacing: -0.02em;
-}
+  h1, h2, h3, h4, h5, h6 {
+    margin: 0;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
+  }
 
-a {
-  color: inherit;
-  text-decoration: none;
-}
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
 
-button, input, select, textarea {
-  font-family: inherit;
-}
+  button, input, select, textarea {
+    font-family: inherit;
+  }
 
-button, a, input, select, textarea {
-  -webkit-tap-highlight-color: transparent;
-}
+  button, a, input, select, textarea {
+    -webkit-tap-highlight-color: transparent;
+  }
 
-ul, ol {
-  margin: 0;
-  padding: 0;
-  list-style: none;
+  ul, ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
 }
 
 /* Focus Utility for a11y */

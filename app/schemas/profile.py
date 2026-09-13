@@ -44,3 +44,4 @@ class JobProfileSchema(BaseModel):
     minimum_experience_years: Optional[float] = Field(default=None, description="Minimum years of experience required")
     education_requirements: Optional[str] = Field(default=None, description="Required education level or degrees")
     responsibilities: List[str] = Field(default_factory=list, description="Key responsibilities of the role")
+    requirements: List[str] = Field(default_factory=list, description="Explicit requirements or qualifications listed in the JD (e.g. required experience, certifications, tools, or other must-haves not already captured in required_skills)")
