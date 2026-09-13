@@ -41,3 +41,36 @@ async def client():
     from app.main import app
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
+
+
+# --- Auth test-compatibility ---------------------------------------------
+#
+# Every route except health/auth/public_interview (and, within the
+# integration router, /interview/trigger) now requires a logged-in HR user
+# via app.api.deps.get_current_user. The 267 pre-existing tests hit real
+# endpoints through the `client`/`test_client` fixtures above and know
+# nothing about auth, so this autouse fixture overrides get_current_user for
+# the whole suite to return a fixed in-memory test user - the standard
+# FastAPI dependency-override testing pattern. No existing test needs to
+# change.
+#
+# tests/test_auth.py deliberately exercises the *real* dependency instead,
+# via its own fixture that pops this override for the duration of each of
+# its tests (see tests/test_auth.py).
+@pytest.fixture(autouse=True)
+def _override_get_current_user():
+    from app.main import app
+    from app.api.deps import get_current_user
+    from app.models.user import User
+
+    test_user = User(
+        id=1,
+        email="test-user@example.com",
+        hashed_password="unused-in-tests",
+        name="Test User",
+        is_active=True,
+    )
+
+    app.dependency_overrides[get_current_user] = lambda: test_user
+    yield
+    app.dependency_overrides.pop(get_current_user, None)
