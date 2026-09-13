@@ -30,6 +30,12 @@ export const CandidateDrawer = ({ jobId, resumeId, isOpen, onClose, onView360 }:
     enabled: isOpen && resumeId !== null,
   });
 
+  const { data: job } = useQuery({
+    queryKey: ['job', jobId],
+    queryFn: () => jobsApi.getJob(jobId),
+    enabled: isOpen,
+  });
+
   const decisionMutation = useDecisionMutation(jobId);
 
   const [localNotes, setLocalNotes] = useState('');
@@ -57,7 +63,8 @@ export const CandidateDrawer = ({ jobId, resumeId, isOpen, onClose, onView360 }:
               {isLoading ? 'Loading...' : data?.profile?.name || `Candidate #${resumeId}`}
             </DialogTitle>
             <DialogDescription className="mt-0.5 text-xs font-medium text-slate-500">
-              Job #{jobId} &bull; Resume #{resumeId}
+              {job?.title ? `Applying for ${job.title}` : 'Candidate application'}
+              {data?.filename && <> &bull; {data.filename}</>}
             </DialogDescription>
           </div>
         </div>
@@ -108,8 +115,8 @@ export const CandidateDrawer = ({ jobId, resumeId, isOpen, onClose, onView360 }:
 
                   <div className="mt-4 pt-4 border-t border-slate-100">
                     <label className="block text-sm font-medium text-slate-700 mb-2">Recruiter Notes</label>
-                    <textarea 
-                      className="w-full border-slate-200 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-3"
+                    <textarea
+                      className="w-full bg-white text-slate-900 placeholder:text-slate-400 border-slate-200 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-3"
                       rows={3}
                       placeholder="Add private notes about this candidate..."
                       value={localNotes}

@@ -4,14 +4,7 @@ import { Link } from 'react-router-dom';
 import { Button } from '../ui';
 import { ThemeToggle } from './ThemeToggle';
 import { useAuth } from '../../hooks/useAuth';
-
-const getInitials = (name: string) =>
-  name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join('') || '?';
+import { getInitials } from '../../utils/initials';
 
 const UserMenu = () => {
   const { user, logout } = useAuth();

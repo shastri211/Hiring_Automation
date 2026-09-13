@@ -15,6 +15,12 @@ export const JobProcessing = () => {
   const queryClient = useQueryClient();
   const jobId = parseInt(id || '0', 10);
 
+  const { data: job } = useQuery({
+    queryKey: ['job', jobId],
+    queryFn: () => jobsApi.getJob(jobId),
+    enabled: jobId > 0,
+  });
+
   const { data: progressData, isLoading, isError, error } = useQuery({
     queryKey: queryKeys.jobProgress(jobId),
     queryFn: () => jobsApi.getJobProgress(jobId),
@@ -68,7 +74,7 @@ export const JobProcessing = () => {
         <div className="flex items-center gap-2 text-sm text-slate-500 mb-6">
           <button onClick={() => navigate('/jobs')} className="hover:text-slate-900 transition-colors">Jobs</button>
           <span>/</span>
-          <button onClick={() => navigate(`/jobs/${id}`)} className="hover:text-slate-900 transition-colors">Job #{id}</button>
+          <button onClick={() => navigate(`/jobs/${id}`)} className="hover:text-slate-900 transition-colors">{job?.title || 'Job'}</button>
           <span>/</span>
           <span className="text-slate-900 font-medium">Processing</span>
         </div>
@@ -166,7 +172,6 @@ const BatchCard = ({ batch, jobId, onNavigate }: { batch: BatchProgressDetail, j
         <div className="flex justify-between items-start mb-4">
           <div>
             <h3 className="font-semibold text-slate-900">Screening Run #{batch.batch_id}</h3>
-            <span className="text-xs text-slate-500">Job #{jobId}</span>
           </div>
           <div className="flex items-center gap-2">
             {isLive && <Loader2 className="w-4 h-4 text-[var(--color-primary-500)] animate-spin" />}
@@ -202,7 +207,6 @@ const BatchCard = ({ batch, jobId, onNavigate }: { batch: BatchProgressDetail, j
       <div className="flex justify-between items-start mb-4">
         <div>
           <h3 className="font-semibold text-slate-900">Upload Batch #{batch.batch_id}</h3>
-          <span className="text-xs text-slate-500">Job #{jobId}</span>
         </div>
         <div className="flex items-center gap-2">
           {isLive && <Loader2 className="w-4 h-4 text-[var(--color-primary-500)] animate-spin" />}

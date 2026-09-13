@@ -1,6 +1,6 @@
 import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Upload, X, File as FileIcon, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
 import { jobsApi } from '../api/jobs';
 import { queryKeys } from '../api/queryKeys';
@@ -16,6 +16,12 @@ export const JobUpload = () => {
   const queryClient = useQueryClient();
 
   const jobId = parseInt(id || '0', 10);
+
+  const { data: job } = useQuery({
+    queryKey: ['job', jobId],
+    queryFn: () => jobsApi.getJob(jobId),
+    enabled: jobId > 0,
+  });
 
   const uploadMutation = useMutation({
     mutationFn: async (uploadFiles: File[]) => {
@@ -90,7 +96,7 @@ export const JobUpload = () => {
       <div className="flex items-center gap-2 text-sm text-slate-500 mb-6">
         <button onClick={() => navigate('/jobs')} className="hover:text-slate-900 transition-colors">Jobs</button>
         <span>/</span>
-        <button onClick={() => navigate(`/jobs/${id}`)} className="hover:text-slate-900 transition-colors">Job #{id}</button>
+        <button onClick={() => navigate(`/jobs/${id}`)} className="hover:text-slate-900 transition-colors">{job?.title || 'Job'}</button>
         <span>/</span>
         <span className="text-slate-900 font-medium">Upload Resumes</span>
       </div>

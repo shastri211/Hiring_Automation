@@ -10,6 +10,7 @@ import type { CandidateDecision } from '../types';
 import { CandidateDrawer } from '../components/CandidateDrawer';
 import { BulkEmailModal } from '../components/BulkEmailModal';
 import { variantButtonClasses } from '../utils/decision';
+import { getInitials } from '../utils/initials';
 import { PageHeader, ScoreRing, SkeletonRow } from '../components/ui';
 
 export const JobCandidates = () => {
@@ -39,6 +40,12 @@ export const JobCandidates = () => {
     queryFn: () => jobsApi.getJobResults(jobId, params),
     placeholderData: keepPreviousData,
     staleTime: 0,
+  });
+
+  const { data: jobMeta } = useQuery({
+    queryKey: ['job', jobId],
+    queryFn: () => jobsApi.getJob(jobId),
+    enabled: jobId > 0,
   });
 
   const decisionMutation = useDecisionMutation(jobId);
@@ -80,7 +87,7 @@ export const JobCandidates = () => {
       <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)] mb-6">
         <button onClick={() => navigate('/jobs')} className="transition-base hover:text-[var(--text-primary)]">Jobs</button>
         <span>/</span>
-        <button onClick={() => navigate(`/jobs/${id}`)} className="transition-base hover:text-[var(--text-primary)]">Job #{id}</button>
+        <button onClick={() => navigate(`/jobs/${id}`)} className="transition-base hover:text-[var(--text-primary)]">{jobMeta?.title || 'Job'}</button>
         <span>/</span>
         <span className="text-[var(--text-primary)] font-medium">Candidates</span>
       </div>
@@ -226,7 +233,7 @@ export const JobCandidates = () => {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center font-medium ${c.decision === 'PRE_SCREENED_OUT' ? 'bg-[var(--color-danger-subtle-bg)] text-[var(--color-danger-subtle-text)]' : c.status === 'FAILED' ? 'bg-[var(--color-danger-subtle-bg)] text-[var(--color-danger-subtle-text)]' : c.status === 'PROCESSING' || c.status === 'UPLOADED' ? 'bg-[var(--color-warning-subtle-bg)] text-[var(--color-warning-subtle-text)]' : 'bg-[var(--bg-hover)] text-[var(--text-secondary)]'}`}>
-                          R{c.resume_id}
+                          {getInitials(c.display_name)}
                         </div>
                         <div>
                           <div className="font-semibold text-[var(--text-primary)]">{c.display_name || `Resume #${c.resume_id}`}</div>

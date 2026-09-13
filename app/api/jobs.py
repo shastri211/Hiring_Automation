@@ -64,7 +64,8 @@ def _fallback_job_profile(job: Job) -> dict:
         "preferred_skills": [],
         "minimum_experience_years": 0,
         "education_requirements": None,
-        "responsibilities": []
+        "responsibilities": [],
+        "requirements": []
     }
 
 

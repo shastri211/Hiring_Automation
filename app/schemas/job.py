@@ -46,7 +46,7 @@ class JobResponse(JobCreate):
                         "department": getattr(values, "department", None),
                         "location": getattr(values, "location", None),
                         "employment_type": getattr(values, "employment_type", None),
-                        "requirements": getattr(values, "requirements", None),
+                        "requirements": job_profile.get("requirements", []),
                         "status": getattr(values, "status", "ACTIVE"),
                         "required_skills": job_profile.get("required_skills", []),
                         "preferred_skills": job_profile.get("preferred_skills", []),
@@ -61,5 +61,7 @@ class JobResponse(JobCreate):
             if isinstance(job_profile, dict):
                 values.setdefault("required_skills", job_profile.get("required_skills", []))
                 values.setdefault("preferred_skills", job_profile.get("preferred_skills", []))
+                if not values.get("requirements"):
+                    values["requirements"] = job_profile.get("requirements", [])
         return values
 
