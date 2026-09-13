@@ -59,6 +59,51 @@ ul, ol {
   box-shadow: var(--shadow-focus);
 }
 
+/* -----------------------------------------------------------------------
+   Type scale — five semantic levels, built from the --font-size-*/
+   --line-height-* tokens in variables.css. Core-flow pages (Dashboard,
+   Jobs, Candidates, Shortlisted, Candidate 360, Interview Workspace) use
+   these instead of ad hoc text-sm/text-lg/text-2xl choices, so hierarchy
+   stays consistent page to page.
+   ----------------------------------------------------------------------- */
+.text-page-title {
+  font-size: var(--font-size-3xl);
+  line-height: var(--line-height-3xl);
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+.text-section-heading {
+  font-size: var(--font-size-xl);
+  line-height: var(--line-height-xl);
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+.text-card-title {
+  font-size: var(--font-size-lg);
+  line-height: var(--line-height-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.text-body {
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-base);
+  color: var(--text-secondary);
+}
+.text-caption {
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-xs);
+  color: var(--text-tertiary);
+}
+
+/* One standard easing/duration for hover/focus transitions, instead of each
+   component picking its own duration (previously a mix of duration-200,
+   duration-150, transition-colors/transition-all with no shared timing). */
+.transition-base {
+  transition: var(--transition-base);
+}
+
 ::selection {
   background: var(--color-primary-100);
   color: var(--color-primary-900);

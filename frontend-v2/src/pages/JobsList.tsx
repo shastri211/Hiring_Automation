@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { api } from '../api';
 import { queryKeys } from '../api/queryKeys';
-import { Button, Card, CardHeader, CardTitle, CardContent, CardFooter, Badge, EmptyState, Spinner, Input } from '../components/ui';
+import { Button, Card, CardHeader, CardTitle, CardContent, CardFooter, Badge, EmptyState, PageHeader, SkeletonCard, Input } from '../components/ui';
 import { useConfirm } from '../hooks/useConfirm';
 import type { Job } from '../types';
 
@@ -117,15 +117,18 @@ export const JobsList = () => {
 
   if (isLoading) {
     return (
-      <div className="flex justify-center p-16">
-        <Spinner size={32} />
+      <div className="max-w-6xl mx-auto">
+        <PageHeader title="Jobs" subtitle="Manage your open positions and screening batches." className="mb-6" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" aria-hidden="true">
+          {[0, 1, 2, 3, 4, 5].map((i) => <SkeletonCard key={i} />)}
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <EmptyState 
+      <EmptyState
         title="Failed to load jobs"
         description={(error as any)?.message || 'An unexpected error occurred'}
       />
@@ -134,44 +137,45 @@ export const JobsList = () => {
 
   return (
     <div className="max-w-6xl mx-auto">
-      <div className="flex justify-between items-start mb-6 flex-wrap gap-4">
-        <div>
-          <h2 className="text-2xl font-semibold text-slate-900">Jobs</h2>
-          <p className="text-slate-500 mt-1">Manage your open positions and screening batches.</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <Input 
-              type="text" 
-              placeholder="Search jobs..." 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-64 pl-10"
-            />
-          </div>
-          <Link to="/jobs/new">
-            <Button variant="primary">
-              <Plus size={16} className="mr-2" />
-              Create Job
-            </Button>
-          </Link>
-        </div>
-      </div>
+      <PageHeader
+        title="Jobs"
+        subtitle="Manage your open positions and screening batches."
+        className="mb-6"
+        actions={
+          <>
+            <div className="relative">
+              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" />
+              <Input
+                type="text"
+                placeholder="Search jobs..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-64 pl-10"
+              />
+            </div>
+            <Link to="/jobs/new">
+              <Button variant="primary">
+                <Plus size={16} className="mr-2" />
+                Create Job
+              </Button>
+            </Link>
+          </>
+        }
+      />
 
-      <div className="flex items-center gap-2 border-b border-slate-200 mb-6 pb-2 overflow-x-auto">
+      <div className="flex items-center gap-2 border-b border-[var(--border-light)] mb-6 pb-2 overflow-x-auto">
         {(['ACTIVE', 'PAUSED', 'ARCHIVED'] as const).map(status => (
           <button
             key={status}
             onClick={() => handleStatusFilterChange(status)}
-            className={`px-4 py-2 text-sm font-medium rounded-t-md border-b-2 transition-colors ${
-              statusFilter === status 
-                ? 'border-[var(--primary)] text-[var(--primary)]' 
-                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+            className={`transition-base px-4 py-2 text-sm font-medium rounded-t-md border-b-2 ${
+              statusFilter === status
+                ? 'border-[var(--primary)] text-[var(--primary)]'
+                : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)]'
             }`}
           >
             {status.charAt(0) + status.slice(1).toLowerCase()}
-            <span className="ml-2 text-xs py-0.5 px-2 rounded-full bg-slate-100 text-slate-600">
+            <span className="ml-2 text-xs py-0.5 px-2 rounded-full bg-[var(--bg-hover)] text-[var(--text-secondary)]">
               {jobs?.filter(j => (j.status || 'ACTIVE') === status).length || 0}
             </span>
           </button>
@@ -179,7 +183,7 @@ export const JobsList = () => {
       </div>
 
       {!jobs?.length ? (
-        <EmptyState 
+        <EmptyState
           icon={<Briefcase size={48} />}
           title="No jobs found"
           description="Get started by creating a new job."
@@ -190,7 +194,7 @@ export const JobsList = () => {
           }
         />
       ) : !filteredJobs?.length ? (
-         <EmptyState 
+         <EmptyState
           icon={<Search size={48} />}
           title="No jobs match your search"
           description="Try adjusting your search terms or switch tabs."
@@ -201,23 +205,23 @@ export const JobsList = () => {
       ) : (
         <>
           {selectedIds.size > 0 && (
-            <div className="bg-indigo-50 border border-indigo-200 p-4 rounded-xl mb-4 flex items-center justify-between flex-wrap gap-3">
+            <div className="bg-[var(--color-primary-subtle-bg)] border border-[var(--color-primary-200)] p-4 rounded-xl mb-4 flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-4">
-                <span className="text-indigo-800 font-medium text-sm">{selectedIds.size} job{selectedIds.size === 1 ? '' : 's'} selected</span>
-                <div className="h-4 w-px bg-indigo-200" />
-                <button onClick={() => setSelectedIds(new Set())} className="text-sm text-indigo-600 hover:text-indigo-800">Clear</button>
+                <span className="text-[var(--color-primary-subtle-text)] font-medium text-sm">{selectedIds.size} job{selectedIds.size === 1 ? '' : 's'} selected</span>
+                <div className="h-4 w-px bg-[var(--color-primary-200)]" />
+                <button onClick={() => setSelectedIds(new Set())} className="transition-base text-sm text-[var(--color-primary-600)] hover:text-[var(--color-primary-700)]">Clear</button>
               </div>
               <div className="flex gap-2 flex-wrap">
                 {statusFilter === 'ACTIVE' && (
-                  <button onClick={() => handleBulkAction('pause')} disabled={bulkMutation.isPending} className="px-3 py-1.5 bg-white text-amber-700 border border-amber-200 rounded text-sm hover:bg-amber-50 focus-ring font-medium disabled:opacity-50">Pause</button>
+                  <button onClick={() => handleBulkAction('pause')} disabled={bulkMutation.isPending} className="transition-base px-3 py-1.5 bg-[var(--bg-surface)] text-[var(--color-warning-subtle-text)] border border-[var(--border-light)] rounded text-sm hover:bg-[var(--color-warning-subtle-bg)] focus-ring font-medium disabled:opacity-50">Pause</button>
                 )}
                 {statusFilter === 'PAUSED' && (
-                  <button onClick={() => handleBulkAction('resume')} disabled={bulkMutation.isPending} className="px-3 py-1.5 bg-white text-green-700 border border-green-200 rounded text-sm hover:bg-green-50 focus-ring font-medium disabled:opacity-50">Resume</button>
+                  <button onClick={() => handleBulkAction('resume')} disabled={bulkMutation.isPending} className="transition-base px-3 py-1.5 bg-[var(--bg-surface)] text-[var(--color-success-subtle-text)] border border-[var(--border-light)] rounded text-sm hover:bg-[var(--color-success-subtle-bg)] focus-ring font-medium disabled:opacity-50">Resume</button>
                 )}
                 {statusFilter !== 'ARCHIVED' && (
-                  <button onClick={() => handleBulkAction('archive')} disabled={bulkMutation.isPending} className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded text-sm hover:bg-slate-50 focus-ring font-medium disabled:opacity-50">Archive</button>
+                  <button onClick={() => handleBulkAction('archive')} disabled={bulkMutation.isPending} className="transition-base px-3 py-1.5 bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border-light)] rounded text-sm hover:bg-[var(--bg-hover)] focus-ring font-medium disabled:opacity-50">Archive</button>
                 )}
-                <button onClick={() => handleBulkAction('delete')} disabled={bulkMutation.isPending} className="px-3 py-1.5 bg-white text-rose-700 border border-rose-200 rounded text-sm hover:bg-rose-50 focus-ring font-medium disabled:opacity-50">Delete</button>
+                <button onClick={() => handleBulkAction('delete')} disabled={bulkMutation.isPending} className="transition-base px-3 py-1.5 bg-[var(--bg-surface)] text-[var(--color-danger-subtle-text)] border border-[var(--border-light)] rounded text-sm hover:bg-[var(--color-danger-subtle-bg)] focus-ring font-medium disabled:opacity-50">Delete</button>
               </div>
             </div>
           )}
@@ -267,7 +271,7 @@ const JobCard = ({ job, isPending, isSelected, onToggleSelected, onPause, onResu
   const status = job.status || 'ACTIVE';
 
   return (
-    <Card className={`flex flex-col h-full transition-colors ${isSelected ? 'border-indigo-300 ring-1 ring-indigo-200' : 'hover:border-[var(--border-focus)]'}`}>
+    <Card className={`transition-base flex flex-col h-full ${isSelected ? 'border-[var(--color-primary-300)] ring-1 ring-[var(--color-primary-200)]' : 'hover:border-[var(--border-focus)]'}`}>
       <CardHeader>
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-start gap-3 flex-1 min-w-0">
@@ -276,7 +280,7 @@ const JobCard = ({ job, isPending, isSelected, onToggleSelected, onPause, onResu
               checked={isSelected}
               onChange={onToggleSelected}
               aria-label={`Select job "${job.title}"`}
-              className="mt-1 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600 shrink-0"
+              className="mt-1 rounded border-[var(--border-strong)] text-[var(--color-primary-600)] focus:ring-[var(--color-primary-600)] shrink-0"
             />
             <CardTitle className="flex-1 min-w-0">{job.title}</CardTitle>
           </div>
@@ -294,7 +298,7 @@ const JobCard = ({ job, isPending, isSelected, onToggleSelected, onPause, onResu
         </div>
       </CardHeader>
       <CardContent className="flex-1 py-2">
-        <p className="text-slate-500 text-sm line-clamp-3">
+        <p className="text-sm text-[var(--text-secondary)] line-clamp-3">
           {job.description}
         </p>
       </CardContent>
@@ -306,7 +310,7 @@ const JobCard = ({ job, isPending, isSelected, onToggleSelected, onPause, onResu
               onClick={onPause}
               disabled={isPending}
               title="Pause job"
-              className="p-1.5 rounded text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors disabled:opacity-50"
+              className="transition-base p-1.5 rounded text-[var(--text-tertiary)] hover:text-[var(--color-warning-subtle-text)] hover:bg-[var(--color-warning-subtle-bg)] disabled:opacity-50"
             >
               <Pause size={15} />
             </button>
@@ -316,7 +320,7 @@ const JobCard = ({ job, isPending, isSelected, onToggleSelected, onPause, onResu
               onClick={onResume}
               disabled={isPending}
               title="Resume job"
-              className="p-1.5 rounded text-slate-400 hover:text-green-600 hover:bg-green-50 transition-colors disabled:opacity-50"
+              className="transition-base p-1.5 rounded text-[var(--text-tertiary)] hover:text-[var(--color-success-subtle-text)] hover:bg-[var(--color-success-subtle-bg)] disabled:opacity-50"
             >
               <Play size={15} />
             </button>
@@ -326,7 +330,7 @@ const JobCard = ({ job, isPending, isSelected, onToggleSelected, onPause, onResu
               onClick={onArchive}
               disabled={isPending}
               title="Archive job"
-              className="p-1.5 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50"
+              className="transition-base p-1.5 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-50"
             >
               <Archive size={15} />
             </button>
@@ -335,7 +339,7 @@ const JobCard = ({ job, isPending, isSelected, onToggleSelected, onPause, onResu
             onClick={onDelete}
             disabled={isPending}
             title="Delete job"
-            className="p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+            className="transition-base p-1.5 rounded text-[var(--text-tertiary)] hover:text-[var(--color-danger-subtle-text)] hover:bg-[var(--color-danger-subtle-bg)] disabled:opacity-50"
           >
             <Trash2 size={15} />
           </button>
