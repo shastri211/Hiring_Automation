@@ -6,7 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.core.config import settings
 from app.db.session import get_db
+from app.api.deps import get_current_user
 from app.models.resume import Resume
+from app.models.user import User
 from app.services.interview import interview_adapter
 from app.schemas.integration import (
     InterviewTriggerRequest,
@@ -86,7 +88,9 @@ async def validate_ownership(job_id: int, resume_id: int, db: AsyncSession):
 
 @router.post("/interview/trigger", response_model=IntegrationResponse)
 async def trigger_interview(
-    req: InterviewTriggerRequest, db: AsyncSession = Depends(get_db)
+    req: InterviewTriggerRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     await validate_ownership(req.job_id, req.resume_id, db)
     success = await interview_adapter.trigger_interview(req.resume_id, req.job_id)

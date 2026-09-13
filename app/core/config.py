@@ -141,7 +141,23 @@ class Settings(BaseSettings):
     WORKER_RETRY_BACKOFF_SECONDS: int = 60
     WORKER_CONSUMER_GROUP: str = "resume-screeners"
     WORKER_CONCURRENCY: int = 5
-    
+
+    # -------------------------
+    # Authentication (HR user sessions)
+    # -------------------------
+    # Signing key for JWT session tokens (app/services/auth.py). The default
+    # below is fine for local dev only.
+    # *** MUST be overridden via .env with a long random value in any real
+    # *** deployment - anyone who knows this value can forge login sessions.
+    SECRET_KEY: str = "dev-only-insecure-secret-key-change-me"
+    # How long an issued session cookie/token stays valid, in minutes.
+    # Default: 1440 (24 hours).
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
+    # Whether the session cookie is marked Secure (HTTPS-only). Must be False
+    # for plain-HTTP local dev; flip to True in .env once the app is served
+    # over HTTPS, or browsers will silently refuse to store the cookie.
+    COOKIE_SECURE: bool = False
+
     class Config:
         case_sensitive = True
         env_file = ".env"
