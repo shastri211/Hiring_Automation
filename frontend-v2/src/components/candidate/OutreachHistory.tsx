@@ -1,5 +1,5 @@
 import { useCandidateEmails } from '../../hooks/useEmails';
-import { Loader2, Mail, CheckCircle2, Clock, XCircle } from 'lucide-react';
+import { Loader2, Mail, CheckCircle2, Clock, XCircle, ShieldOff } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 export const OutreachHistory = ({ resumeId }: { resumeId: number }) => {
@@ -29,6 +29,7 @@ export const OutreachHistory = ({ resumeId }: { resumeId: number }) => {
             <div className="flex items-center justify-center w-10 h-10 rounded-full border border-white bg-slate-100 text-slate-500 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10">
               {email.status === 'SENT' ? <CheckCircle2 className="w-5 h-5 text-emerald-500" /> :
                email.status === 'PENDING' ? <Clock className="w-5 h-5 text-amber-500" /> :
+               email.status === 'BLOCKED' ? <ShieldOff className="w-5 h-5 text-slate-400" /> :
                <XCircle className="w-5 h-5 text-rose-500" />}
             </div>
             
@@ -43,8 +44,8 @@ export const OutreachHistory = ({ resumeId }: { resumeId: number }) => {
                 {email.body_content}
               </div>
               {email.error_message && (
-                <div className="text-xs text-rose-600 mt-2 bg-rose-50 p-2 rounded">
-                  Failed: {email.error_message}
+                <div className={`text-xs mt-2 p-2 rounded ${email.status === 'BLOCKED' ? 'text-slate-600 bg-slate-100' : 'text-rose-600 bg-rose-50'}`}>
+                  {email.status === 'BLOCKED' ? 'Blocked: ' : 'Failed: '}{email.error_message}
                 </div>
               )}
             </div>

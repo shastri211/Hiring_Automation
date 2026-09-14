@@ -3,7 +3,7 @@ import os
 import uuid
 import traceback
 import json
-from sqlalchemy import select, update, func
+from sqlalchemy import select
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.services.queue import queue_service
@@ -11,7 +11,7 @@ from app.models.resume import Resume
 from app.models.profile import CandidateProfile
 from app.models.job import Job
 from app.models.batch import ScreeningBatch
-from app.services.orchestrator import orchestrator
+from app.services.orchestrator import orchestrator, update_batch_progress
 from app.services.llm_provider import ConfigurationError
 
 WORKER_ID = settings.WORKER_ID
@@ -35,26 +35,15 @@ async def fail_task_permanently(task_type: str, item_id: int, error_msg: str):
             obj.status = "FAILED"
             if hasattr(obj, "error_message"):
                 obj.error_message = f"Max retries exceeded. Last error: {error_msg}"
-                
-            if hasattr(obj, "batch_id") and obj.batch_id:
-                from sqlalchemy import func
-                count_res = await session.execute(
-                    select(func.count(Resume.id)).where(
-                        Resume.batch_id == obj.batch_id,
-                        Resume.status.in_(["READY", "FAILED"])
-                    )
-                )
-                completed_count = count_res.scalar_one()
 
-                batch_res = await session.execute(
-                    select(ScreeningBatch).where(ScreeningBatch.id == obj.batch_id)
-                )
-                batch = batch_res.scalar_one_or_none()
-
-                if batch and completed_count >= batch.total_resumes:
-                    batch.status = "COMPLETED"
-                
             await session.commit()
+
+            # This resume has truly exhausted its retries - a genuinely
+            # terminal outcome for the batch, unlike a mid-retry failure - so
+            # recompute processed/failed counters (previously left stale
+            # here) and let the batch complete if this was the last item.
+            if hasattr(obj, "batch_id") and obj.batch_id:
+                await update_batch_progress(session, obj.batch_id, allow_complete=True)
 
 
 async def recover_stuck_messages():
@@ -115,11 +104,16 @@ async def worker_loop(consumer_id: str):
                             job_res = await session.execute(select(Job).where(Job.id == job_id))
                             job = job_res.scalar_one_or_none()
                             if job and job.status == "ACTIVE":
-                                await screener_service.screen_job(session, job)
+                                screening_results = await screener_service.screen_job(session, job)
                                 if item_id:
                                     batch_res = await session.execute(select(ScreeningBatch).where(ScreeningBatch.id == item_id))
                                     batch = batch_res.scalar_one_or_none()
                                     if batch:
+                                        # Reflects candidates actually screened this
+                                        # run (see JobBatchOverviewItem) - screen_job
+                                        # itself has no separate failure state, so
+                                        # `failed` stays 0 for this batch kind.
+                                        batch.processed = len(screening_results)
                                         batch.status = "COMPLETED"
                                         await session.commit()
                             else:

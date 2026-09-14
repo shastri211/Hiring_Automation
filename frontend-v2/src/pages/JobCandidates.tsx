@@ -11,7 +11,7 @@ import { CandidateDrawer } from '../components/CandidateDrawer';
 import { BulkEmailModal } from '../components/BulkEmailModal';
 import { variantButtonClasses } from '../utils/decision';
 import { getInitials } from '../utils/initials';
-import { PageHeader, ScoreRing, SkeletonRow } from '../components/ui';
+import { Button, PageHeader, ScoreRing, SkeletonRow } from '../components/ui';
 
 export const JobCandidates = () => {
   const { id } = useParams<{ id: string }>();
@@ -35,7 +35,7 @@ export const JobCandidates = () => {
 
   const queryClient = useQueryClient();
 
-  const { data, isLoading, isError, error } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: queryKeys.candidates(jobId, params),
     queryFn: () => jobsApi.getJobResults(jobId, params),
     placeholderData: keepPreviousData,
@@ -181,7 +181,8 @@ export const JobCandidates = () => {
       <div className="bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-b-xl overflow-hidden shadow-[var(--shadow-sm)]">
         {isError ? (
           <div className="p-8 text-center text-[var(--color-danger-600)]">
-            Error loading candidates: {error instanceof Error ? error.message : 'Unknown'}
+            <p className="mb-4">Error loading candidates: {error instanceof Error ? error.message : 'Unknown'}</p>
+            <Button variant="secondary" onClick={() => refetch()}>Retry</Button>
           </div>
         ) : !isLoading && data?.items.length === 0 ? (
           <div className="p-16 text-center">

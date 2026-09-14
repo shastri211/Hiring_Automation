@@ -1,12 +1,13 @@
 import { apiClient } from './client';
-import type { 
-  Job, 
-  ScreeningResultResponse, 
-  PaginatedResponse, 
-  UploadResponse, 
-  BatchProgressResponse, 
-  CandidateDetailResponse, 
-  ScreeningResultsParams 
+import type {
+  Job,
+  ScreeningResultResponse,
+  PaginatedResponse,
+  UploadResponse,
+  BatchProgressResponse,
+  CandidateDetailResponse,
+  ScreeningResultsParams,
+  JobBatchOverviewItem,
 } from '../types';
 
 export const jobsApi = {
@@ -41,6 +42,10 @@ export const jobsApi = {
   
   getJobProgress: (jobId: number) => {
     return apiClient.get<any>(`/jobs/${jobId}/progress`) as unknown as Promise<BatchProgressResponse>;
+  },
+
+  getBatchesOverview: () => {
+    return apiClient.get<any>('/jobs/batches/overview') as unknown as Promise<JobBatchOverviewItem[]>;
   },
   
   getJobResults: (jobId: number, params?: ScreeningResultsParams) => {

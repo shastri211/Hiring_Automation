@@ -31,6 +31,8 @@ export function getEmailStatusBadgeVariant(status?: string | null): BadgeVariant
       return 'warning';
     case 'FAILED':
       return 'danger';
+    case 'BLOCKED':
+      return 'neutral';
     default:
       return 'neutral';
   }

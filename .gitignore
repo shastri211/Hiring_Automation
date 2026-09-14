@@ -67,3 +67,6 @@ uploads/
 dump.rdb
 *.sqlite
 *.sqlite3
+
+# Claude local configuration
+.claude/launch.json

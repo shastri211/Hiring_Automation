@@ -18,7 +18,12 @@ async def test_stream_enqueue_and_read():
         mock_redis.xgroup_create.assert_called_once()
 
         await queue_service.enqueue_resume(9999, job_id=1, batch_id=1)
-        mock_redis.xadd.assert_called_once_with(queue_service.stream_name, {"resume_id": "9999", "job_id": "1", "batch_id": "1", "action": "process_resume"})
+        mock_redis.xadd.assert_called_once_with(
+            queue_service.stream_name,
+            {"resume_id": "9999", "job_id": "1", "batch_id": "1", "action": "process_resume"},
+            maxlen=queue_service.stream_maxlen,
+            approximate=True,
+        )
         
         result = await mock_redis.xreadgroup(
             groupname=queue_service.group_name,

@@ -9,6 +9,7 @@ import { JobWizard } from '../pages/JobWizard';
 import { JobWorkspace } from '../pages/JobWorkspace';
 import { JobUpload } from '../pages/JobUpload';
 import { JobProcessing } from '../pages/JobProcessing';
+import { Processing } from '../pages/Processing';
 import { JobCandidates } from '../pages/JobCandidates';
 import { GlobalCandidates } from '../pages/GlobalCandidates';
 import { GlobalInterviews } from '../pages/GlobalInterviews';
@@ -83,6 +84,10 @@ const router = createBrowserRouter([
           {
             path: 'jobs/:id/candidates',
             element: <JobCandidates />
+          },
+          {
+            path: 'processing',
+            element: <Processing />
           },
           {
             path: 'jobs/:id/candidates/:resumeId',

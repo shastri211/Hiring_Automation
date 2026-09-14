@@ -446,3 +446,98 @@ async def test_list_email_messages_paginated(client: AsyncClient):
         assert body["items"][0]["status"] == "SENT"
     finally:
         fastapi_app.dependency_overrides.clear()
+
+
+def _make_pending_message():
+    from app.models.email import EmailMessage
+
+    msg = MagicMock(spec=EmailMessage)
+    msg.id = 1
+    msg.resume_id = 7
+    msg.status = "PENDING"
+    msg.subject = "Hi"
+    msg.body_content = "Body"
+    msg.error_message = None
+    msg.provider_message_id = None
+    msg.sent_at = None
+    return msg
+
+
+def _make_candidate_profile(email):
+    from app.models.profile import CandidateProfile
+
+    profile = MagicMock(spec=CandidateProfile)
+    profile.resume_id = 7
+    profile.email = email
+    return profile
+
+
+@pytest.mark.asyncio
+@patch("app.services.email.AsyncSessionLocal", new_callable=MagicMock)
+async def test_process_send_email_task_blocks_recipient_not_in_allowlist(mock_session_local):
+    """A candidate email extracted from test/sample resume data must never
+    reach Resend unless the user has explicitly cleared it in Settings ->
+    Outreach Automation. The message should be marked BLOCKED, not SENT/FAILED,
+    and the provider must never be called."""
+    from app.services.email import email_service
+
+    mock_session = _mock_session_local(mock_session_local)
+
+    msg = _make_pending_message()
+    msg_exec = MagicMock()
+    msg_exec.scalar_one_or_none.return_value = msg
+
+    profile = _make_candidate_profile("candidate@fake-resume.test")
+    profile_exec = MagicMock()
+    profile_exec.scalar_one_or_none.return_value = profile
+
+    allowlist_row = MagicMock(spec=AppSettings)
+    allowlist_row.email_test_allowlist = "someone-else@example.com"
+    settings_exec = MagicMock()
+    settings_exec.scalar_one_or_none.return_value = allowlist_row
+
+    mock_session.execute = AsyncMock(side_effect=[msg_exec, profile_exec, settings_exec])
+    mock_session.commit = AsyncMock()
+
+    with patch.object(email_service.provider, "send_email", new_callable=AsyncMock) as mock_send:
+        await email_service.process_send_email_task(1)
+        mock_send.assert_not_called()
+
+    assert msg.status == "BLOCKED"
+    assert "not in the test email allowlist" in msg.error_message
+
+
+@pytest.mark.asyncio
+@patch("app.services.email.AsyncSessionLocal", new_callable=MagicMock)
+async def test_process_send_email_task_sends_when_recipient_in_allowlist(mock_session_local):
+    """An address the user has explicitly cleared in the allowlist (any case/
+    whitespace) still goes through to the provider as before."""
+    from app.services.email import email_service
+
+    mock_session = _mock_session_local(mock_session_local)
+
+    msg = _make_pending_message()
+    msg_exec = MagicMock()
+    msg_exec.scalar_one_or_none.return_value = msg
+
+    profile = _make_candidate_profile("Real.Tester@Example.com")
+    profile_exec = MagicMock()
+    profile_exec.scalar_one_or_none.return_value = profile
+
+    allowlist_row = MagicMock(spec=AppSettings)
+    allowlist_row.email_test_allowlist = " real.tester@example.com , other@example.com "
+    settings_exec = MagicMock()
+    settings_exec.scalar_one_or_none.return_value = allowlist_row
+
+    mock_session.execute = AsyncMock(side_effect=[msg_exec, profile_exec, settings_exec])
+    mock_session.commit = AsyncMock()
+
+    with patch.object(email_service.provider, "send_email", new_callable=AsyncMock) as mock_send:
+        mock_send.return_value = {"id": "resend_123"}
+        await email_service.process_send_email_task(1)
+        mock_send.assert_called_once_with(
+            to_email="Real.Tester@Example.com", subject="Hi", html_body="Body"
+        )
+
+    assert msg.status == "SENT"
+    assert msg.provider_message_id == "resend_123"

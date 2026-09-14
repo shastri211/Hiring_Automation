@@ -7,7 +7,7 @@ import { queryKeys } from '../api/queryKeys';
 import { useEmailMessages } from '../hooks/useEmails';
 import { OutreachHistory } from '../components/candidate/OutreachHistory';
 import {
-  Card, CardContent,
+  Button, Card, CardContent,
   Badge, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Dialog, DialogContent, DialogTitle, DialogDescription,
 } from '../components/ui';
@@ -43,9 +43,10 @@ export const Outreach = () => {
   const sentStats = useEmailMessages({ status: 'SENT', page_size: 1 });
   const pendingStats = useEmailMessages({ status: 'PENDING', page_size: 1 });
   const failedStats = useEmailMessages({ status: 'FAILED', page_size: 1 });
+  const blockedStats = useEmailMessages({ status: 'BLOCKED', page_size: 1 });
 
   const params = { status, job_id: jobId, page, page_size: PAGE_SIZE };
-  const { data, isLoading, isError, error } = useEmailMessages(params);
+  const { data, isLoading, isError, error, refetch } = useEmailMessages(params);
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
@@ -59,11 +60,12 @@ export const Outreach = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <StatCard label="Total Sent" value={allStats.data?.total} isLoading={allStats.isLoading} isError={allStats.isError} />
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+        <StatCard label="Total" value={allStats.data?.total} isLoading={allStats.isLoading} isError={allStats.isError} />
         <StatCard label="Delivered" value={sentStats.data?.total} isLoading={sentStats.isLoading} isError={sentStats.isError} />
         <StatCard label="Pending" value={pendingStats.data?.total} isLoading={pendingStats.isLoading} isError={pendingStats.isError} />
         <StatCard label="Failed" value={failedStats.data?.total} isLoading={failedStats.isLoading} isError={failedStats.isError} />
+        <StatCard label="Blocked (not in allowlist)" value={blockedStats.data?.total} isLoading={blockedStats.isLoading} isError={blockedStats.isError} />
       </div>
 
       <div className="flex flex-wrap justify-end gap-3 mb-4">
@@ -75,6 +77,7 @@ export const Outreach = () => {
               <SelectItem value="PENDING">Pending</SelectItem>
               <SelectItem value="SENT">Sent</SelectItem>
               <SelectItem value="FAILED">Failed</SelectItem>
+              <SelectItem value="BLOCKED">Blocked</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -96,7 +99,8 @@ export const Outreach = () => {
           </div>
         ) : isError ? (
           <div className="p-8 text-center text-[var(--color-danger-600)]">
-            Failed to load outreach history{error instanceof Error ? `: ${error.message}` : '.'}
+            <p className="mb-4">Failed to load outreach history{error instanceof Error ? `: ${error.message}` : '.'}</p>
+            <Button variant="secondary" onClick={() => refetch()}>Retry</Button>
           </div>
         ) : !data || data.items.length === 0 ? (
           <div className="text-center py-20">

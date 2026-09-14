@@ -12,7 +12,13 @@ class QueueService:
         self.retry_hash = "screening_jobs_retries"
         self.max_retries = settings.WORKER_MAX_RETRIES
         self.base_backoff_sec = settings.WORKER_RETRY_BACKOFF_SECONDS
-        
+        # Acked entries aren't removed from a Redis stream on their own (only
+        # from the consumer group's pending list) - without a cap the stream
+        # grows forever. Approximate trimming (~) is O(1)-ish and doesn't
+        # require exact accounting; comfortably larger than any realistic
+        # backlog so it never trims anything still pending.
+        self.stream_maxlen = 100_000
+
     async def init_stream(self):
         try:
             await self.redis_client.xgroup_create(self.stream_name, self.group_name, id='0', mkstream=True)
@@ -23,7 +29,7 @@ class QueueService:
     async def enqueue_task(self, payload: dict):
         redis = self.redis_client
         str_payload = {k: str(v) for k, v in payload.items()}
-        await redis.xadd(self.stream_name, str_payload)
+        await redis.xadd(self.stream_name, str_payload, maxlen=self.stream_maxlen, approximate=True)
 
     async def enqueue_resume(self, resume_id: int, job_id: int, batch_id: int):
         payload = {
@@ -32,7 +38,7 @@ class QueueService:
             "batch_id": str(batch_id),
             "action": "process_resume"
         }
-        await self.redis_client.xadd(self.stream_name, payload)
+        await self.redis_client.xadd(self.stream_name, payload, maxlen=self.stream_maxlen, approximate=True)
 
     async def consume(self, worker_id: str, count: int = 1, block_ms: int = 5000):
         """First check pending messages, then block for new ones."""

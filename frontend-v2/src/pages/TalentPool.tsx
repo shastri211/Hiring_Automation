@@ -3,7 +3,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { Loader2, Database, Search, ChevronLeft, ChevronRight, Pencil, Check, X, Trash2 } from 'lucide-react';
 import { useTalentPool, useUpdateTalentPoolEntry, useRemoveFromTalentPool } from '../hooks/useTalentPool';
 import { useConfirm } from '../hooks/useConfirm';
-import { Badge, Input } from '../components/ui';
+import { Badge, Button, Input } from '../components/ui';
 import type { TalentPoolEntry } from '../types';
 
 const PAGE_SIZE = 20;
@@ -25,7 +25,7 @@ export const TalentPool = () => {
   }, [qInput]);
 
   const params = { q: q || undefined, tag: tag || undefined, page, page_size: PAGE_SIZE };
-  const { data, isLoading, isError, error } = useTalentPool(params);
+  const { data, isLoading, isError, error, refetch } = useTalentPool(params);
 
   const updateMutation = useUpdateTalentPoolEntry();
   const removeMutation = useRemoveFromTalentPool();
@@ -88,7 +88,8 @@ export const TalentPool = () => {
           </div>
         ) : isError ? (
           <div className="p-8 text-center text-[var(--color-danger-600)]">
-            Failed to load the Talent Pool{error instanceof Error ? `: ${error.message}` : '.'}
+            <p className="mb-4">Failed to load the Talent Pool{error instanceof Error ? `: ${error.message}` : '.'}</p>
+            <Button variant="secondary" onClick={() => refetch()}>Retry</Button>
           </div>
         ) : !data || data.items.length === 0 ? (
           <div className="text-center py-20">

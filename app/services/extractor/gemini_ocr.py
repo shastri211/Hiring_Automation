@@ -1,9 +1,13 @@
+import logging
 import os
 import google.genai as genai
 from google.genai import types
 from PIL import Image
 from .base import BaseOCREngine
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
 
 class GeminiOCREngine(BaseOCREngine):
     def __init__(self):
@@ -24,6 +28,10 @@ class GeminiOCREngine(BaseOCREngine):
                 ),
             )
             return response.text or ""
-        except Exception as e:
-            print(f"Gemini OCR Error: {e}")
+        except Exception:
+            # Swallowed intentionally (a failed OCR page degrades to empty
+            # text rather than failing the whole resume) - but must still be
+            # visible server-side, not silently dropped, so auth/quota/
+            # network failures here are actually diagnosable.
+            logger.exception(f"Gemini OCR failed for {file_path}")
             return ""

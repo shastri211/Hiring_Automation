@@ -24,7 +24,7 @@ interface CandidateDrawerProps {
 }
 
 export const CandidateDrawer = ({ jobId, resumeId, isOpen, onClose, onView360 }: CandidateDrawerProps) => {
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: queryKeys.candidateDetail(jobId, resumeId!),
     queryFn: () => jobsApi.getJobResultDetail(jobId, resumeId!),
     enabled: isOpen && resumeId !== null,
@@ -78,8 +78,9 @@ export const CandidateDrawer = ({ jobId, resumeId, isOpen, onClose, onView360 }:
           )}
 
           {isError && (
-            <div className="bg-red-50 text-red-700 p-4 rounded-lg">
-              Failed to load candidate details.
+            <div className="bg-red-50 text-red-700 p-4 rounded-lg flex items-center justify-between gap-4">
+              <span>Failed to load candidate details.</span>
+              <Button variant="secondary" onClick={() => refetch()}>Retry</Button>
             </div>
           )}
 

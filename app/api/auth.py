@@ -21,13 +21,22 @@ router = APIRouter()
 # exists in the system.
 _INVALID_CREDENTIALS_DETAIL = "Incorrect email or password"
 
+# A bcrypt hash of an arbitrary, unguessable placeholder - never matches any
+# real password. Used to pay the same bcrypt cost for a nonexistent-email
+# login as for a wrong-password one, so response timing can't be used to
+# enumerate which emails have accounts.
+_DUMMY_PASSWORD_HASH = hash_password("not-a-real-password-used-only-for-timing")
+
 
 @router.post("/login", response_model=UserResponse)
 async def login(payload: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == payload.email))
     user = result.scalar_one_or_none()
 
-    if user is None or not user.is_active or not verify_password(payload.password, user.hashed_password):
+    password_ok = verify_password(
+        payload.password, user.hashed_password if user else _DUMMY_PASSWORD_HASH
+    )
+    if user is None or not user.is_active or not password_ok:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_INVALID_CREDENTIALS_DETAIL)
 
     token = create_access_token(user.id)

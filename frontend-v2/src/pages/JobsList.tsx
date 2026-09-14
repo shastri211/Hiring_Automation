@@ -32,7 +32,7 @@ export const JobsList = () => {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
 
-  const { data: jobs, isLoading, error } = useQuery({
+  const { data: jobs, isLoading, error, refetch } = useQuery({
     queryKey: queryKeys.jobs(),
     queryFn: () => api.jobs.getJobs()
   });
@@ -137,6 +137,7 @@ export const JobsList = () => {
       <EmptyState
         title="Failed to load jobs"
         description={(error as any)?.message || 'An unexpected error occurred'}
+        action={<Button variant="secondary" onClick={() => refetch()}>Retry</Button>}
       />
     );
   }
@@ -318,7 +319,7 @@ const JobCard = ({ job, isPending, isSelected, onToggleSelected, onPause, onResu
       </CardHeader>
       <CardContent className="flex-1 py-2">
         <p className="text-sm text-[var(--text-secondary)] line-clamp-3">
-          {job.description}
+          {job.role_summary || job.description}
         </p>
       </CardContent>
       <CardFooter className="flex items-center justify-between gap-2 flex-wrap">

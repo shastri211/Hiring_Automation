@@ -132,3 +132,22 @@ class BatchProgressDetail(BaseModel):
 class BatchProgressResponse(BaseModel):
     job_id: int
     batches: List[BatchProgressDetail]
+
+
+class JobBatchOverviewItem(BaseModel):
+    """One row of the cross-job Processing overview (sidebar > Processing).
+
+    A lighter-weight sibling of BatchProgressDetail: counts come straight off
+    the ScreeningBatch row (kept in sync by the worker/upload endpoint) rather
+    than a live per-status Resume count, so listing every batch across every
+    job stays a single query instead of N+1.
+    """
+    job_id: int
+    job_title: str
+    job_status: Optional[str] = None
+    batch_id: int
+    batch_status: str
+    total: int
+    processed: int
+    failed: int
+    created_at: Optional[datetime] = None

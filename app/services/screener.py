@@ -33,11 +33,16 @@ def _adaptive_pre_screen(candidates: list, min_keep: int, max_keep: int, gap_thr
         return sorted_cands
         
     scores = [c[1] for c in sorted_cands]
-    
+
     # 2. Gap Analysis
     max_gap = 0.0
     cutoff_idx = len(sorted_cands)
-    
+    # Safe fallback if gap_threshold is misconfigured as <= 0: with every
+    # pairwise gap tied at 0.0, the loop below never assigns best_cutoff_idx,
+    # yet `max_gap >= gap_threshold` still holds - keep everyone rather than
+    # crash with an UnboundLocalError.
+    best_cutoff_idx = len(sorted_cands)
+
     # Look for the largest gap
     for i in range(len(scores) - 1):
         gap = scores[i] - scores[i+1]
@@ -164,7 +169,7 @@ class ScreenerService:
                 continue
 
             candidate_profile = payload.get("profile", {})
-            
+
             # --- Gate Enforcement ---
             if _candidate_id_str not in passed_ids:
                 # PRE_SCREENED_OUT
@@ -178,11 +183,17 @@ class ScreenerService:
                     evidence=None,
                     decision="PRE_SCREENED_OUT",
                 )
-                db.add(screening_result)
+                # Each write below runs in its own SAVEPOINT (begin_nested):
+                # screen_job commits once at the very end, so an IntegrityError
+                # (or any DB error) on one candidate must only unwind that
+                # candidate's own insert, never every result already flushed
+                # earlier in this same call.
                 try:
-                    await db.flush()
+                    async with db.begin_nested():
+                        db.add(screening_result)
+                        await db.flush()
                 except IntegrityError:
-                    await db.rollback()
+                    pass
                 else:
                     results.append(screening_result)
                 continue
@@ -254,12 +265,11 @@ class ScreenerService:
                     decision=eval_result_dict.get("decision", "REVIEW"),
                 )
 
-                db.add(screening_result)
-
                 try:
-                    await db.flush()
+                    async with db.begin_nested():
+                        db.add(screening_result)
+                        await db.flush()
                 except IntegrityError:
-                    await db.rollback()
                     logger.warning(
                         "Duplicate insert race for job=%s resume=%s; skipping.",
                         job_id,
@@ -275,8 +285,11 @@ class ScreenerService:
                     resume_id,
                     job_id,
                 )
-                
-                # Persist a fallback screening result to avoid dropping candidates
+
+                # Persist a fallback screening result to avoid dropping candidates.
+                # Runs in its own SAVEPOINT (see comment above) so a DB-level
+                # error above (not just an LLM/provider error) can't take down
+                # every other candidate already flushed earlier in this call.
                 screening_result = ScreeningResult(
                     job_id=job_id,
                     resume_id=resume_id,
@@ -285,13 +298,13 @@ class ScreenerService:
                     decision="REVIEW",
                     notes=f"Evaluation failed due to provider error: {str(e)[:200]}"
                 )
-                db.add(screening_result)
                 try:
-                    await db.flush()
+                    async with db.begin_nested():
+                        db.add(screening_result)
+                        await db.flush()
                 except IntegrityError:
-                    await db.rollback()
                     continue
-                    
+
                 results.append(screening_result)
 
         await db.commit()
@@ -336,6 +349,16 @@ Expected JSON Schema:
         if not isinstance(result, dict) or "score" not in result:
             raise InvalidEvaluationResultError(
                 f"LLM evaluation returned an unusable payload (missing 'score' key): {result!r}"
+            )
+
+        # A non-numeric or out-of-range score would otherwise reach the DB
+        # column as-is and only surface as an opaque DataError at flush time
+        # (see screen_job's per-candidate SAVEPOINT handling) - reject it here
+        # with a clear, expected error instead.
+        score = result["score"]
+        if isinstance(score, bool) or not isinstance(score, (int, float)) or not (0 <= score <= 100):
+            raise InvalidEvaluationResultError(
+                f"LLM evaluation returned an out-of-range/non-numeric score: {score!r}"
             )
 
         return result

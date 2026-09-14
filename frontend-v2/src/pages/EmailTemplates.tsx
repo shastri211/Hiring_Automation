@@ -6,7 +6,7 @@ import { Button } from '../components/ui/Button';
 import type { EmailTemplate } from '../types';
 
 export const EmailTemplates = () => {
-  const { data: templates, isLoading } = useEmailTemplates();
+  const { data: templates, isLoading, isError, refetch } = useEmailTemplates();
   const createMutation = useCreateTemplate();
   const updateMutation = useUpdateTemplate();
   const deleteMutation = useDeleteTemplate();
@@ -120,6 +120,11 @@ export const EmailTemplates = () => {
 
       {isLoading ? (
         <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div>
+      ) : isError ? (
+        <div className="text-center py-20 bg-white rounded-xl border border-slate-200">
+          <p className="text-red-500 mb-4">Failed to load email templates.</p>
+          <Button variant="secondary" onClick={() => refetch()}>Retry</Button>
+        </div>
       ) : templates && templates.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {templates.map(t => (

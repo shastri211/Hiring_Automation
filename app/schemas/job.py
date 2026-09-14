@@ -19,6 +19,15 @@ class JobCreate(JobBase):
 
 class JobResponse(JobCreate):
     id: int
+    # AI-generated structured view of `description`, pulled from job_profile
+    # (see ProfilerService.profile_job / JobProfileSchema). `description` stays
+    # the raw source text; these are what the UI should render by default so a
+    # messy pasted/uploaded JD (duplicated headers, literal bullet glyphs, no
+    # paragraph breaks) doesn't get dumped verbatim. None for jobs profiled
+    # before this field existed, or if profiling failed - callers should fall
+    # back to `description` in that case.
+    role_summary: Optional[str] = None
+    responsibilities: Optional[List[str]] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -53,6 +62,8 @@ class JobResponse(JobCreate):
                         "experience": job_profile.get("experience", {}),
                         "education": job_profile.get("education", {}),
                         "hard_constraints": job_profile.get("hard_constraints", {}),
+                        "role_summary": job_profile.get("role_summary"),
+                        "responsibilities": job_profile.get("responsibilities", []),
                     }
                     return data
         # Already a plain dict (e.g. from test fixtures)
@@ -63,5 +74,7 @@ class JobResponse(JobCreate):
                 values.setdefault("preferred_skills", job_profile.get("preferred_skills", []))
                 if not values.get("requirements"):
                     values["requirements"] = job_profile.get("requirements", [])
+                values.setdefault("role_summary", job_profile.get("role_summary"))
+                values.setdefault("responsibilities", job_profile.get("responsibilities", []))
         return values
 

@@ -17,10 +17,24 @@ from app.services.queue import queue_service
 import logging
 import os
 
+_DEFAULT_SECRET_KEY = "dev-only-insecure-secret-key-change-me"
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger = logging.getLogger(__name__)
     logger.info("Starting up Resume Screener API...")
+    if settings.SECRET_KEY == _DEFAULT_SECRET_KEY:
+        logger.critical(
+            "SECRET_KEY is still the insecure default (dev-only-insecure-secret-key-change-me). "
+            "Anyone who knows this value can forge login session tokens for any user. "
+            "Set a long random SECRET_KEY in .env before deploying anywhere reachable outside localhost."
+        )
+    if not settings.COOKIE_SECURE:
+        logger.warning(
+            "COOKIE_SECURE is False - the session cookie will be sent over plain HTTP. "
+            "Set COOKIE_SECURE=True in .env once the app is served over HTTPS."
+        )
     await queue_service.init_stream()
     yield
     logger.info("Shutting down Resume Screener API...")
@@ -32,9 +46,19 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+_cors_origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
+if "*" in _cors_origins:
+    # A literal "*" combined with allow_credentials=True is the classic
+    # insecure CORS misconfiguration - most browsers reject it per spec, but
+    # that's fragile to depend on. Fail fast at startup instead.
+    raise RuntimeError(
+        "CORS_ORIGINS must not contain \"*\" while allow_credentials=True is set "
+        "(this app uses cookie-based sessions). List explicit origins instead."
+    )
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

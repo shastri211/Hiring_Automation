@@ -40,8 +40,55 @@ def _is_valid_profile(profile_data: dict) -> bool:
             return True
     return False
 
+async def update_batch_progress(session, batch_id: int, allow_complete: bool = True) -> None:
+    """Recompute a ScreeningBatch's processed/failed counters from the
+    current Resume rows in it, and commit.
+
+    Recounting (rather than incrementing) keeps this idempotent/race-safe
+    against retries and concurrent workers. Shared by the orchestrator's
+    success path, its per-attempt failure path, and the worker's
+    permanent-failure path (fail_task_permanently) so a batch where a resume
+    fails outright still gets an accurate, prompt processed/failed count
+    instead of waiting on some other resume in the batch to eventually
+    succeed.
+
+    `allow_complete=False` (used for a resume's per-attempt transient
+    failure, which may still succeed on retry) updates the counters for
+    visibility but never flips the batch to COMPLETED - only a resume's
+    truly terminal outcome (READY, or retries exhausted) may do that.
+    """
+    from sqlalchemy import func
+    from app.models.batch import ScreeningBatch
+
+    batch_res = await session.execute(
+        select(ScreeningBatch).where(ScreeningBatch.id == batch_id)
+    )
+    batch = batch_res.scalar_one_or_none()
+    if not batch:
+        return
+
+    processed_res = await session.execute(
+        select(func.count(Resume.id)).where(
+            Resume.batch_id == batch_id, Resume.status == "READY"
+        )
+    )
+    failed_res = await session.execute(
+        select(func.count(Resume.id)).where(
+            Resume.batch_id == batch_id, Resume.status == "FAILED"
+        )
+    )
+
+    batch.processed = processed_res.scalar_one()
+    batch.failed = failed_res.scalar_one()
+
+    if allow_complete and batch.processed + batch.failed >= batch.total_resumes:
+        batch.status = "COMPLETED"
+
+    await session.commit()
+
+
 class RecruitmentOrchestrator:
-    
+
     async def process_candidate(self, resume_id: int):
         async with AsyncSessionLocal() as session:
             # 1. Fetch Resume & Job (with row lock to prevent concurrent processing of the same resume)
@@ -206,38 +253,8 @@ class RecruitmentOrchestrator:
                     
                 # Idempotent batch accounting
                 if resume.batch_id:
-                    from app.models.batch import ScreeningBatch
-                    from sqlalchemy import func
+                    await update_batch_progress(session, resume.batch_id)
 
-                    batch_res = await session.execute(
-                        select(ScreeningBatch).where(ScreeningBatch.id == resume.batch_id)
-                    )
-                    batch = batch_res.scalar_one_or_none()
-
-                    if batch:
-                        # Count the terminal states from the resumes themselves.
-                        # This keeps retries/idempotency from double-incrementing counters.
-                        processed_res = await session.execute(
-                            select(func.count(Resume.id)).where(
-                                Resume.batch_id == resume.batch_id,
-                                Resume.status == "READY",
-                            )
-                        )
-                        failed_res = await session.execute(
-                            select(func.count(Resume.id)).where(
-                                Resume.batch_id == resume.batch_id,
-                                Resume.status == "FAILED",
-                            )
-                        )
-
-                        batch.processed = processed_res.scalar_one()
-                        batch.failed = failed_res.scalar_one()
-
-                        if batch.processed + batch.failed >= batch.total_resumes:
-                            batch.status = "COMPLETED"
-
-                        await session.commit()
-                    
                     logger.info(f"Orchestrator: Candidate {resume_id} fully processed for ingestion.")
 
             except Exception as e:
@@ -245,6 +262,12 @@ class RecruitmentOrchestrator:
                 resume.error_message = str(e)
                 resume.status = "FAILED"
                 await session.commit()
+                if resume.batch_id:
+                    # Not necessarily terminal - the worker may still retry
+                    # this resume, so don't let the batch flip to COMPLETED
+                    # here (fail_task_permanently does that once retries are
+                    # truly exhausted).
+                    await update_batch_progress(session, resume.batch_id, allow_complete=False)
                 raise e
 
 orchestrator = RecruitmentOrchestrator()

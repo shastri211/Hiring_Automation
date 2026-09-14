@@ -1,7 +1,7 @@
 
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Upload, Users, ChevronLeft, Pause, Play, Archive, Trash2 } from 'lucide-react';
+import { Upload, Users, ChevronLeft, Pause, Play, Archive, Trash2, ListChecks } from 'lucide-react';
 import { api } from '../api';
 import { queryKeys } from '../api/queryKeys';
 import { Button, Card, EmptyState, Spinner, Badge, PageHeader } from '../components/ui';
@@ -12,7 +12,7 @@ export const JobWorkspace = () => {
   const jobId = parseInt(id || '0', 10);
   const confirm = useConfirm();
 
-  const { data: job, isLoading: jobLoading, error: jobError } = useQuery({
+  const { data: job, isLoading: jobLoading, error: jobError, refetch: refetchJob } = useQuery({
     queryKey: ['job', jobId],
     queryFn: () => api.jobs.getJob(jobId),
     enabled: jobId > 0
@@ -72,7 +72,12 @@ export const JobWorkspace = () => {
       <EmptyState
         title="Job not found"
         description="The job you are looking for does not exist or failed to load."
-        action={<Link to="/jobs"><Button variant="secondary">Back to Jobs</Button></Link>}
+        action={
+          <div className="flex gap-3 justify-center">
+            <Button variant="secondary" onClick={() => refetchJob()}>Retry</Button>
+            <Link to="/jobs"><Button variant="secondary">Back to Jobs</Button></Link>
+          </div>
+        }
       />
     );
   }
@@ -136,6 +141,11 @@ export const JobWorkspace = () => {
                 <Upload size={16} className="mr-2" /> Upload Resumes
               </Button>
             </Link>
+            <Link to={`/jobs/${jobId}/processing`}>
+              <Button variant="secondary">
+                <ListChecks size={16} className="mr-2" /> Processing
+              </Button>
+            </Link>
             <Link to={`/jobs/${jobId}/candidates`}>
               <Button variant="primary">
                 <Users size={16} className="mr-2" /> View Candidates
@@ -146,15 +156,36 @@ export const JobWorkspace = () => {
       />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <Card className="p-6 text-center">
+        <Card
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate(`/jobs/${jobId}/candidates`)}
+          onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/jobs/${jobId}/candidates`); }}
+          className="p-6 text-center cursor-pointer transition-base hover:border-[var(--border-focus)] hover:shadow-[var(--shadow-sm)] focus-ring"
+          title="View all resumes for this job"
+        >
           <div className="text-sm font-medium text-[var(--text-secondary)] mb-2">Total Resumes</div>
           <div className="text-3xl font-bold text-[var(--text-primary)]">{progress?.batches?.reduce((sum, b) => sum + (b.total || 0), 0) ?? '-'}</div>
         </Card>
-        <Card className="p-6 text-center">
+        <Card
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate(`/jobs/${jobId}/candidates`)}
+          onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/jobs/${jobId}/candidates`); }}
+          className="p-6 text-center cursor-pointer transition-base hover:border-[var(--border-focus)] hover:shadow-[var(--shadow-sm)] focus-ring"
+          title="View processed candidates"
+        >
           <div className="text-sm font-medium text-[var(--text-secondary)] mb-2">Processed</div>
           <div className="text-3xl font-bold text-[var(--text-primary)]">{progress?.batches?.reduce((sum, b) => sum + (b.completed || 0), 0) ?? '-'}</div>
         </Card>
-        <Card className="p-6 text-center bg-[var(--color-danger-subtle-bg)]">
+        <Card
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate(`/jobs/${jobId}/candidates`, { state: { params: { page: 1, sort_by: 'score', status: 'FAILED' } } })}
+          onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/jobs/${jobId}/candidates`, { state: { params: { page: 1, sort_by: 'score', status: 'FAILED' } } }); }}
+          className="p-6 text-center cursor-pointer transition-base bg-[var(--color-danger-subtle-bg)] hover:shadow-[var(--shadow-sm)] focus-ring"
+          title="View resumes that failed processing"
+        >
           <div className="text-sm font-medium text-[var(--color-danger-subtle-text)] mb-2">Failed</div>
           <div className="text-3xl font-bold text-[var(--color-danger-subtle-text)]">{progress?.batches?.reduce((sum, b) => sum + (b.failed || 0), 0) ?? '-'}</div>
         </Card>
@@ -164,9 +195,33 @@ export const JobWorkspace = () => {
         <div className="lg:col-span-2 flex flex-col gap-8">
           <section>
             <h3 className="text-section-heading mb-4 pb-2 border-b border-[var(--border-light)]">Job Description</h3>
-            <div className="whitespace-pre-wrap leading-relaxed text-[var(--text-secondary)]">
-              {job.description}
-            </div>
+            {job.role_summary ? (
+              <div className="flex flex-col gap-6">
+                <p className="leading-relaxed text-[var(--text-secondary)]">{job.role_summary}</p>
+                {job.responsibilities && job.responsibilities.length > 0 && (
+                  <div>
+                    <h4 className="text-card-title mb-3">Key Responsibilities</h4>
+                    <ul className="list-disc pl-5 space-y-2 text-[var(--text-secondary)]">
+                      {job.responsibilities.map((item, index) => (
+                        <li key={index}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <details className="text-sm">
+                  <summary className="cursor-pointer text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-base select-none">
+                    View original job description
+                  </summary>
+                  <div className="whitespace-pre-wrap leading-relaxed text-[var(--text-secondary)] mt-3 pt-3 border-t border-[var(--border-light)]">
+                    {job.description}
+                  </div>
+                </details>
+              </div>
+            ) : (
+              <div className="whitespace-pre-wrap leading-relaxed text-[var(--text-secondary)]">
+                {job.description}
+              </div>
+            )}
           </section>
         </div>
 
