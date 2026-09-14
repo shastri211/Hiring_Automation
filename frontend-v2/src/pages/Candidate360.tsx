@@ -24,7 +24,7 @@ export const Candidate360 = () => {
   const jobId = parseInt(jobIdStr || '0', 10);
   const resumeId = parseInt(resumeIdStr || '0', 10);
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: queryKeys.candidateDetail(jobId, resumeId),
     queryFn: () => jobsApi.getJobResultDetail(jobId, resumeId),
     enabled: !!jobId && !!resumeId,
@@ -53,8 +53,9 @@ export const Candidate360 = () => {
   if (isError || !data) {
     return (
       <div className="flex-1 p-8">
-        <div className="bg-[var(--color-danger-subtle-bg)] text-[var(--color-danger-subtle-text)] p-4 rounded-lg">
-          Failed to load candidate details.
+        <div className="bg-[var(--color-danger-subtle-bg)] text-[var(--color-danger-subtle-text)] p-4 rounded-lg flex items-center justify-between gap-4">
+          <span>Failed to load candidate details.</span>
+          <Button variant="secondary" onClick={() => refetch()}>Retry</Button>
         </div>
       </div>
     );

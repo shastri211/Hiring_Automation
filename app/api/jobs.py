@@ -23,6 +23,7 @@ from app.schemas.screening import (
     DecisionUpdate,
     BulkDecisionUpdate,
     InterviewResponse,
+    JobBatchOverviewItem,
 )
 from app.services.profiler import profiler_service
 from app.services.embeddings import embedding_router
@@ -33,6 +34,7 @@ from app.services.model_registry import model_registry
 from app.services.outreach import outreach_service
 from app.services.interview import interview_adapter
 from app.services.dograh import dograh_client
+from app.services.storage import sanitize_filename
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -45,6 +47,35 @@ async def list_jobs(db: AsyncSession = Depends(get_db)):
     return result.scalars().all()
 
 
+# -- cross-job processing overview (sidebar > Processing) ----------------------
+# Registered before the "/{job_id}" routes below so "/batches/overview" isn't
+# swallowed by the int path-converter on job_id.
+
+@router.get("/batches/overview", response_model=List[JobBatchOverviewItem])
+async def get_batches_overview(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(ScreeningBatch, Job.title, Job.status)
+        .join(Job, Job.id == ScreeningBatch.job_id)
+        .order_by(ScreeningBatch.created_at.desc())
+        .limit(100)
+    )
+    rows = result.all()
+    return [
+        JobBatchOverviewItem(
+            job_id=batch.job_id,
+            job_title=job_title,
+            job_status=job_status,
+            batch_id=batch.id,
+            batch_status=batch.status,
+            total=batch.total_resumes,
+            processed=batch.processed,
+            failed=batch.failed,
+            created_at=batch.created_at,
+        )
+        for batch, job_title, job_status in rows
+    ]
+
+
 
 # -- helpers -------------------------------------------------------------------
 
@@ -54,6 +85,16 @@ async def _get_job_or_404(job_id: int, db: AsyncSession) -> Job:
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
+
+
+def _safe_error_message(resume: Resume) -> Optional[str]:
+    """Never surface raw extractor/LLM/DB exception text to the frontend -
+    resume.error_message can contain internal details (file paths, library
+    internals, provider error bodies). Log the raw message server-side where
+    it's set (orchestrator.py) and only expose this generic string here."""
+    if not resume.error_message:
+        return None
+    return "Processing failed - file may be corrupted or unsupported."
 
 
 def _fallback_job_profile(job: Job) -> dict:
@@ -69,16 +110,31 @@ def _fallback_job_profile(job: Job) -> dict:
     }
 
 
+# Fields considered "meaningful" for a job profile - mirrors
+# orchestrator._is_valid_profile's intent for candidate profiles. A profile
+# is valid if any of these carries real content; otherwise it's a
+# technically-truthy but useless dict (e.g. an LLM response with every field
+# empty/null) and should be treated the same as a profiling failure.
+_JOB_PROFILE_MEANINGFUL_FIELDS = ("role_summary", "required_skills", "preferred_skills", "responsibilities", "requirements")
+
+
+def _is_valid_job_profile(job_profile: dict) -> bool:
+    if not isinstance(job_profile, dict) or not job_profile:
+        return False
+    return any(job_profile.get(field) for field in _JOB_PROFILE_MEANINGFUL_FIELDS)
+
+
 async def _bootstrap_job_profile_and_embedding(job: Job) -> None:
     """Populates job.job_profile, job.embedding_profile and job.embedding_status.
 
-    Falls back to a minimal profile if LLM profiling is unavailable, and marks
-    the embedding as FAILED (rather than leaving the READY default) if no
-    embedding provider is currently eligible.
+    Falls back to a minimal profile if LLM profiling is unavailable or
+    returns a well-formed-but-empty result, and marks the embedding as
+    FAILED (rather than leaving the READY default) if no embedding provider
+    is currently eligible.
     """
     try:
         job_profile = await profiler_service.profile_job(job.description)
-        if not job_profile:
+        if not _is_valid_job_profile(job_profile):
             job_profile = _fallback_job_profile(job)
     except Exception as e:
         logger.warning(f"Job profiling failed for job {job.id}, using fallback profile: {e}")
@@ -102,8 +158,25 @@ async def _bootstrap_job_profile_and_embedding(job: Job) -> None:
 
 # -- create job ----------------------------------------------------------------
 
+MIN_JOB_DESCRIPTION_LENGTH = 15
+
+
+def _require_meaningful_description(description: str) -> None:
+    """Guards against an empty/near-empty JD reaching profiling and
+    screening as a "valid" job - profiling would otherwise either raise
+    (caught and silently downgraded to a near-useless fallback profile, see
+    _bootstrap_job_profile_and_embedding) or, worse, return a technically
+    well-formed but meaningless profile."""
+    if len((description or "").strip()) < MIN_JOB_DESCRIPTION_LENGTH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job description must be at least {MIN_JOB_DESCRIPTION_LENGTH} characters.",
+        )
+
+
 @router.post("/", response_model=JobResponse, status_code=201)
 async def create_job(job_in: JobCreate, db: AsyncSession = Depends(get_db)):
+    _require_meaningful_description(job_in.description)
     job = Job(title=job_in.title, description=job_in.description)
     db.add(job)
     await db.flush()
@@ -128,7 +201,7 @@ async def upload_job(
     
     if file:
         os.makedirs("uploads/jobs", exist_ok=True)
-        file_path = os.path.join("uploads/jobs", file.filename)
+        file_path = os.path.join("uploads/jobs", sanitize_filename(file.filename))
         async with aiofiles.open(file_path, 'wb') as out_file:
             content = await file.read()
             await out_file.write(content)
@@ -145,7 +218,9 @@ async def upload_job(
         final_description += description + "\n\n"
     if extracted_text:
         final_description += extracted_text
-        
+
+    _require_meaningful_description(final_description)
+
     # Re-use existing Job Create logic pipeline
     job = Job(title=title, description=final_description)
     db.add(job)
@@ -212,9 +287,12 @@ async def delete_job(job_id: int, db: AsyncSession = Depends(get_db)):
         else:
             logger.warning(f"No embedding profile registered for '{job.embedding_profile}'; skipping Qdrant cleanup for job {job.id}")
 
-    # Delete files associated with this job
+    # Delete files associated with this job. Resumes are stored by
+    # storage_service under "{STORAGE_LOCAL_DIR}/job_{job_id}/batch_.../..."
+    # (see app/api/resumes.py + app/services/storage.py) - must match that
+    # layout exactly or the on-disk files are silently orphaned.
     import shutil
-    job_dir = f"uploads/resumes/{job_id}"
+    job_dir = os.path.join(settings.STORAGE_LOCAL_DIR, f"job_{job_id}")
     if os.path.exists(job_dir):
         shutil.rmtree(job_dir, ignore_errors=True)
 
@@ -240,7 +318,15 @@ async def delete_job(job_id: int, db: AsyncSession = Depends(get_db)):
 async def trigger_screening(job_id: int, db: AsyncSession = Depends(get_db)):
     job = await _get_job_or_404(job_id, db)
 
-    batch = ScreeningBatch(job_id=job.id, status="PROCESSING")
+    # total_resumes = candidates this run will actually attempt to screen, so
+    # the cross-job Processing overview (/jobs/batches/overview) shows real
+    # progress instead of a permanent 0/0/0 row for screening-trigger batches.
+    ready_count_res = await db.execute(
+        select(func.count(Resume.id)).where(Resume.job_id == job_id, Resume.status == "READY")
+    )
+    ready_count = ready_count_res.scalar_one()
+
+    batch = ScreeningBatch(job_id=job.id, status="PROCESSING", total_resumes=ready_count)
     db.add(batch)
     await db.commit()
     await db.refresh(batch)
@@ -331,7 +417,7 @@ async def get_screening_results(
                 notes=sr.notes,
                 created_at=sr.created_at,
                 status=resume.status,
-                error_message=resume.error_message,
+                error_message=_safe_error_message(resume),
                 display_name=display_name
             ))
         else:
@@ -348,7 +434,7 @@ async def get_screening_results(
                 notes=None,
                 created_at=None,
                 status=resume.status,
-                error_message=resume.error_message,
+                error_message=_safe_error_message(resume),
                 display_name=display_name
             ))
 
@@ -405,11 +491,6 @@ async def get_candidate_detail(
             achievements=profile.achievements,
         )
 
-    # Expose error_message only as a sanitized string, not a stack trace
-    safe_error = None
-    if resume.error_message:
-        safe_error = "Processing failed  file may be corrupted or unsupported."
-
     # Interview result (may not exist)
     interview_res = await db.execute(
         select(Interview).where(
@@ -437,7 +518,7 @@ async def get_candidate_detail(
             notes=screening.notes,
             created_at=screening.created_at,
             status=resume.status,
-            error_message=resume.error_message,
+            error_message=_safe_error_message(resume),
             display_name=display_name
         )
 
@@ -445,7 +526,7 @@ async def get_candidate_detail(
         resume_id=resume.id,
         filename=resume.filename,
         status=resume.status,
-        error_message=safe_error,
+        error_message=_safe_error_message(resume),
         profile=profile_detail,
         screening=screening_response,
         interview=InterviewResponse.model_validate(interview) if interview else None,
@@ -574,7 +655,7 @@ async def update_screening_decision(
         notes=screening.notes,
         created_at=screening.created_at,
         status=resume.status,
-        error_message=resume.error_message,
+        error_message=_safe_error_message(resume),
         display_name=display_name
     )
 

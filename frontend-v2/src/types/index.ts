@@ -12,6 +12,10 @@ export interface Job {
   education: Record<string, any>;
   hard_constraints: Record<string, any>;
   status?: string;
+  /** AI-structured summary of `description` (from job_profile). Falls back to
+   * `description` in the UI when null (older jobs, or profiling failure). */
+  role_summary?: string | null;
+  responsibilities?: string[] | null;
 }
 
 export interface ScreeningBatch {
@@ -197,6 +201,18 @@ export interface BatchProgressResponse {
   batches: BatchProgressDetail[];
 }
 
+export interface JobBatchOverviewItem {
+  job_id: number;
+  job_title: string;
+  job_status?: string | null;
+  batch_id: number;
+  batch_status: string;
+  total: number;
+  processed: number;
+  failed: number;
+  created_at?: string | null;
+}
+
 // Candidate Profile Detail
 export interface CandidateProfileDetail {
   name?: string | null;
@@ -260,7 +276,7 @@ export interface EmailMessage {
   template_id?: number;
   subject: string;
   body_content: string;
-  status: 'PENDING' | 'SENT' | 'FAILED';
+  status: 'PENDING' | 'SENT' | 'FAILED' | 'BLOCKED';
   provider_message_id?: string;
   error_message?: string;
   created_at: string;
@@ -285,6 +301,7 @@ export interface AppSettingsResponse {
   shortlist_email_template_id?: number | null;
   auto_email_on_interview_scheduled: boolean;
   interview_scheduled_email_template_id?: number | null;
+  email_test_allowlist?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 }

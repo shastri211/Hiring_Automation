@@ -4,11 +4,11 @@ import { useAddToTalentPool } from '../hooks/useTalentPool';
 import { Users, FileText, CheckCircle2, PackagePlus } from 'lucide-react';
 import { useState } from 'react';
 import { CandidateDrawer } from '../components/CandidateDrawer';
-import { PageHeader, ScoreRing, SkeletonRow } from '../components/ui';
+import { Button, PageHeader, ScoreRing, SkeletonRow } from '../components/ui';
 import type { GlobalScreeningResultResponse } from '../types';
 
 export const Shortlisted = () => {
-  const { candidates, isLoading, isError } = useShortlistedCandidates();
+  const { candidates, isLoading, isError, refetch } = useShortlistedCandidates();
   const navigate = useNavigate();
   const [selectedCandidate, setSelectedCandidate] = useState<{jobId: number, resumeId: number} | null>(null);
   const addToPool = useAddToTalentPool();
@@ -16,7 +16,8 @@ export const Shortlisted = () => {
   if (isError) {
     return (
       <div className="p-8 text-center text-[var(--color-danger-600)]">
-        Failed to load shortlisted candidates.
+        <p className="mb-4">Failed to load shortlisted candidates.</p>
+        <Button variant="secondary" onClick={() => refetch()}>Retry</Button>
       </div>
     );
   }
@@ -63,6 +64,8 @@ export const Shortlisted = () => {
                     key={`${candidate.job_id}-${candidate.resume_id}`}
                     className="transition-base hover:bg-[var(--bg-app)] group cursor-pointer"
                     onClick={() => setSelectedCandidate({ jobId: candidate.job_id, resumeId: candidate.resume_id })}
+                    tabIndex={0}
+                    onKeyDown={(e) => e.key === 'Enter' && setSelectedCandidate({ jobId: candidate.job_id, resumeId: candidate.resume_id })}
                   >
                     <td className="px-6 py-4">
                       <div className="flex items-center space-x-3">

@@ -114,6 +114,56 @@ async def test_results_pagination(client: AsyncClient):
         fastapi_app.dependency_overrides.clear()
 
 
+# -- test_results_sanitizes_error_message ---------------------------------------
+
+@pytest.mark.asyncio
+async def test_results_sanitizes_error_message(client: AsyncClient):
+    """resume.error_message can contain raw extractor/library exception text
+    (file paths, internal details) - the API must never return it verbatim."""
+    from app.api import jobs
+    from app.main import app as fastapi_app
+
+    mock_db = AsyncMock()
+
+    async def mock_get_db():
+        yield mock_db
+
+    fastapi_app.dependency_overrides[jobs.get_db] = mock_get_db
+
+    job_exec = MagicMock()
+    job_exec.scalar_one_or_none.return_value = _make_job(id=1)
+
+    count_exec = MagicMock()
+    count_exec.scalar_one.return_value = 1
+
+    class MockRow:
+        def __init__(self, resume, sr):
+            self.Resume = resume
+            self.ScreeningResult = sr
+            self.candidate_name = None
+
+    from app.models.resume import Resume
+    resume = Resume(id=1, job_id=1, status="FAILED")
+    resume.error_message = "Traceback: fitz.FileDataError: cannot open broken.pdf at /srv/uploads/job_1/broken.pdf"
+    row = MockRow(resume, None)
+
+    items_exec = MagicMock()
+    items_exec.all.return_value = [row]
+
+    mock_db.execute = AsyncMock(side_effect=[job_exec, count_exec, items_exec])
+
+    try:
+        response = await client.get("/jobs/1/results?page=1&page_size=10")
+        assert response.status_code == 200
+        body = response.json()
+        error_message = body["items"][0]["error_message"]
+        assert error_message == "Processing failed - file may be corrupted or unsupported."
+        assert "broken.pdf" not in error_message
+        assert "/srv/uploads" not in error_message
+    finally:
+        fastapi_app.dependency_overrides.clear()
+
+
 # -- test_results_filter_by_decision -------------------------------------------
 
 @pytest.mark.asyncio

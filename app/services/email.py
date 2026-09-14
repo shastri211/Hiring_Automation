@@ -8,9 +8,16 @@ from app.models.email import EmailTemplate, EmailMessage
 from app.models.profile import CandidateProfile
 from app.models.job import Job
 from app.models.interview import Interview
+from app.models.settings import AppSettings
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_allowlist(raw: Optional[str]) -> set[str]:
+    if not raw:
+        return set()
+    return {addr.strip().lower() for addr in raw.split(",") if addr.strip()}
 
 class EmailProviderAdapter:
     """Adapter for sending emails via Resend HTTP API"""
@@ -224,6 +231,28 @@ class EmailService:
                 msg.status = "FAILED"
                 msg.error_message = "Candidate profile not found or has no email address."
                 await session.commit()
+                return
+
+            # Test-data safety net: candidate emails are frequently extracted
+            # from non-real sample resumes. Only addresses the user has
+            # explicitly cleared in Settings > Outreach Automation are allowed
+            # to actually receive mail via Resend; everything else is blocked
+            # before it ever reaches the provider (recorded as BLOCKED, not FAILED,
+            # so it doesn't look like an error and isn't retried).
+            allowlist_row = (
+                await session.execute(select(AppSettings).where(AppSettings.id == 1))
+            ).scalar_one_or_none()
+            allowlist = _parse_allowlist(allowlist_row.email_test_allowlist if allowlist_row else None)
+            if profile.email.strip().lower() not in allowlist:
+                msg.status = "BLOCKED"
+                msg.error_message = (
+                    f"Recipient {profile.email} is not in the test email allowlist "
+                    "(Settings > Outreach Automation). Add it there to allow sending."
+                )
+                await session.commit()
+                logger.warning(
+                    f"Blocked email message {email_message_id}: {profile.email} not in test allowlist"
+                )
                 return
 
             try:

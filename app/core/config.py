@@ -123,6 +123,10 @@ class Settings(BaseSettings):
     # Storage & Screening Config
     STORAGE_LOCAL_DIR: str = "uploads"
     RETRIEVAL_TOP_K: int = 50
+
+    # Resume upload limits (defense against disk-fill DoS / accidental huge batches).
+    MAX_RESUME_FILE_SIZE_MB: int = 15
+    MAX_RESUMES_PER_UPLOAD: int = 200
     
     # Adaptive Semantic Gate
     MIN_CANDIDATES_TO_SCREEN: int = 5

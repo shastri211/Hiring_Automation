@@ -3,7 +3,7 @@ import { candidatesApi } from '../api/candidates';
 import { queryKeys } from '../api/queryKeys';
 
 export const useShortlistedCandidates = (page = 1, pageSize = 20) => {
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: [...queryKeys.shortlisted(), page, pageSize],
     queryFn: () => candidatesApi.getGlobalCandidates({ decision: 'SHORTLIST', page, page_size: pageSize }),
   });
@@ -15,5 +15,6 @@ export const useShortlistedCandidates = (page = 1, pageSize = 20) => {
     pageSize: data?.page_size || 20,
     isLoading,
     isError,
+    refetch,
   };
 };

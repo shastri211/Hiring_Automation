@@ -1,9 +1,9 @@
 import { NavLink } from 'react-router-dom';
-import { 
-  LayoutDashboard, Briefcase, Star, X, 
-  Users, Calendar, Database, Mail, 
-  FileText, Brain, MessageSquare, BarChart, 
-  Puzzle, Settings 
+import {
+  LayoutDashboard, Briefcase, Star, X,
+  Users, Calendar, Database, Mail,
+  FileText, Brain, MessageSquare, BarChart,
+  Puzzle, Settings, ListChecks
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -38,6 +38,7 @@ export const Sidebar = ({
       title: 'RECRUITING',
       items: [
         { to: '/jobs', label: 'Jobs', icon: Briefcase },
+        { to: '/processing', label: 'Processing', icon: ListChecks },
         { to: '/candidates', label: 'Candidates', icon: Users },
         { to: '/shortlisted', label: 'Shortlisted', icon: Star },
         { to: '/interviews', label: 'Interviews', icon: Calendar },

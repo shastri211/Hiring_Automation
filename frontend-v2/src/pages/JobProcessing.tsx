@@ -99,7 +99,7 @@ export const JobProcessing = () => {
       <div className="flex items-center gap-2 text-sm text-slate-500 mb-6">
         <button onClick={() => navigate('/jobs')} className="hover:text-slate-900 transition-colors">Jobs</button>
         <span>/</span>
-        <button onClick={() => navigate(`/jobs/${id}`)} className="hover:text-slate-900 transition-colors">Job #{id}</button>
+        <button onClick={() => navigate(`/jobs/${id}`)} className="hover:text-slate-900 transition-colors">{job?.title || 'Job'}</button>
         <span>/</span>
         <span className="text-slate-900 font-medium">Processing</span>
       </div>

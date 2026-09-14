@@ -6,7 +6,7 @@ import { candidatesApi } from '../api/candidates';
 import { queryKeys } from '../api/queryKeys';
 import { useAddToTalentPool } from '../hooks/useTalentPool';
 import { CandidateDrawer } from '../components/CandidateDrawer';
-import { Badge, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../components/ui';
+import { Badge, Button, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../components/ui';
 import { getDecisionBadgeVariant } from '../utils/decision';
 import type { CandidateDecision, GlobalScreeningResultResponse } from '../types';
 
@@ -28,7 +28,7 @@ export const GlobalCandidates = () => {
 
   const params = { decision, page, page_size: PAGE_SIZE };
 
-  const { data, isLoading, isError, error } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: queryKeys.globalCandidates(params),
     queryFn: () => candidatesApi.getGlobalCandidates(params),
     placeholderData: keepPreviousData,
@@ -76,7 +76,8 @@ export const GlobalCandidates = () => {
           </div>
         ) : isError ? (
           <div className="p-8 text-center text-[var(--color-danger-600)]">
-            Failed to load candidates{error instanceof Error ? `: ${error.message}` : '.'}
+            <p className="mb-4">Failed to load candidates{error instanceof Error ? `: ${error.message}` : '.'}</p>
+            <Button variant="secondary" onClick={() => refetch()}>Retry</Button>
           </div>
         ) : !data || data.items.length === 0 ? (
           <div className="text-center py-20">
@@ -103,6 +104,8 @@ export const GlobalCandidates = () => {
                       key={`${candidate.job_id}-${candidate.resume_id}`}
                       className="hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
                       onClick={() => setSelectedCandidate({ jobId: candidate.job_id, resumeId: candidate.resume_id })}
+                      tabIndex={0}
+                      onKeyDown={(e) => e.key === 'Enter' && setSelectedCandidate({ jobId: candidate.job_id, resumeId: candidate.resume_id })}
                     >
                       <td className="px-6 py-4">
                         <div className="flex items-center space-x-3">
