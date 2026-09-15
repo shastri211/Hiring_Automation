@@ -270,7 +270,7 @@ export const Settings = () => {
                 While candidate data is for testing only, outbound mail is blocked for every recipient
                 except the addresses listed here. Add a real address you control (comma-separated for
                 multiple) whenever you want to test a send; anything not listed is recorded as
-                "Blocked" in Outreach instead of actually being sent via Resend.
+                "Blocked" in Outreach instead of actually being sent.
               </p>
               <Textarea
                 id="email_test_allowlist"

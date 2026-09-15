@@ -312,7 +312,7 @@ export type AppSettingsUpdate = Partial<Omit<AppSettingsResponse, 'id' | 'create
 // Integrations
 // ---------------------------------------------------------------------------
 export interface IntegrationsStatusResponse {
-  resend: { configured: boolean; detail: { from_email: string | null } };
+  smtp: { configured: boolean; detail: { from_email: string | null; host: string | null } };
   dograh: {
     configured: boolean;
     detail: {

@@ -34,7 +34,7 @@ class AppSettings(Base):
 
     # Comma-separated recipient allowlist for outbound candidate email while
     # testing with non-real candidate data. When set (non-empty), any send
-    # whose recipient isn't in this list is blocked before it reaches Resend.
+    # whose recipient isn't in this list is blocked before it reaches the email provider.
     # NULL/empty means "no addresses cleared yet" -> every send is blocked,
     # which is the safer default until the user opts specific addresses in.
     email_test_allowlist = Column(Text, nullable=True)

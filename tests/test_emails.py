@@ -476,9 +476,9 @@ def _make_candidate_profile(email):
 @patch("app.services.email.AsyncSessionLocal", new_callable=MagicMock)
 async def test_process_send_email_task_blocks_recipient_not_in_allowlist(mock_session_local):
     """A candidate email extracted from test/sample resume data must never
-    reach Resend unless the user has explicitly cleared it in Settings ->
-    Outreach Automation. The message should be marked BLOCKED, not SENT/FAILED,
-    and the provider must never be called."""
+    reach the email provider unless the user has explicitly cleared it in
+    Settings -> Outreach Automation. The message should be marked BLOCKED,
+    not SENT/FAILED, and the provider must never be called."""
     from app.services.email import email_service
 
     mock_session = _mock_session_local(mock_session_local)
@@ -533,11 +533,11 @@ async def test_process_send_email_task_sends_when_recipient_in_allowlist(mock_se
     mock_session.commit = AsyncMock()
 
     with patch.object(email_service.provider, "send_email", new_callable=AsyncMock) as mock_send:
-        mock_send.return_value = {"id": "resend_123"}
+        mock_send.return_value = {"id": "smtp_123"}
         await email_service.process_send_email_task(1)
         mock_send.assert_called_once_with(
             to_email="Real.Tester@Example.com", subject="Hi", html_body="Body"
         )
 
     assert msg.status == "SENT"
-    assert msg.provider_message_id == "resend_123"
+    assert msg.provider_message_id == "smtp_123"
