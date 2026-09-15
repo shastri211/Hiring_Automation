@@ -1,5 +1,6 @@
+import asyncio
 import logging
-import httpx
+import smtplib
 from fastapi import APIRouter, HTTPException
 
 from app.core.config import settings
@@ -17,10 +18,11 @@ async def get_integrations_status():
     public_app_base_url = getattr(settings, "PUBLIC_APP_BASE_URL", None)
 
     return {
-        "resend": {
-            "configured": bool(settings.RESEND_API_KEY),
+        "smtp": {
+            "configured": bool(settings.SMTP_HOST),
             "detail": {
-                "from_email": settings.RESEND_FROM_EMAIL,
+                "from_email": settings.SMTP_FROM_EMAIL,
+                "host": settings.SMTP_HOST,
             },
         },
         "dograh": {
@@ -35,25 +37,28 @@ async def get_integrations_status():
     }
 
 
-async def _test_resend() -> dict:
-    if not settings.RESEND_API_KEY:
-        return {"success": False, "message": "RESEND_API_KEY is not configured."}
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                "https://api.resend.com/domains",
-                headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}"},
-                timeout=10.0,
-            )
-        if response.status_code == 200:
-            return {"success": True, "message": "Resend API key is valid."}
+async def _test_smtp() -> dict:
+    if not settings.SMTP_HOST:
         return {
             "success": False,
-            "message": f"Resend responded with status {response.status_code}.",
+            "message": "SMTP_HOST is not configured - emails are currently simulated (logged, not sent).",
         }
+
+    def _connect() -> None:
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as client:
+            client.ehlo()
+            if settings.SMTP_USE_TLS:
+                client.starttls()
+                client.ehlo()
+            if settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
+                client.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+
+    try:
+        await asyncio.to_thread(_connect)
+        return {"success": True, "message": "SMTP connection succeeded."}
     except Exception as e:
-        logger.warning("Resend connectivity test failed: %s", e)
-        return {"success": False, "message": "Could not reach Resend."}
+        logger.warning("SMTP connectivity test failed: %s", e)
+        return {"success": False, "message": f"Could not connect to SMTP server: {e}"}
 
 
 async def _test_dograh() -> dict:
@@ -85,8 +90,8 @@ async def _test_dograh() -> dict:
 @router.post("/{provider}/test")
 async def test_integration(provider: str):
     provider = provider.lower()
-    if provider == "resend":
-        return await _test_resend()
+    if provider == "smtp":
+        return await _test_smtp()
     if provider == "dograh":
         return await _test_dograh()
     raise HTTPException(status_code=404, detail=f"Unknown integration provider: {provider}")

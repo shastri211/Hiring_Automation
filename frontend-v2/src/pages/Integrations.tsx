@@ -48,22 +48,23 @@ export const Integrations = () => {
         </div>
       ) : data ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card className={!data.resend.configured ? 'opacity-80' : undefined}>
+          <Card className={!data.smtp.configured ? 'opacity-80' : undefined}>
             <CardContent className="p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-[var(--text-primary)]">Resend (Email)</h3>
-                <Badge variant={data.resend.configured ? 'success' : 'neutral'}>
-                  {data.resend.configured ? (
+                <h3 className="font-semibold text-[var(--text-primary)]">Email (SMTP)</h3>
+                <Badge variant={data.smtp.configured ? 'success' : 'neutral'}>
+                  {data.smtp.configured ? (
                     <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Configured</span>
-                  ) : 'Not Configured'}
+                  ) : 'Simulated'}
                 </Badge>
               </div>
-              <DetailRow label="From Email" value={data.resend.detail.from_email || '—'} />
+              <DetailRow label="From Email" value={data.smtp.detail.from_email || '—'} />
+              <DetailRow label="SMTP Host" value={data.smtp.detail.host || 'Not set (sends are simulated)'} />
               <Button
                 variant="secondary"
                 size="sm"
                 className="mt-4"
-                onClick={() => handleTest('resend')}
+                onClick={() => handleTest('smtp')}
                 disabled={testMutation.isPending}
               >
                 {testMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Test Connection'}

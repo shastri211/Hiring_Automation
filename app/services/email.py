@@ -1,5 +1,8 @@
-import httpx
+import smtplib
+import asyncio
 import logging
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from typing import List, Optional
 from datetime import datetime, timezone
 from sqlalchemy import select, update
@@ -20,49 +23,54 @@ def _parse_allowlist(raw: Optional[str]) -> set[str]:
     return {addr.strip().lower() for addr in raw.split(",") if addr.strip()}
 
 class EmailProviderAdapter:
-    """Adapter for sending emails via Resend HTTP API"""
-    
+    """Adapter for sending emails via standard SMTP.
+
+    Works with any SMTP server (a free Gmail/Outlook account, a self-hosted
+    relay, a local dev catcher, etc.) using only Python's built-in smtplib -
+    no vendor SDK, account, or paid API required. With SMTP_HOST unset (the
+    default), sends are simulated - logged, not actually transmitted - so the
+    app works fully out of the box with zero configuration.
+    """
+
     def __init__(self):
-        self.api_key = settings.RESEND_API_KEY
-        self.from_email = settings.RESEND_FROM_EMAIL
-        self.api_url = "https://api.resend.com/emails"
-        
+        self.host = settings.SMTP_HOST
+        self.port = settings.SMTP_PORT
+        self.username = settings.SMTP_USERNAME
+        self.password = settings.SMTP_PASSWORD
+        self.use_tls = settings.SMTP_USE_TLS
+        self.from_email = settings.SMTP_FROM_EMAIL
+
     async def send_email(self, to_email: str, subject: str, html_body: str) -> dict:
-        """Sends an email and returns the provider response."""
-        if not self.api_key:
-            logger.warning(f"RESEND_API_KEY not configured. Simulating email to {to_email}")
-            # Simulate a successful response for development if no key is set
+        """Sends an email and returns a provider-style response."""
+        if not self.host:
+            logger.warning(f"SMTP_HOST not configured. Simulating email to {to_email}")
+            # Simulate a successful response for development if no SMTP server is set
             return {"id": f"simulated_msg_{int(datetime.utcnow().timestamp())}", "status": "simulated"}
 
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        payload = {
-            "from": self.from_email,
-            "to": [to_email],
-            "subject": subject,
-            "html": html_body
-        }
-        
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.post(
-                    self.api_url, 
-                    headers=headers, 
-                    json=payload,
-                    timeout=10.0
-                )
-                response.raise_for_status()
-                return response.json()
-            except httpx.HTTPStatusError as e:
-                error_body = e.response.text
-                logger.error(f"Resend API error: {e.response.status_code} - {error_body}")
-                raise Exception(f"Provider Error: {e.response.status_code} - {error_body}")
-            except Exception as e:
-                logger.error(f"Failed to send email to {to_email}: {str(e)}")
-                raise Exception(f"Failed to send email: {str(e)}")
+        message = MIMEMultipart("alternative")
+        message["Subject"] = subject
+        message["From"] = self.from_email
+        message["To"] = to_email
+        message.attach(MIMEText(html_body, "html"))
+
+        try:
+            await asyncio.to_thread(self._send_sync, to_email, message)
+            return {"id": f"smtp_{int(datetime.utcnow().timestamp())}", "status": "sent"}
+        except smtplib.SMTPException as e:
+            logger.error(f"SMTP error sending to {to_email}: {str(e)}")
+            raise Exception(f"Provider Error: {str(e)}")
+        except Exception as e:
+            logger.error(f"Failed to send email to {to_email}: {str(e)}")
+            raise Exception(f"Failed to send email: {str(e)}")
+
+    def _send_sync(self, to_email: str, message: MIMEMultipart) -> None:
+        """Blocking SMTP send, run off the event loop via asyncio.to_thread."""
+        with smtplib.SMTP(self.host, self.port, timeout=10) as client:
+            if self.use_tls:
+                client.starttls()
+            if self.username and self.password:
+                client.login(self.username, self.password)
+            client.sendmail(self.from_email, [to_email], message.as_string())
 
 class EmailService:
     def __init__(self):
@@ -236,7 +244,7 @@ class EmailService:
             # Test-data safety net: candidate emails are frequently extracted
             # from non-real sample resumes. Only addresses the user has
             # explicitly cleared in Settings > Outreach Automation are allowed
-            # to actually receive mail via Resend; everything else is blocked
+            # to actually receive mail via the configured email provider; everything else is blocked
             # before it ever reaches the provider (recorded as BLOCKED, not FAILED,
             # so it doesn't look like an error and isn't retried).
             allowlist_row = (

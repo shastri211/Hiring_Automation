@@ -56,9 +56,18 @@ class Settings(BaseSettings):
     # Defaults to the first model listed in GEMINI_MODELS.
     GEMINI_OCR_MODEL: str = ""
 
-    # Email Settings
-    RESEND_API_KEY: str | None = None
-    RESEND_FROM_EMAIL: str = "noreply@automatedhiring.com"
+    # Email Settings (SMTP)
+    # Standard SMTP works with any mail server - a free Gmail/Outlook account,
+    # a self-hosted relay, a local dev catcher like Mailpit, etc. - so nothing
+    # needs to be purchased or signed up for. Zero-config by default: with
+    # SMTP_HOST unset, EmailProviderAdapter simulates sends (logs only, no
+    # network call) instead of failing, so outreach works out of the box.
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str | None = None
+    SMTP_PASSWORD: str | None = None
+    SMTP_USE_TLS: bool = True
+    SMTP_FROM_EMAIL: str = "noreply@hiring.automation.com"
 
     # Dograh voice-interview integration (browser/web widget, not phone — see
     # app/services/dograh.py and app/api/public_interview.py for the full
