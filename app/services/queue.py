@@ -41,26 +41,36 @@ class QueueService:
         await self.redis_client.xadd(self.stream_name, payload, maxlen=self.stream_maxlen, approximate=True)
 
     async def consume(self, worker_id: str, count: int = 1, block_ms: int = 5000):
-        """First check pending messages, then block for new ones."""
+        """Block for new messages first, then redeliver this consumer's own
+        pending backlog (e.g. after a restart) if there's nothing new.
+
+        Checking '0' (already-delivered-to-this-consumer, unacked) first
+        would starve new work: a message still in retry backoff stays
+        pending until should_retry() allows another attempt, so '0' keeps
+        returning that same message on every call and '>' - where new work
+        arrives - is never reached. New work takes priority; stuck pending
+        messages from a *different* dead consumer are separately reclaimed
+        by recover_stuck_messages().
+        """
         from redis.exceptions import TimeoutError as RedisTimeoutError
         import asyncio
         try:
             result = await self.redis_client.xreadgroup(
                 groupname=self.group_name,
                 consumername=worker_id,
-                streams={self.stream_name: '0'},
-                count=count
+                streams={self.stream_name: '>'},
+                count=count,
+                block=block_ms
             )
-            
+
             if not result or not result[0][1]:
                 result = await self.redis_client.xreadgroup(
                     groupname=self.group_name,
                     consumername=worker_id,
-                    streams={self.stream_name: '>'},
-                    count=count,
-                    block=block_ms
+                    streams={self.stream_name: '0'},
+                    count=count
                 )
-                
+
             if result and result[0][1]:
                 stream_name, messages = result[0]
                 return messages
