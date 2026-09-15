@@ -68,5 +68,18 @@ dump.rdb
 *.sqlite
 *.sqlite3
 
-# Claude local configuration
-.claude/launch.json
+# AI coding-agent artifacts (local configuration/instructions, not part of the app)
+.claude/
+.agents/
+.cursor/
+.cursorrules
+.gemini/
+.windsurf/
+.windsurfrules
+.cline/
+.roo/
+.aider*
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+.mcp.json
