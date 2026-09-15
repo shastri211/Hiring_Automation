@@ -51,7 +51,8 @@ export const InterviewRoom = () => {
 
   const handleStart = () => {
     if (!data) return;
-    if (!data.dograh_base_url || !data.dograh_embed_token) {
+    const widgetBaseUrl = data.dograh_widget_base_url || data.dograh_base_url;
+    if (!widgetBaseUrl || !data.dograh_embed_token) {
       // Dograh isn't configured on this deployment yet (missing base URL/embed token) -
       // fail gracefully instead of injecting a broken script.
       setPhase('widget_error');
@@ -65,17 +66,16 @@ export const InterviewRoom = () => {
     const params = new URLSearchParams({
       token: data.dograh_embed_token,
       environment: data.dograh_environment || 'production',
-      apiEndpoint: data.dograh_api_endpoint || data.dograh_base_url,
+      apiEndpoint: data.dograh_api_endpoint || data.dograh_base_url || widgetBaseUrl,
     });
-    script.src = `${data.dograh_base_url.replace(/\/$/, '')}/embed/dograh-widget.js?${params.toString()}`;
+    script.src = `${widgetBaseUrl.replace(/\/$/, '')}/embed/dograh-widget.js?${params.toString()}`;
 
     script.onload = () => {
-      // The widget's exact JS call signature (beyond method/callback *names*
-      // confirmed from Dograh's docs - start/end/setContext/onCallConnected/
-      // onCallDisconnected/onCallEnd/onError) should be verified against the
-      // live widget once real Dograh credentials are configured; this is
-      // written defensively so a shape mismatch degrades to the error state
-      // rather than throwing an unhandled exception in the candidate's browser.
+      // Confirmed against the real widget (ui/public/embed/dograh-widget.js):
+      // onCallConnected/onCallDisconnected/onCallEnd/onError/setContext/start
+      // are all methods on window.DograhWidget - onCallConnected etc. are
+      // *registration functions* you call with a callback, not assignable
+      // properties, so `widget.onCallConnected = fn` would silently never fire.
       try {
         const widget = (window as unknown as { DograhWidget?: any }).DograhWidget;
         if (!widget) {
@@ -83,13 +83,13 @@ export const InterviewRoom = () => {
           return;
         }
         widget.setContext?.(data.initial_context);
-        widget.onCallConnected = () => {
+        widget.onCallConnected?.(() => {
           setPhase('in_call');
           startedMutation.mutate();
-        };
-        widget.onCallDisconnected = () => setPhase('ended');
-        widget.onCallEnd = () => setPhase('ended');
-        widget.onError = () => setPhase('widget_error');
+        });
+        widget.onCallDisconnected?.(() => setPhase('ended'));
+        widget.onCallEnd?.(() => setPhase('ended'));
+        widget.onError?.(() => setPhase('widget_error'));
         widget.start?.();
       } catch {
         setPhase('widget_error');
