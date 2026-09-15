@@ -76,6 +76,15 @@ class Settings(BaseSettings):
     # + widget (checked by DograhClient.is_configured); the rest support the
     # manual resync endpoint and the outbound webhook receiver.
     DOGRAH_BASE_URL: str | None = None
+    # Base URL that actually serves the embeddable widget <script> file
+    # (/embed/dograh-widget.js). In a production deployment behind Dograh's
+    # nginx, this is the same origin as DOGRAH_BASE_URL - but a local
+    # self-hosted Dograh (docker compose without --profile remote, i.e. no
+    # nginx) serves that static file from the Next.js UI app's own origin
+    # (default http://localhost:3010), not from the API (DOGRAH_BASE_URL,
+    # default http://localhost:8000). Falls back to DOGRAH_BASE_URL when
+    # unset so single-origin deployments need no extra config.
+    DOGRAH_WIDGET_BASE_URL: str | None = None
     DOGRAH_EMBED_TOKEN: str | None = None
     DOGRAH_WEBHOOK_SECRET: str | None = None
     DOGRAH_API_KEY: str | None = None

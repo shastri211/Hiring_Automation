@@ -123,6 +123,7 @@ export interface PublicInterviewRoomResponse {
   candidate_name: string;
   job_title: string;
   dograh_base_url: string | null;
+  dograh_widget_base_url: string | null;
   dograh_embed_token: string | null;
   dograh_environment: string | null;
   dograh_api_endpoint: string | null;
@@ -130,6 +131,10 @@ export interface PublicInterviewRoomResponse {
     job_id: number;
     resume_id: number;
     interview_id: number;
+    candidate_name: string;
+    candidate_summary: string;
+    job_title: string;
+    job_requirements: string;
   };
 }
 

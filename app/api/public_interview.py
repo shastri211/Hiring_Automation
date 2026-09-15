@@ -52,21 +52,30 @@ async def get_interview_room(token: str, db: AsyncSession = Depends(get_db)):
     )
     profile = profile_res.scalar_one_or_none()
 
+    candidate_name = profile.name if profile and profile.name else "Candidate"
+    job_title = job.title if job else ""
+
     return {
-        "candidate_name": (profile.name if profile and profile.name else "Candidate"),
-        "job_title": job.title if job else "",
+        "candidate_name": candidate_name,
+        "job_title": job_title,
+        # The widget's <script src> and its own API calls (apiEndpoint) can be
+        # different origins on a local self-hosted Dograh with no nginx in
+        # front of it - see DOGRAH_WIDGET_BASE_URL in app/core/config.py.
         "dograh_base_url": settings.DOGRAH_BASE_URL,
+        "dograh_widget_base_url": settings.DOGRAH_WIDGET_BASE_URL or settings.DOGRAH_BASE_URL,
         "dograh_embed_token": settings.DOGRAH_EMBED_TOKEN,
-        # Everything the frontend needs to build the real embed <script> tag
-        # (confirmed shape: src="{base}/embed/dograh-widget.js?token=...&environment=...&apiEndpoint=...")
-        # without guessing at deploy time - DOGRAH_BASE_URL is reused as the
-        # apiEndpoint value since backend and widget-host share a base URL here.
         "dograh_environment": settings.DOGRAH_ENVIRONMENT,
         "dograh_api_endpoint": settings.DOGRAH_BASE_URL,
         "initial_context": {
             "job_id": interview.job_id,
             "resume_id": interview.resume_id,
             "interview_id": interview.id,
+            # Additive fields the screening workflow's prompts reference as
+            # {{initial_context.<name>}} - existing keys above are unchanged.
+            "candidate_name": candidate_name,
+            "candidate_summary": (profile.summary if profile and profile.summary else ""),
+            "job_title": job_title,
+            "job_requirements": (job.description if job and job.description else ""),
         },
     }
 

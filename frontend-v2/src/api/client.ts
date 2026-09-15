@@ -8,7 +8,7 @@ export const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
   // Send the httpOnly `access_token` session cookie on cross-origin requests
-  // (dev: frontend on :5173, backend on :8000). Backend CORS already sets
+  // (dev: frontend on :5173, backend on :8001). Backend CORS already sets
   // allow_credentials: true with an explicit origin list.
   withCredentials: true,
 });
