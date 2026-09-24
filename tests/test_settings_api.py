@@ -1,6 +1,18 @@
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 from httpx import AsyncClient
+from tenancy_fixtures import TEST_ORG_ID
+
+
+def _org_result(name="Test Organization"):
+    """Result of the Organization lookup the settings API does to report the
+    organization's name."""
+    org = MagicMock()
+    org.id = TEST_ORG_ID
+    org.name = name
+    exec_result = MagicMock()
+    exec_result.scalar_one.return_value = org
+    return exec_result, org
 
 
 def _make_app_settings(**overrides):
@@ -9,7 +21,7 @@ def _make_app_settings(**overrides):
 
     s = MagicMock(spec=AppSettings)
     s.id = 1
-    s.org_name = None
+    s.organization_id = TEST_ORG_ID
     s.min_candidates_to_screen = None
     s.max_candidates_to_screen = None
     s.semantic_gap_threshold = None
@@ -28,7 +40,7 @@ def _make_app_settings(**overrides):
 
 
 @pytest.mark.asyncio
-async def test_get_settings_creates_singleton_when_missing(client: AsyncClient):
+async def test_get_settings_creates_org_row_when_missing(client: AsyncClient):
     from app.api import settings as settings_api
     from app.main import app as fastapi_app
 
@@ -41,7 +53,8 @@ async def test_get_settings_creates_singleton_when_missing(client: AsyncClient):
 
     missing_exec = MagicMock()
     missing_exec.scalar_one_or_none.return_value = None
-    mock_db.execute = AsyncMock(return_value=missing_exec)
+    org_exec, _org = _org_result()
+    mock_db.execute = AsyncMock(side_effect=[missing_exec, org_exec])
     mock_db.add = MagicMock()
     mock_db.commit = AsyncMock()
 
@@ -50,7 +63,6 @@ async def test_get_settings_creates_singleton_when_missing(client: AsyncClient):
         # matching what a real `db.refresh()` (SELECT-reload) would do.
         import datetime
         obj.id = 1
-        obj.org_name = None
         obj.min_candidates_to_screen = None
         obj.max_candidates_to_screen = None
         obj.semantic_gap_threshold = None
@@ -72,7 +84,10 @@ async def test_get_settings_creates_singleton_when_missing(client: AsyncClient):
         body = response.json()
         assert body["id"] == 1
         assert body["auto_email_on_shortlist"] is False
+        assert body["organization_name"] == "Test Organization"
         mock_db.add.assert_called_once()
+        # Created for the caller's organization, not a global singleton.
+        assert mock_db.add.call_args.args[0].organization_id == TEST_ORG_ID
         mock_db.commit.assert_called_once()
     finally:
         fastapi_app.dependency_overrides.clear()
@@ -119,18 +134,21 @@ async def test_patch_settings_updates_fields(client: AsyncClient):
     fastapi_app.dependency_overrides[settings_api.get_db] = mock_get_db
 
     existing = _make_app_settings()
-    settings_exec = MagicMock()
-    settings_exec.scalar_one_or_none.return_value = existing
+    # One result object serving both lookups this route makes: the
+    # Organization (scalar_one) and the organization's settings row
+    # (scalar_one_or_none).
+    exec_result, _org = _org_result()
+    exec_result.scalar_one_or_none.return_value = existing
 
-    mock_db.execute = AsyncMock(return_value=settings_exec)
+    mock_db.execute = AsyncMock(return_value=exec_result)
     mock_db.commit = AsyncMock()
     mock_db.refresh = AsyncMock()
 
     try:
-        response = await client.patch("/settings/", json={"org_name": "Acme Corp", "auto_email_on_shortlist": True})
+        response = await client.patch("/settings/", json={"organization_name": "Acme Corp", "auto_email_on_shortlist": True})
         assert response.status_code == 200
         body = response.json()
-        assert body["org_name"] == "Acme Corp"
+        assert body["organization_name"] == "Acme Corp"
         assert body["auto_email_on_shortlist"] is True
     finally:
         fastapi_app.dependency_overrides.clear()
@@ -149,7 +167,7 @@ async def test_get_effective_screening_config_falls_back_to_env_defaults():
     exec_result.scalar_one_or_none.return_value = None
     mock_db.execute = AsyncMock(return_value=exec_result)
 
-    min_keep, max_keep, gap_threshold = await settings_service.get_effective_screening_config(mock_db)
+    min_keep, max_keep, gap_threshold = await settings_service.get_effective_screening_config(mock_db, TEST_ORG_ID)
 
     assert min_keep == app_config.MIN_CANDIDATES_TO_SCREEN
     assert max_keep == app_config.MAX_CANDIDATES_TO_SCREEN
@@ -167,26 +185,28 @@ async def test_get_effective_screening_config_uses_db_overrides_when_set():
     )
     mock_db.execute = AsyncMock(return_value=exec_result)
 
-    min_keep, max_keep, gap_threshold = await settings_service.get_effective_screening_config(mock_db)
+    min_keep, max_keep, gap_threshold = await settings_service.get_effective_screening_config(mock_db, TEST_ORG_ID)
 
     assert (min_keep, max_keep, gap_threshold) == (3, 15, 0.2)
 
 
 @pytest.mark.asyncio
 async def test_real_settings_round_trip(client: AsyncClient):
-    """Real-DB smoke test proving the migration-backed table + get-or-create
-    singleton actually works end to end."""
+    """Real-DB smoke test proving the migration-backed table + per-org
+    get-or-create actually works end to end."""
     try:
         response = await client.get("/settings/")
         assert response.status_code == 200
-        assert response.json()["id"] == 1
+        first_id = response.json()["id"]
+        # Stable: the organization's single row, not a new one per call.
+        assert (await client.get("/settings/")).json()["id"] == first_id
 
-        patch_response = await client.patch("/settings/", json={"org_name": "Real DB Test Org"})
+        patch_response = await client.patch("/settings/", json={"organization_name": "Real DB Test Org"})
         assert patch_response.status_code == 200
-        assert patch_response.json()["org_name"] == "Real DB Test Org"
+        assert patch_response.json()["organization_name"] == "Real DB Test Org"
 
         get_response = await client.get("/settings/")
-        assert get_response.json()["org_name"] == "Real DB Test Org"
+        assert get_response.json()["organization_name"] == "Real DB Test Org"
     finally:
         # Reset so repeated local/dev runs against the same DB stay clean.
-        await client.patch("/settings/", json={"org_name": None})
+        await client.patch("/settings/", json={"organization_name": "Test Organization"})

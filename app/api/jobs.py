@@ -239,7 +239,7 @@ async def create_job(
     current_user: User = Depends(get_current_user),
 ):
     _require_meaningful_description(job_in.description)
-    job = Job(title=job_in.title, description=job_in.description)
+    job = Job(title=job_in.title, description=job_in.description, organization_id=current_user.organization_id)
     db.add(job)
     await db.flush()
 
@@ -301,7 +301,7 @@ async def upload_job(
     _require_meaningful_description(final_description)
 
     # Re-use existing Job Create logic pipeline
-    job = Job(title=title, description=final_description)
+    job = Job(title=title, description=final_description, organization_id=current_user.organization_id)
     db.add(job)
     await db.flush()
 

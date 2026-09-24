@@ -4,17 +4,18 @@ from app.db.base import Base
 
 
 class AppSettings(Base):
-    """Single-row (id=1) singleton settings table.
+    """Per-organization settings - exactly one row per organization
+    (organization_id is unique), get-or-created by SettingsService.
 
-    Single-tenant, small, typed, slow-changing field set. Two fields are real
-    FKs to email_templates.id, which a KV/JSONB design would lose.
+    Small, typed, slow-changing field set. Two fields are real FKs to
+    email_templates.id, which a KV/JSONB design would lose; both must
+    reference a template of the same organization.
     """
 
     __tablename__ = "app_settings"
 
     id = Column(Integer, primary_key=True)
-
-    org_name = Column(String(255), nullable=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, unique=True, index=True)
 
     min_candidates_to_screen = Column(Integer, nullable=True)  # NULL = use env default
     max_candidates_to_screen = Column(Integer, nullable=True)  # NULL = use env default

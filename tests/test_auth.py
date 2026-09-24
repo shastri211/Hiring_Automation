@@ -7,15 +7,17 @@ know about auth). The `_use_real_auth` fixture below pops that override for
 every test in this module so we're actually exercising the real dependency.
 """
 import uuid
+from datetime import datetime, timezone
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
-from app.api.deps import get_current_user
+from app.api.deps import get_authenticated_user, get_current_user
 from app.db.session import AsyncSessionLocal
 from app.models.user import User
 from app.services.auth import hash_password
+from tenancy_fixtures import TEST_ORG_ID
 
 _GENERIC_LOGIN_ERROR = "Incorrect email or password"
 
@@ -26,6 +28,7 @@ def _use_real_auth():
     from app.main import app
 
     app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_authenticated_user, None)
     yield
     # The conftest.py autouse fixture re-installs the override on its own
     # teardown for the next test; nothing else to restore here.
@@ -36,7 +39,16 @@ async def real_user(db_session):
     """A real, committed User row with a known plaintext password."""
     email = f"auth-test-{uuid.uuid4().hex}@example.com"
     password = "correct-horse-battery-staple"
-    user = User(email=email, name="Auth Test User", hashed_password=hash_password(password))
+    # A verified admin of the test organization (admin so the invite tests
+    # below can create teammates).
+    user = User(
+        organization_id=TEST_ORG_ID,
+        email=email,
+        name="Auth Test User",
+        hashed_password=hash_password(password),
+        role="admin",
+        email_verified_at=datetime.now(timezone.utc),
+    )
     db_session.add(user)
     await db_session.commit()
     await db_session.refresh(user)

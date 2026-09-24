@@ -8,6 +8,9 @@ class TalentPoolEntry(Base):
     __tablename__ = "talent_pool_entries"
 
     id = Column(Integer, primary_key=True, index=True)
+    # Must equal the organization of resume_id's job and of added_from_job_id
+    # - enforced at creation (app/api/talent_pool.py).
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
     resume_id = Column(Integer, ForeignKey("resumes.id"), nullable=False, unique=True, index=True)
     added_from_job_id = Column(Integer, ForeignKey("jobs.id"), nullable=True, index=True)
 

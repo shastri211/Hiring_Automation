@@ -7,6 +7,7 @@ from app.models.batch import ScreeningBatch
 from app.models.resume import Resume
 from app.models.interview import Interview
 from app.services.interview import InterviewIntegrationAdapter
+from tenancy_fixtures import TEST_ORG_ID
 
 
 @pytest.fixture
@@ -18,7 +19,7 @@ async def make_interview(db_session):
     async def _make(**interview_kwargs):
         counter["n"] += 1
         n = counter["n"]
-        job = Job(title=f"Test Job {n}", description="d")
+        job = Job(organization_id=TEST_ORG_ID, title=f"Test Job {n}", description="d")
         db_session.add(job)
         await db_session.commit()
         await db_session.refresh(job)

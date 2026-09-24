@@ -1,14 +1,23 @@
 import logging
-from typing import List
-
-from sqlalchemy import select
+from typing import List, Optional
 
 from app.db.session import AsyncSessionLocal
 from app.models.settings import AppSettings
+from app.services import tenancy
 from app.services.email import email_service
 from app.services.queue import queue_service
+from app.services.settings import settings_service
 
 logger = logging.getLogger(__name__)
+
+
+async def _job_org_settings(session, job_id: int) -> Optional[AppSettings]:
+    """Settings of the organization that owns this job - never another
+    organization's toggles/templates/test overrides."""
+    organization_id = await tenancy.organization_id_for_job(session, job_id)
+    if organization_id is None:
+        return None
+    return await settings_service.get_row(session, organization_id)
 
 
 class OutreachAutomationService:
@@ -29,8 +38,7 @@ class OutreachAutomationService:
             return
         try:
             async with AsyncSessionLocal() as session:
-                result = await session.execute(select(AppSettings).where(AppSettings.id == 1))
-                app_settings = result.scalar_one_or_none()
+                app_settings = await _job_org_settings(session, job_id)
                 if not app_settings:
                     return
 
@@ -92,8 +100,7 @@ class OutreachAutomationService:
         """
         try:
             async with AsyncSessionLocal() as session:
-                result = await session.execute(select(AppSettings).where(AppSettings.id == 1))
-                app_settings = result.scalar_one_or_none()
+                app_settings = await _job_org_settings(session, job_id)
                 if not app_settings or not app_settings.auto_email_on_interview_scheduled:
                     return
                 if not app_settings.interview_scheduled_email_template_id:

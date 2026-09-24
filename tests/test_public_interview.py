@@ -9,10 +9,11 @@ from app.models.batch import ScreeningBatch
 from app.models.resume import Resume
 from app.models.profile import CandidateProfile
 from app.models.interview import Interview
+from tenancy_fixtures import TEST_ORG_ID
 
 
 async def _make_job_resume(db_session, job_title="Backend Engineer", candidate_name="Jane Doe"):
-    job = Job(title=job_title, description="A test job description")
+    job = Job(organization_id=TEST_ORG_ID, title=job_title, description="A test job description")
     db_session.add(job)
     await db_session.commit()
     await db_session.refresh(job)

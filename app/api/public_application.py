@@ -47,17 +47,7 @@ async def _get_job_by_token_or_typed_error(token: str, db: AsyncSession) -> Job:
 
 
 async def _enforce_rate_limit(key: str, limit: int) -> None:
-    try:
-        allowed, retry_after = await rate_limit.check(key, limit, _RATE_WINDOW_SECONDS)
-    except rate_limit.RateLimiterUnavailable:
-        logger.error("Public apply rate limiter unavailable (Redis unreachable); failing closed.")
-        raise HTTPException(status_code=503, detail={"reason": "temporarily_unavailable"})
-    if not allowed:
-        raise HTTPException(
-            status_code=429,
-            detail={"reason": "rate_limited"},
-            headers={"Retry-After": str(retry_after)},
-        )
+    await rate_limit.enforce(key, limit, _RATE_WINDOW_SECONDS)
 
 
 @router.get("/{token}", response_model=PublicJobResponse)

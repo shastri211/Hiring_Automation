@@ -265,7 +265,7 @@ class RecruitmentOrchestrator:
                     # existing Application is recorded so Stage 3 can trigger
                     # a fresh screening pass once the resume is READY.
                     resolved_candidate_id = await candidate_identity.resolve_candidate_for_resume(
-                        session, resume, profile_row
+                        session, resume, profile_row, organization_id=job.organization_id
                     )
                     _application, resume_is_version_swap = await candidate_identity.get_or_create_application(
                         session, candidate_id=resolved_candidate_id, job_id=job.id, resume=resume

@@ -4,9 +4,14 @@ from app.db.base import Base
 
 class EmailTemplate(Base):
     __tablename__ = "email_templates"
+    __table_args__ = (
+        # Template names are unique per organization, not globally.
+        UniqueConstraint("organization_id", "name", name="uq_email_templates_org_name"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), nullable=False, unique=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
     subject = Column(String(255), nullable=False)
     body_content = Column(Text, nullable=False)
     
