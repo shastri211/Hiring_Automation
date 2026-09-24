@@ -129,3 +129,37 @@ async def test_claim_stuck_messages(test_queue):
     pending = await test_queue.redis_client.xpending(test_queue.stream_name, test_queue.group_name)
     assert pending["pending"] == 0
 
+
+@pytest.mark.asyncio
+async def test_heartbeat_prevents_stuck_message_reclaim(test_queue):
+    """A message a worker is still actively processing must not be
+    reclaimable while its heartbeat keeps resetting the idle timer - only
+    a genuinely dead consumer's message (no heartbeat) should ever be
+    stuck-message-reclaimed."""
+    worker_1 = "test_worker_5_a"
+    worker_2 = "test_worker_5_b"
+
+    await test_queue.enqueue_resume(105, job_id=1, batch_id=1)
+
+    messages = await test_queue.consume(worker_1, count=1, block_ms=1000)
+    assert len(messages) == 1
+    msg_id, _ = messages[0]
+
+    await asyncio.sleep(0.6)
+    # Heartbeat resets the idle timer just before it would otherwise cross
+    # the 500ms threshold below.
+    await test_queue.heartbeat(worker_1, msg_id)
+
+    claimed = await test_queue.claim_stuck_messages(worker_2, min_idle_ms=500)
+    assert claimed == []
+
+    # Without another heartbeat, it becomes claimable again once genuinely
+    # idle past the threshold.
+    await asyncio.sleep(0.6)
+    claimed = await test_queue.claim_stuck_messages(worker_2, min_idle_ms=500)
+    assert len(claimed) == 1
+    c_msg_id, payload = claimed[0]
+    assert payload["resume_id"] == "105"
+
+    await test_queue.ack(c_msg_id)
+

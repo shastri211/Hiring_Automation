@@ -9,9 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.screening import ScreeningResult
 from app.models.profile import CandidateProfile
 from app.models.resume import Resume
-from app.schemas.screening import ScreeningResultSchema
+from app.models.interview import Interview
+from app.schemas.screening import ScreeningResultSchema, EVALUATION_FAILED_NOTE_PREFIX
 from app.services.vector_store import vector_store
 from app.services.llm_provider import LLMProviderFactory, InvalidEvaluationResultError
+from app.services import screening_audit
 from app.models.job import Job
 from app.core.config import settings
 
@@ -145,6 +147,36 @@ class ScreenerService:
         passed_ids = {c[0] for c in passed_gate}
 
         results: List[ScreeningResult] = []
+        # Only app/api/jobs.py's manual HR decision endpoints call
+        # outreach_service.on_decision_shortlisted today - the automatic AI
+        # screening path here never did, so a candidate the AI itself
+        # shortlisted never got an auto-generated interview link or
+        # auto-sent email no matter how auto_generate_interview_on_shortlist/
+        # auto_email_on_shortlist were configured. Tracked here and fired
+        # once, after the batch commits below, so it never runs against
+        # ScreeningResults that could still be rolled back.
+        shortlisted_resume_ids: List[int] = []
+
+        # Phase 4: one batched preload covering every candidate in this run,
+        # so linking each new ScreeningResult to its Application and writing
+        # a DecisionAudit entry (below) is pure in-memory lookups inside the
+        # loop - not a query per candidate.
+        all_resume_ids = [payload.get("resume_id") for _cid, _score, payload in candidates if payload.get("resume_id")]
+        audit_context = await screening_audit.preload_application_context(
+            db, job_id=job_id, resume_ids=all_resume_ids
+        )
+        # A crash between an earlier run's ScreeningResult commit and its
+        # outreach_service.on_decision_shortlisted call (below) would
+        # otherwise permanently skip that resume's interview-link/email
+        # automation - the idempotency guard's "already exists, skip" never
+        # gives it another chance. Resumes that already have an Interview
+        # are excluded from that recovery so a routine re-screen (e.g. new
+        # candidates uploaded later) doesn't regenerate and invalidate an
+        # already-sent, already-working interview link for everyone already
+        # fully processed.
+        already_interviewed_resume_ids = set(
+            (await db.execute(select(Interview.resume_id).where(Interview.job_id == job_id))).scalars().all()
+        )
 
         for _candidate_id_str, semantic_score, payload in candidates:
             resume_id = payload.get("resume_id")
@@ -160,7 +192,10 @@ class ScreenerService:
                 )
             )
 
-            if existing.scalar_one_or_none() is not None:
+            existing_result = existing.scalar_one_or_none()
+            if existing_result is not None:
+                if existing_result.decision == "SHORTLIST" and resume_id not in already_interviewed_resume_ids:
+                    shortlisted_resume_ids.append(resume_id)
                 logger.info(
                     "ScreeningResult for job=%s resume=%s already exists; skipping.",
                     job_id,
@@ -195,6 +230,9 @@ class ScreenerService:
                 except IntegrityError:
                     pass
                 else:
+                    screening_audit.record_screening_event(
+                        db, audit_context, resume_id=resume_id, screening_result=screening_result, actor_type="SYSTEM",
+                    )
                     results.append(screening_result)
                 continue
 
@@ -277,7 +315,12 @@ class ScreenerService:
                     )
                     continue
 
+                screening_audit.record_screening_event(
+                    db, audit_context, resume_id=resume_id, screening_result=screening_result, actor_type="SYSTEM",
+                )
                 results.append(screening_result)
+                if screening_result.decision == "SHORTLIST":
+                    shortlisted_resume_ids.append(resume_id)
 
             except Exception as e:
                 logger.exception(
@@ -296,7 +339,7 @@ class ScreenerService:
                     score=None,
                     semantic_score=semantic_score,
                     decision="REVIEW",
-                    notes=f"Evaluation failed due to provider error: {str(e)[:200]}"
+                    notes=f"{EVALUATION_FAILED_NOTE_PREFIX} {str(e)[:200]}"
                 )
                 try:
                     async with db.begin_nested():
@@ -305,9 +348,18 @@ class ScreenerService:
                 except IntegrityError:
                     continue
 
+                screening_audit.record_screening_event(
+                    db, audit_context, resume_id=resume_id, screening_result=screening_result, actor_type="SYSTEM",
+                )
                 results.append(screening_result)
 
         await db.commit()
+
+        if shortlisted_resume_ids:
+            from app.services.outreach import outreach_service
+
+            await outreach_service.on_decision_shortlisted(job_id, shortlisted_resume_ids)
+
         return results
 
     async def evaluate_candidate(
@@ -361,8 +413,97 @@ Expected JSON Schema:
                 f"LLM evaluation returned an out-of-range/non-numeric score: {score!r}"
             )
 
+        # strengths/gaps/evidence are written as-is to ScreeningResult's JSON
+        # columns and read back through ScreeningResultResponse's
+        # `Optional[List[str]]` typing - an LLM returning e.g. a list of
+        # objects instead of strings (schema is only a prompt hint, never
+        # enforced by the provider) would otherwise persist fine and only
+        # blow up as a 500 on every later GET of this row. Coerced here,
+        # the one place both screen_job and retry_evaluation funnel through,
+        # rather than validated again at each read site.
+        for key in ("strengths", "gaps", "evidence"):
+            value = result.get(key)
+            if not isinstance(value, list):
+                result[key] = []
+            else:
+                result[key] = [item if isinstance(item, str) else json.dumps(item) for item in value]
+
         return result
-        
+
+    async def retry_evaluation(self, db: AsyncSession, *, job: Job, resume_id: int) -> ScreeningResult:
+        """Re-runs the LLM evaluation for one candidate whose ScreeningResult
+        is stuck in the fallback/provider-error state (see the `except
+        Exception` branch in screen_job above) - e.g. after a transient LLM
+        outage that has since cleared. Refuses to touch anything that isn't
+        actually in that state, so this can never be used to second-guess or
+        silently overwrite a real AI decision.
+
+        On a repeat failure, updates the same placeholder's notes with the
+        new error (still no score/decision change) and re-raises, so the
+        caller can tell the retry itself failed rather than succeeding with
+        a stale response.
+        """
+        sr_result = await db.execute(
+            select(ScreeningResult).where(
+                ScreeningResult.job_id == job.id, ScreeningResult.resume_id == resume_id
+            )
+        )
+        screening_result = sr_result.scalar_one_or_none()
+        if screening_result is None:
+            raise ValueError("No screening result exists yet for this candidate.")
+        if not (screening_result.notes and screening_result.notes.startswith(EVALUATION_FAILED_NOTE_PREFIX)):
+            raise ValueError("This candidate's evaluation did not fail - there is nothing to retry.")
+
+        profile_result = await db.execute(
+            select(CandidateProfile).where(CandidateProfile.resume_id == resume_id)
+        )
+        profile = profile_result.scalar_one_or_none()
+        if profile is None:
+            raise ValueError("No candidate profile found for this resume.")
+
+        candidate_profile = {
+            "name": profile.name,
+            "summary": profile.summary,
+            "total_experience_years": profile.total_experience_years,
+            "education": profile.education,
+            "experience": profile.experience,
+            "skills": profile.skills,
+            "projects": profile.projects,
+            "certifications": profile.certifications,
+            "languages": profile.languages,
+            "achievements": profile.achievements,
+        }
+        candidate_profile = self._sanitize_context(candidate_profile, job.job_profile)
+
+        audit_context = await screening_audit.preload_application_context(
+            db, job_id=job.id, resume_ids=[resume_id]
+        )
+
+        try:
+            eval_result = await self.evaluate_candidate(job.job_profile, candidate_profile)
+        except Exception as e:
+            logger.exception(
+                "Retry evaluation failed again for resume_id=%s job=%s", resume_id, job.id
+            )
+            screening_result.notes = f"{EVALUATION_FAILED_NOTE_PREFIX} {str(e)[:200]}"
+            await db.commit()
+            raise
+
+        screening_result.score = eval_result.get("score", 0.0)
+        screening_result.strengths = eval_result.get("strengths", [])
+        screening_result.gaps = eval_result.get("gaps", [])
+        screening_result.evidence = eval_result.get("evidence", [])
+        screening_result.decision = eval_result.get("decision", "REVIEW")
+        screening_result.notes = None
+
+        screening_audit.record_screening_event(
+            db, audit_context, resume_id=resume_id, screening_result=screening_result, actor_type="SYSTEM",
+        )
+
+        await db.commit()
+        await db.refresh(screening_result)
+        return screening_result
+
     def _sanitize_context(self, candidate_profile: dict, job_profile: dict) -> dict:
         """
         Strips PII and conditionally removes irrelevant fields based on job profile.

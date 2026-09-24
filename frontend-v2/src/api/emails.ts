@@ -33,7 +33,7 @@ export const emailsApi = {
     return apiClient.delete(`/emails/templates/${id}`);
   },
 
-  bulkSend: async (jobId: number, request: BulkEmailRequest): Promise<{status: string, queued_count: number}> => {
+  bulkSend: async (jobId: number, request: BulkEmailRequest): Promise<{status: string, queued_count: number, requested_count: number}> => {
     return apiClient.post(`/emails/jobs/${jobId}/bulk-send`, request);
   },
 

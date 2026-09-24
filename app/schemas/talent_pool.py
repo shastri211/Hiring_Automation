@@ -29,6 +29,9 @@ class TalentPoolEntryResponse(BaseModel):
     phone: Optional[str] = None
     job_id: Optional[int] = None
     job_title: Optional[str] = None
+    # Phase 6: see ScreeningResultResponse for what these represent.
+    candidate_id: Optional[int] = None
+    applications_count: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 

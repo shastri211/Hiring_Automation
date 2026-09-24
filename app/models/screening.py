@@ -11,6 +11,11 @@ class ScreeningResult(Base):
     id = Column(Integer, primary_key=True, index=True)
     job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False, index=True)
     resume_id = Column(Integer, ForeignKey("resumes.id"), nullable=False, index=True)
+    # Nullable, non-unique during the Phase 1 rollout: backfilled by
+    # scripts/backfill_candidates_applications.py. Becomes the sole (unique)
+    # link to Application at cutover, once screening code writes it directly
+    # and (job_id, resume_id) is retired.
+    application_id = Column(Integer, ForeignKey("applications.id"), nullable=True, index=True)
 
     score = Column(Float, nullable=True)
     semantic_score = Column(Float, nullable=True)

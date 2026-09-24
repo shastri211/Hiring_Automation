@@ -9,7 +9,14 @@ class Settings(BaseSettings):
     POSTGRES_SERVER: str = "localhost"
     POSTGRES_PORT: str = "5432"
     POSTGRES_DB: str = "resume_screener"
-    
+
+    # Set only by the test suite (pytest.ini) to point every DB connection
+    # at a dedicated Postgres schema instead of "public" - the same
+    # database/server, so no extra credentials or CREATEDB permission are
+    # needed, but genuinely separate tables, so tests can never read or
+    # write real dev data. None in normal (dev/prod) operation.
+    DB_SCHEMA: str | None = None
+
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:
         import urllib.parse
@@ -102,6 +109,10 @@ class Settings(BaseSettings):
     # must be registered in Dograh's Allowed Domains for the embed token to work.
     PUBLIC_APP_BASE_URL: str | None = None
     DOGRAH_INTERVIEW_LINK_TTL_HOURS: int = 168
+    # Retry is an exception mechanism, not normal scheduling - original
+    # attempt + this many additional retries, capped strictly.
+    INTERVIEW_MAX_RETRY_ATTEMPTS: int = 2
+    INTERVIEW_NO_SHOW_SWEEP_INTERVAL_SECONDS: int = 900
 
 
     @property
@@ -145,7 +156,21 @@ class Settings(BaseSettings):
     # Resume upload limits (defense against disk-fill DoS / accidental huge batches).
     MAX_RESUME_FILE_SIZE_MB: int = 15
     MAX_RESUMES_PER_UPLOAD: int = 200
-    
+
+    # ZIP uploads (Phase 5): the archive itself needs a bigger cap than a
+    # single resume file - a legitimate full batch of MAX_RESUMES_PER_UPLOAD
+    # resumes at MAX_RESUME_FILE_SIZE_MB each won't compress much further
+    # once already-compressed PDFs are involved. Left unset (None) by
+    # default so it tracks the other two settings automatically; set it
+    # explicitly via env only if a deployment needs a different cap.
+    MAX_ZIP_FILE_SIZE_MB: int | None = None
+
+    @property
+    def max_zip_file_size_mb(self) -> int:
+        if self.MAX_ZIP_FILE_SIZE_MB is not None:
+            return self.MAX_ZIP_FILE_SIZE_MB
+        return self.MAX_RESUME_FILE_SIZE_MB * self.MAX_RESUMES_PER_UPLOAD
+
     # Adaptive Semantic Gate
     MIN_CANDIDATES_TO_SCREEN: int = 5
     MAX_CANDIDATES_TO_SCREEN: int = 20

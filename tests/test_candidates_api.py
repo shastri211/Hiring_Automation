@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 from httpx import AsyncClient
@@ -45,30 +47,38 @@ async def test_get_global_candidates_visibility(client: AsyncClient):
     # We need to mock the count query result and the rows query result
     count_exec = MagicMock()
     count_exec.scalar_one.return_value = 2
-    
+
     rows_exec = MagicMock()
-    
-    # Row format: ScreeningResult, job_title, candidate_name, filename, resume_status, error_message, resume_id, job_id
+
+    # Phase 6: the query now selects (ScreeningResult, job_title,
+    # resume_status, error_message, resume_id, job_id) - candidate name
+    # resolution moved to the separate, batched get_candidate_summaries
+    # call, mocked below rather than simulated through mock_db.execute.
     sr1 = _make_screening_result(id=1, job_id=1, resume_id=1, score=90.0, decision="SHORTLIST")
     sr2 = None # Second candidate has no ScreeningResult (e.g. failed or out of bounds)
-    
-    row1 = (sr1, "Job1", "Alice", "alice.pdf", "READY", None, 1, 1)
-    row2 = (sr2, "Job1", "Bob", "bob.pdf", "READY", None, 2, 1)
-    
+
+    row1 = SimpleNamespace(ScreeningResult=sr1, job_title="Job1", resume_status="READY", error_message=None, resume_id=1, job_id=1)
+    row2 = SimpleNamespace(ScreeningResult=sr2, job_title="Job1", resume_status="READY", error_message=None, resume_id=2, job_id=1)
+
     rows_exec.all.return_value = [row1, row2]
-    
+
     mock_db = AsyncMock()
     mock_db.execute.side_effect = [count_exec, rows_exec]
-    
+
     async def mock_get_db_gen():
         yield mock_db
-        
+
     from app.main import app
     from app.api import candidates
     app.dependency_overrides[candidates.get_db] = mock_get_db_gen
-    
-    response = await client.get("/candidates/")
-    
+
+    summaries = {
+        1: {"display_name": "Alice", "candidate_id": 101, "applications_count": 1, "profile_name": "Alice"},
+        2: {"display_name": "Bob", "candidate_id": 102, "applications_count": 1, "profile_name": "Bob"},
+    }
+    with patch("app.api.candidates.get_candidate_summaries", new_callable=AsyncMock, return_value=summaries):
+        response = await client.get("/candidates/")
+
     app.dependency_overrides.clear()
     
     assert response.status_code == 200

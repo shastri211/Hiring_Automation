@@ -40,12 +40,33 @@ def test_parse_envelope_canonical_shape():
     assert parsed["cost_info"]["call_duration_seconds"] == 120
 
 
-def test_parse_envelope_legacy_malformed_dict_buckets_unspecified():
+def test_parse_envelope_unrecognized_dict_shape_buckets_fields_unspecified():
+    """An evaluation dict with none of the recognized keys still came from
+    our own receive_evaluation flow (the only writer of this column), so
+    source is "dograh" - only the fields this dict doesn't actually have
+    (disposition, duration, legacy nested buckets) fall back to unspecified/empty."""
     parsed = parse_evaluation_envelope({"some_other_legacy_key": "value"})
-    assert parsed["source"] == "unspecified"
+    assert parsed["source"] == "dograh"
     assert parsed["call_disposition"] == "unspecified"
     assert parsed["gathered_context"] == {}
     assert parsed["cost_info"] == {}
+
+
+def test_parse_envelope_new_flat_shape():
+    """Interview.evaluation is stored flat as of
+    app/services/interview.py::_normalize_evaluation_data - no
+    gathered_context/cost_info wrapper. call_duration_seconds and
+    call_disposition must still parse correctly from the top level."""
+    parsed = parse_evaluation_envelope({
+        "workflow_run_id": "run-999",
+        "call_disposition": "end_call",
+        "call_duration_seconds": 245,
+        "years_relevant_experience": "3 years",
+        "interview_recommendation": "Advance - strong technical answers.",
+    })
+    assert parsed["source"] == "dograh"
+    assert parsed["call_disposition"] == "end_call"
+    assert parsed["cost_info"]["call_duration_seconds"] == 245
 
 
 def test_parse_envelope_non_dict_never_raises():

@@ -1,20 +1,109 @@
+import { useState } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
-import { ArrowLeft, ExternalLink, Briefcase, GraduationCap, PackagePlus } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Briefcase, GraduationCap, PackagePlus, Pencil, Check, X, Undo2, Users2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { jobsApi } from '../api/jobs';
 import { resumesApi } from '../api/resumes';
 import { queryKeys } from '../api/queryKeys';
-import { useDecisionMutation } from '../hooks/useDecisionMutation';
+import { useDecisionMutation, useRetryEvaluation } from '../hooks/useDecisionMutation';
 import { useAddToTalentPool } from '../hooks/useTalentPool';
+import { useCandidate, useUpdateCandidateName, useUnmergeCandidate } from '../hooks/useCandidateIdentity';
+import { useConfirm } from '../hooks/useConfirm';
 import { Button } from '../components/ui/Button';
-import { Spinner, PageHeader } from '../components/ui';
+import { Spinner, PageHeader, Input, Badge } from '../components/ui';
+import { parseRecommendation } from '../utils/interviewEvaluation';
 import {
   ScoreVisualizer,
   DecisionControlBar,
   ExtractedSkills,
-  ScreeningAnalysis
+  ScreeningAnalysis,
+  EvaluationFailedBanner
 } from '../components/candidate/CandidateComponents';
 import { OutreachHistory } from '../components/candidate/OutreachHistory';
+
+const CandidateIdentityCard = ({ candidateId, applicationsCount }: { candidateId: number; applicationsCount?: number | null }) => {
+  const { data: candidate, isLoading } = useCandidate(candidateId);
+  const updateName = useUpdateCandidateName();
+  const unmerge = useUnmergeCandidate();
+  const confirm = useConfirm();
+  const [isEditing, setIsEditing] = useState(false);
+  const [nameInput, setNameInput] = useState('');
+
+  if (isLoading || !candidate) return null;
+
+  const startEdit = () => {
+    setNameInput(candidate.canonical_name || '');
+    setIsEditing(true);
+  };
+
+  const saveName = () => {
+    updateName.mutate(
+      { candidateId, canonicalName: nameInput.trim() || null },
+      { onSuccess: () => setIsEditing(false) }
+    );
+  };
+
+  const handleUndoMerge = async () => {
+    const ok = await confirm({
+      title: 'Undo this merge?',
+      description: `Restores this candidate as its own separate record, no longer merged into "${candidate.merged_into_name || `candidate #${candidate.merged_into_id}`}".`,
+      confirmLabel: 'Undo Merge',
+    });
+    if (ok) unmerge.mutate(candidateId);
+  };
+
+  return (
+    <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-light)] shadow-[var(--shadow-sm)] p-6">
+      <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3 flex items-center gap-2">
+        <Users2 className="w-4 h-4 text-[var(--text-tertiary)]" /> Candidate Identity
+      </h3>
+
+      {candidate.merged_into_id != null && (
+        <div className="mb-3 p-3 rounded-lg bg-[var(--color-warning-subtle-bg)] text-[var(--color-warning-subtle-text)] text-xs">
+          <p className="mb-2">
+            This candidate record was merged into{' '}
+            <span className="font-medium">{candidate.merged_into_name || `candidate #${candidate.merged_into_id}`}</span>.
+          </p>
+          <Button variant="secondary" onClick={handleUndoMerge} disabled={unmerge.isPending} className="flex items-center gap-1.5 h-7 px-2.5 text-xs">
+            <Undo2 className="w-3.5 h-3.5" /> Undo Merge
+          </Button>
+        </div>
+      )}
+
+      <div className="text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide mb-1">Display name</div>
+      {isEditing ? (
+        <div className="flex items-center gap-2">
+          <Input
+            autoFocus
+            value={nameInput}
+            onChange={(e) => setNameInput(e.target.value)}
+            placeholder="Leave blank to use extracted/derived name"
+            className="h-8 text-sm"
+          />
+          <button onClick={saveName} disabled={updateName.isPending} className="text-[var(--color-success-600)] hover:opacity-75 shrink-0" title="Save">
+            <Check className="w-4 h-4" />
+          </button>
+          <button onClick={() => setIsEditing(false)} className="text-[var(--text-tertiary)] hover:opacity-75 shrink-0" title="Cancel">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-[var(--text-primary)]">{candidate.canonical_name || <em className="text-[var(--text-tertiary)] not-italic">Using extracted/derived name</em>}</span>
+          <button onClick={startEdit} className="text-[var(--text-tertiary)] hover:text-[var(--color-primary-600)]" title="Edit display name">
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {applicationsCount != null && (
+        <p className="mt-3 pt-3 border-t border-[var(--border-light)] text-xs text-[var(--text-secondary)]">
+          Applied to {applicationsCount} job{applicationsCount === 1 ? '' : 's'} total.
+        </p>
+      )}
+    </div>
+  );
+};
 
 export const Candidate360 = () => {
   const { id: jobIdStr, resumeId: resumeIdStr } = useParams();
@@ -31,7 +120,9 @@ export const Candidate360 = () => {
   });
 
   const decisionMutation = useDecisionMutation(jobId);
+  const retryEvaluation = useRetryEvaluation(jobId);
   const addToPool = useAddToTalentPool();
+  const interviewRecommendation = parseRecommendation(data?.interview?.evaluation?.interview_recommendation);
 
   const handleBack = () => {
     // Navigate back to the previous list with preserved state, or fallback to job detail
@@ -101,6 +192,11 @@ export const Candidate360 = () => {
           >
             <PackagePlus className="w-4 h-4" /> Add to Talent Pool
           </Button>
+          {interviewRecommendation && (
+            <Badge variant={interviewRecommendation.variant} title={interviewRecommendation.reason || undefined}>
+              Interview: {interviewRecommendation.label}
+            </Badge>
+          )}
           <Link to={`/interview/${jobId}/${resumeId}`}>
             <Button>Interview Workspace</Button>
           </Link>
@@ -176,6 +272,18 @@ export const Candidate360 = () => {
             {/* Right Column: AI Screening */}
             <div className="xl:col-span-1">
               <div className="space-y-6 sticky top-0 pb-8">
+                {data.screening?.raw_candidate_id != null && (
+                  <CandidateIdentityCard
+                    candidateId={data.screening.raw_candidate_id}
+                    applicationsCount={data.screening.applications_count}
+                  />
+                )}
+                {data.screening?.evaluation_failed && (
+                  <EvaluationFailedBanner
+                    onRetry={() => retryEvaluation.mutate(resumeId)}
+                    isPending={retryEvaluation.isPending}
+                  />
+                )}
                 <ScoreVisualizer screening={data.screening} />
                 <ScreeningAnalysis screening={data.screening} />
               </div>

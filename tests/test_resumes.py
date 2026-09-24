@@ -2,12 +2,29 @@ import io
 
 import pytest
 from httpx import AsyncClient
+from unittest.mock import patch, AsyncMock
 
 from app.models.job import Job
 
 
+@pytest.fixture
+def mock_upload_io():
+    """Uploads that get past validation would otherwise write a real file
+    under uploads/ and enqueue a real Redis message - both hit the live dev
+    filesystem/queue on every test run, since `client`/`db_session` exercise
+    the real app rather than a mocked one. The worker then endlessly retries
+    these fake "resumes" (plain placeholder bytes, not real PDFs/DOCXs)
+    until it gives up, spamming its own log. Faking just these two I/O
+    boundaries stops that, while still exercising this endpoint's real
+    validation/dedup/DB logic end-to-end exactly as before."""
+    with patch("app.api.resumes.storage_service.save_file", new_callable=AsyncMock) as mock_save, \
+         patch("app.api.resumes.queue_service.enqueue_resume", new_callable=AsyncMock) as mock_enqueue:
+        mock_save.side_effect = lambda file, prefix, filename_override=None: f"{prefix}/{filename_override or file.filename}"
+        yield mock_save, mock_enqueue
+
+
 @pytest.mark.asyncio
-async def test_bulk_upload_resumes(client: AsyncClient, db_session):
+async def test_bulk_upload_resumes(client: AsyncClient, db_session, mock_upload_io):
     job = Job(
         title="Test Upload Job",
         description="Testing resume upload",
@@ -93,7 +110,7 @@ async def test_bulk_upload_rejects_content_type_extension_mismatch(client: Async
 
 
 @pytest.mark.asyncio
-async def test_bulk_upload_rejects_oversized_file(client: AsyncClient, db_session):
+async def test_bulk_upload_rejects_oversized_file(client: AsyncClient, db_session, mock_upload_io):
     job = Job(
         title="Test Oversized Upload Job",
         description="Testing resume upload",
@@ -122,7 +139,7 @@ async def test_bulk_upload_rejects_oversized_file(client: AsyncClient, db_sessio
 
 
 @pytest.mark.asyncio
-async def test_bulk_upload_dedupes_identical_files_in_same_request(client: AsyncClient, db_session):
+async def test_bulk_upload_dedupes_identical_files_in_same_request(client: AsyncClient, db_session, mock_upload_io):
     """Two files with identical content uploaded in the same request must
     only create one Resume row - the second is reported as a duplicate,
     not silently dropped or double-inserted."""

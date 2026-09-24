@@ -78,7 +78,7 @@ export const EmailTemplates = () => {
                 type="text" 
                 value={formData.name}
                 onChange={e => setFormData(f => ({ ...f, name: e.target.value }))}
-                className="w-full border-slate-300 rounded-md shadow-sm text-sm focus-ring"
+                className="w-full border-slate-300 rounded-md shadow-sm text-sm bg-white text-slate-900 placeholder-slate-400 focus-ring"
                 placeholder="e.g., Interview Invitation"
               />
             </div>
@@ -89,7 +89,7 @@ export const EmailTemplates = () => {
                 type="text" 
                 value={formData.subject}
                 onChange={e => setFormData(f => ({ ...f, subject: e.target.value }))}
-                className="w-full border-slate-300 rounded-md shadow-sm text-sm focus-ring"
+                className="w-full border-slate-300 rounded-md shadow-sm text-sm bg-white text-slate-900 placeholder-slate-400 focus-ring"
                 placeholder="Invitation to interview for {{job_title}}"
               />
             </div>
@@ -101,7 +101,7 @@ export const EmailTemplates = () => {
                 rows={6}
                 value={formData.body_content}
                 onChange={e => setFormData(f => ({ ...f, body_content: e.target.value }))}
-                className="w-full border-slate-300 rounded-md shadow-sm text-sm focus-ring"
+                className="w-full border-slate-300 rounded-md shadow-sm text-sm bg-white text-slate-900 placeholder-slate-400 focus-ring"
                 placeholder="Hi {{candidate_name}}, we'd like to invite you..."
               />
             </div>
@@ -112,7 +112,11 @@ export const EmailTemplates = () => {
               </Button>
             </div>
             {(createMutation.isError || updateMutation.isError) && (
-              <p className="text-red-500 text-sm mt-2">Failed to save template.</p>
+              <p className="text-red-500 text-sm mt-2">
+                {(createMutation.error as { message?: string } | null)?.message
+                  || (updateMutation.error as { message?: string } | null)?.message
+                  || 'Failed to save template.'}
+              </p>
             )}
           </form>
         </div>

@@ -8,3 +8,6 @@ from app.models.email import EmailTemplate, EmailMessage
 from app.models.settings import AppSettings
 from app.models.talent_pool import TalentPoolEntry
 from app.models.user import User
+from app.models.candidate import Candidate, CandidateMergeLog, CandidateMatchSuggestion
+from app.models.application import Application, ApplicationResumeHistory
+from app.models.decision_audit import DecisionAudit

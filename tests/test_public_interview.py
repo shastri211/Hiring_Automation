@@ -75,6 +75,10 @@ async def test_valid_token_returns_expected_fields(db_session, client: AsyncClie
         "job_id": job.id,
         "resume_id": resume.id,
         "interview_id": interview.id,
+        "candidate_name": "Jane Doe",
+        "candidate_summary": "",
+        "job_title": "Backend Engineer",
+        "job_requirements": "A test job description",
     }
 
 

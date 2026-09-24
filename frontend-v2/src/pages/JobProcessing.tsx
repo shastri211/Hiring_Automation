@@ -41,6 +41,10 @@ export const JobProcessing = () => {
     onSuccess: () => {
       // Invalidate to fetch the new PROCESSING batch immediately
       queryClient.invalidateQueries({ queryKey: queryKeys.jobProgress(jobId) });
+      // The cross-job Processing page reads a separate query key - without
+      // this, the new SCREEN batch is invisible there until its 5-minute
+      // staleTime lapses.
+      queryClient.invalidateQueries({ queryKey: queryKeys.batchesOverview() });
       toast.success('Screening started. Results will appear as processing completes.');
     },
     onError: (error: { message?: string }) => {
@@ -144,7 +148,11 @@ export const JobProcessing = () => {
 };
 
 const BatchCard = ({ batch, jobId, onNavigate }: { batch: BatchProgressDetail, jobId: number, onNavigate: (path: string) => void }) => {
-  const isScreening = (batch.total === 0);
+  // Was previously guessed from `batch.total === 0`, which only held while
+  // a SCREEN batch's total was always (incorrectly) reported as 0 - now
+  // that it correctly reports the real screened count, batch_type is the
+  // only reliable signal.
+  const isScreening = batch.batch_type === 'SCREEN';
   const isLive = batch.status !== 'COMPLETED' && batch.status !== 'FAILED';
   
   const statusLabel = batch.status === 'PROCESSING' 

@@ -15,6 +15,11 @@ class Resume(Base):
     id = Column(Integer, primary_key=True, index=True)
     batch_id = Column(Integer, ForeignKey("screening_batches.id"), nullable=False, index=True)
     job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False, index=True)
+    # Nullable during the Phase 1 rollout: backfilled by
+    # scripts/backfill_candidates_applications.py for existing rows, and set
+    # at upload time going forward. Will move to NOT NULL once resume
+    # ingestion is cut over to write it directly (see Application).
+    candidate_id = Column(Integer, ForeignKey("candidates.id"), nullable=True, index=True)
 
     filename = Column(String(255), nullable=False)
     file_hash = Column(String(64), nullable=False, index=True) # For duplicate detection

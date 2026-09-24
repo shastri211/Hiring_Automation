@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import { Search, ChevronLeft, ChevronRight, CheckCircle2, XCircle, Clock, Mail, PackagePlus } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, CheckCircle2, XCircle, Clock, Mail, PackagePlus, RefreshCw, Loader2 } from 'lucide-react';
 import { jobsApi } from '../api/jobs';
 import { queryKeys } from '../api/queryKeys';
-import { useDecisionMutation } from '../hooks/useDecisionMutation';
+import { useDecisionMutation, useRetryEvaluation } from '../hooks/useDecisionMutation';
 import { useAddToTalentPool } from '../hooks/useTalentPool';
+import { emailQueryKeys } from '../hooks/useEmails';
 import type { CandidateDecision } from '../types';
 import { CandidateDrawer } from '../components/CandidateDrawer';
 import { BulkEmailModal } from '../components/BulkEmailModal';
@@ -49,6 +50,7 @@ export const JobCandidates = () => {
   });
 
   const decisionMutation = useDecisionMutation(jobId);
+  const retryEvaluation = useRetryEvaluation(jobId);
   const addToPool = useAddToTalentPool();
 
   const handleDecision = (resumeId: number, decision: CandidateDecision | null) => {
@@ -58,10 +60,20 @@ export const JobCandidates = () => {
   const bulkDecisionMutation = useMutation({
     mutationFn: ({ resumeIds, decision }: { resumeIds: number[], decision: CandidateDecision }) =>
       jobsApi.bulkUpdateDecision(jobId, resumeIds, decision),
-    onSuccess: () => {
+    onSuccess: (_, { resumeIds }) => {
       // Invalidate all paginated/filtered variants for this job, not just the current one
       queryClient.invalidateQueries({ queryKey: queryKeys.candidates(jobId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.candidateDetail(jobId, 0).slice(0, 2) });
+      // Mirrors useDecisionMutation's single-decision invalidation - a bulk
+      // SHORTLIST must also refresh the global Shortlisted page.
+      queryClient.invalidateQueries({ queryKey: queryKeys.shortlisted() });
+      // Bulk SHORTLIST can auto-mint interview links and auto-send emails
+      // (see useDecisionMutation's single-decision counterpart) - each
+      // resume's OutreachHistory reads its own query key, so it needs its
+      // own invalidation too.
+      resumeIds.forEach((resumeId) => {
+        queryClient.invalidateQueries({ queryKey: emailQueryKeys.candidateHistory(resumeId) });
+      });
       setSelectedIds([]);
     }
   });
@@ -218,7 +230,7 @@ export const JobCandidates = () => {
                 ) : data?.items?.map((c) => (
                   <tr
                     key={c.resume_id}
-                    className={`transition-base cursor-pointer group ${selectedIds.includes(c.resume_id) ? 'bg-[var(--color-primary-subtle-bg)]' : 'hover:bg-[var(--color-primary-50)]'}`}
+                    className={`transition-base cursor-pointer group ${selectedIds.includes(c.resume_id) ? 'bg-[var(--color-primary-subtle-bg)]' : 'hover:bg-[var(--bg-hover)]'}`}
                     onClick={() => setSelectedResumeId(c.resume_id)}
                     tabIndex={0}
                     onKeyDown={(e) => e.key === 'Enter' && setSelectedResumeId(c.resume_id)}
@@ -268,6 +280,18 @@ export const JobCandidates = () => {
                           <span className="inline-flex items-center gap-1 text-[var(--color-warning-subtle-text)] font-medium px-2 py-1 bg-[var(--color-warning-subtle-bg)] border border-[var(--border-light)] rounded">
                             Not advanced by semantic pre-screening
                           </span>
+                        ) : c.evaluation_failed ? (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); retryEvaluation.mutate(c.resume_id); }}
+                            disabled={retryEvaluation.isPending && retryEvaluation.variables === c.resume_id}
+                            className="inline-flex items-center gap-1.5 text-[var(--color-danger-subtle-text)] font-medium px-2 py-1 bg-[var(--color-danger-subtle-bg)] border border-[var(--border-light)] rounded hover:opacity-80 transition-base disabled:opacity-60"
+                          >
+                            {retryEvaluation.isPending && retryEvaluation.variables === c.resume_id ? (
+                              <><Loader2 className="w-3 h-3 animate-spin" /> Retrying evaluation…</>
+                            ) : (
+                              <><RefreshCw className="w-3 h-3" /> Evaluation failed — Retry</>
+                            )}
+                          </button>
                         ) : c.evidence?.[0] ? c.evidence[0] : (
                           <span className="text-[var(--text-tertiary)] italic">No evidence provided.</span>
                         )}
@@ -368,8 +392,7 @@ export const JobCandidates = () => {
 
       {showEmailModal && (
         <BulkEmailModal
-          jobId={jobId}
-          selectedResumeIds={selectedIds}
+          resumeGroups={[{ jobId, resumeIds: selectedIds, jobTitle: jobMeta?.title }]}
           onClose={() => setShowEmailModal(false)}
           onSuccess={() => {
             setShowEmailModal(false);

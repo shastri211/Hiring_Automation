@@ -2,6 +2,19 @@ from pydantic import BaseModel, Field, ConfigDict, computed_field
 from typing import List, Optional, Any, Literal
 from datetime import datetime
 
+# Set on ScreeningResult.notes by screener.py's per-candidate fallback path
+# when every configured LLM provider fails for that one candidate (a
+# transient outage, not a data/parsing problem) - score/strengths/gaps/
+# evidence are left null and decision defaults to REVIEW as a safe
+# placeholder. Shared here (not just in screener.py) so the same exact
+# string is used both when setting it and when detecting it for the
+# "retry evaluation" action below.
+EVALUATION_FAILED_NOTE_PREFIX = "Evaluation failed due to provider error:"
+
+
+def is_evaluation_failed(notes: Optional[str]) -> bool:
+    return bool(notes) and notes.startswith(EVALUATION_FAILED_NOTE_PREFIX)
+
 
 class ScreeningResultSchema(BaseModel):
     score: Optional[float] = Field(None, description="Overall fit score out of 100")
@@ -33,6 +46,27 @@ class ScreeningResultResponse(ScreeningResultSchema):
     status: Optional[str] = None
     error_message: Optional[str] = None
     display_name: Optional[str] = None
+    # Phase 6: the canonical Candidate this resume resolves to (following
+    # any merge), and how many jobs they've applied to in total - lets a
+    # consumer identify/group rows belonging to the same real person across
+    # jobs without changing this endpoint's one-row-per-application shape.
+    candidate_id: Optional[int] = None
+    applications_count: Optional[int] = None
+    # Phase 8: this resume's own (unresolved) Resume.candidate_id, distinct
+    # from candidate_id above. Needed to show/undo THIS resume's own merge
+    # state on Candidate360: candidate_id always resolves through
+    # Candidate.merged_into_id to the canonical survivor, whose own
+    # merged_into_id is by definition always null, so the merge banner could
+    # never render if fed candidate_id. Only populated on the single-resume
+    # detail endpoint that needs it (GET /jobs/{job_id}/results/{resume_id}).
+    raw_candidate_id: Optional[int] = None
+    # True when this result is the fallback placeholder from every LLM
+    # provider failing for this one candidate (see EVALUATION_FAILED_NOTE_PREFIX
+    # above) - lets the frontend offer a "Retry Evaluation" action instead of
+    # silently showing a dash score and "no evidence" as if it were a real
+    # (if uninformative) outcome. Deliberately not exposing the raw `notes`
+    # text itself to the client.
+    evaluation_failed: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -78,6 +112,8 @@ class InterviewResponse(BaseModel):
     status: str
     transcript: Optional[str] = None
     evaluation: Optional[Any] = None
+    outcome: Optional[str] = None
+    retry_count: int = 0
 
     provider: Optional[str] = None
     provider_run_id: Optional[str] = None
@@ -127,6 +163,10 @@ class BatchProgressDetail(BaseModel):
     review: int
     rejected: int
     pre_screened_out: int = 0
+    # Lets the frontend tell a SCREEN batch (screening run) apart from an
+    # UPLOAD batch (extraction) directly, instead of guessing from total==0 -
+    # that guess breaks the moment a SCREEN batch's total is ever non-zero.
+    batch_type: str = "UPLOAD"
 
 
 class BatchProgressResponse(BaseModel):
@@ -151,3 +191,4 @@ class JobBatchOverviewItem(BaseModel):
     processed: int
     failed: int
     created_at: Optional[datetime] = None
+    batch_type: str = "UPLOAD"

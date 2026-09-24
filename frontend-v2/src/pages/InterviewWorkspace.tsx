@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   ArrowLeft, Mic, Clock, FileText, PlayCircle, BarChart3, AlertCircle, CheckCircle2,
-  Link as LinkIcon, Copy, RefreshCw, ExternalLink,
+  Link as LinkIcon, Copy, RefreshCw, ExternalLink, UserX, XCircle,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -12,7 +12,19 @@ import { api } from '../api';
 import { queryKeys } from '../api/queryKeys';
 import { Button, Badge, PageHeader } from '../components/ui';
 import { getInterviewStatusBadgeVariant } from '../utils/status';
-import type { DograhEvaluationEnvelope, IntegrationResponse } from '../types';
+import { ratingVariant, parseRecommendation } from '../utils/interviewEvaluation';
+import type { InterviewEvaluationData, IntegrationResponse } from '../types';
+
+// A structured Q&A field is worth a row in the grid only once the interview
+// has actually said something about it.
+const QA_FIELDS: { key: keyof InterviewEvaluationData; label: string }[] = [
+  { key: 'years_relevant_experience', label: 'Relevant Experience' },
+  { key: 'key_skills_mentioned', label: 'Key Skills Mentioned' },
+  { key: 'notice_period', label: 'Notice Period' },
+  { key: 'salary_expectation', label: 'Salary Expectation' },
+  { key: 'motivation_summary', label: 'Motivation' },
+  { key: 'concerns_or_gaps', label: 'Concerns / Gaps' },
+];
 
 const STEPS: { key: string; label: string }[] = [
   { key: 'PENDING', label: 'Requested' },
@@ -21,19 +33,6 @@ const STEPS: { key: string; label: string }[] = [
   { key: 'COMPLETED', label: 'Completed' },
 ];
 
-function parseMaybeJson(value: unknown): Record<string, unknown> | null {
-  if (value == null) return null;
-  if (typeof value === 'string') {
-    try {
-      const parsed = JSON.parse(value);
-      return typeof parsed === 'object' ? parsed : null;
-    } catch {
-      return null;
-    }
-  }
-  return typeof value === 'object' ? (value as Record<string, unknown>) : null;
-}
-
 function formatDuration(seconds?: number | null): string {
   if (seconds == null || Number.isNaN(seconds)) return '—';
   const mins = Math.floor(seconds / 60);
@@ -41,16 +40,68 @@ function formatDuration(seconds?: number | null): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-const LifecycleStepper = ({ status, scheduledAt, completedAt }: { status: string; scheduledAt?: string | null; completedAt?: string | null }) => {
+const LifecycleStepper = ({
+  status, scheduledAt, completedAt, outcome, retryCount,
+}: {
+  status: string;
+  scheduledAt?: string | null;
+  completedAt?: string | null;
+  outcome?: string | null;
+  retryCount?: number;
+}) => {
   if (status === 'FAILED') {
     return (
       <div className="text-center py-8 px-4">
         <div className="bg-[var(--color-danger-subtle-bg)] w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3">
           <AlertCircle className="w-6 h-6 text-[var(--color-danger-600)]" />
         </div>
-        <h4 className="text-sm font-medium text-[var(--text-primary)] mb-1">Interview Failed</h4>
+        <h4 className="text-sm font-medium text-[var(--text-primary)] mb-1">Interview Inconclusive</h4>
         <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-          The interview could not be scheduled or completed. Try triggering it again.
+          The interview did not reach a completed state{outcome ? ` (${outcome})` : ''}. You can resend the link
+          or mark the candidate as declined if that's confirmed.
+        </p>
+      </div>
+    );
+  }
+
+  if (status === 'RESCHEDULE_PENDING') {
+    return (
+      <div className="text-center py-8 px-4">
+        <div className="bg-[var(--color-warning-subtle-bg)] w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3">
+          <AlertCircle className="w-6 h-6 text-[var(--color-warning-600)]" />
+        </div>
+        <h4 className="text-sm font-medium text-[var(--text-primary)] mb-1">System Issue Interrupted the Interview</h4>
+        <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+          A provider/system issue ({outcome || 'unknown'}) cut the interview short - not the candidate's fault.
+          {retryCount != null && <> Retry attempt {retryCount} used so far.</>} You can retry, subject to the retry limit.
+        </p>
+      </div>
+    );
+  }
+
+  if (status === 'NO_SHOW') {
+    return (
+      <div className="text-center py-8 px-4">
+        <div className="bg-[var(--color-danger-subtle-bg)] w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3">
+          <UserX className="w-6 h-6 text-[var(--color-danger-600)]" />
+        </div>
+        <h4 className="text-sm font-medium text-[var(--text-primary)] mb-1">No Show</h4>
+        <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+          The candidate did not open the interview link before it expired. This is terminal - no automatic resend.
+        </p>
+      </div>
+    );
+  }
+
+  if (status === 'DECLINED') {
+    return (
+      <div className="text-center py-8 px-4">
+        <div className="bg-[var(--bg-app)] w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3">
+          <XCircle className="w-6 h-6 text-[var(--text-tertiary)]" />
+        </div>
+        <h4 className="text-sm font-medium text-[var(--text-primary)] mb-1">Candidate Declined</h4>
+        <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+          The candidate declined to continue with the interview process.
         </p>
       </div>
     );
@@ -93,7 +144,7 @@ const LifecycleStepper = ({ status, scheduledAt, completedAt }: { status: string
 };
 
 export const InterviewWorkspace = () => {
-  const { id: jobIdStr, resumeId: resumeIdStr } = useParams();
+  const { jobId: jobIdStr, resumeId: resumeIdStr } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
@@ -136,6 +187,15 @@ export const InterviewWorkspace = () => {
     onError: (err: { message?: string }) => toast.error(err.message || 'Failed to resync interview from Dograh.'),
   });
 
+  const declineMutation = useMutation({
+    mutationFn: () => jobsApi.declineInterview(jobId, resumeId),
+    onSuccess: (data) => {
+      toast.success(data.message || 'Interview marked as declined.');
+      queryClient.invalidateQueries({ queryKey: queryKeys.candidateDetail(jobId, resumeId) });
+    },
+    onError: (err: { message?: string }) => toast.error(err.message || 'Failed to mark interview as declined.'),
+  });
+
   const handleCopyLink = async () => {
     if (!interview?.interview_link) return;
     try {
@@ -150,11 +210,10 @@ export const InterviewWorkspace = () => {
     navigate(`/jobs/${jobId}/candidates/${resumeId}`, { state: location.state });
   };
 
-  const rawEvaluation = interview?.evaluation as DograhEvaluationEnvelope | Record<string, unknown> | undefined | null;
-  const isDograhEvaluation = !!rawEvaluation && typeof rawEvaluation === 'object' && (rawEvaluation as DograhEvaluationEnvelope).source === 'dograh';
-  const gatheredContext = isDograhEvaluation ? parseMaybeJson((rawEvaluation as DograhEvaluationEnvelope).gathered_context) : null;
-  const costInfo = isDograhEvaluation ? parseMaybeJson((rawEvaluation as DograhEvaluationEnvelope).cost_info) : null;
-  const callDuration = costInfo && typeof costInfo.call_duration_seconds === 'number' ? costInfo.call_duration_seconds : null;
+  const evaluation = interview?.evaluation ?? null;
+  const hasEvaluation = !!evaluation && Object.keys(evaluation).length > 0;
+  const recommendation = parseRecommendation(evaluation?.interview_recommendation);
+  const qaFieldsPresent = QA_FIELDS.filter((f) => evaluation?.[f.key]);
 
   return (
     <div className="flex-1 flex flex-col h-full bg-[var(--bg-app)] overflow-hidden">
@@ -203,15 +262,27 @@ export const InterviewWorkspace = () => {
                   <RefreshCw className={`w-4 h-4 mr-1 ${resyncMutation.isPending ? 'animate-spin' : ''}`} /> Resync
                 </Button>
               )}
-              <Button
-                onClick={() => triggerMutation.mutate()}
-                disabled={triggerMutation.isPending}
-                className="bg-[var(--color-primary-600)] hover:bg-[var(--color-primary-700)] text-white border-transparent"
-              >
-                {triggerMutation.isPending ? 'Creating link...' : (
-                  <><Mic className="w-4 h-4 mr-2" /> {interview ? 'Resend Interview Link' : 'Create Interview Link'}</>
-                )}
-              </Button>
+              {!interview || !['NO_SHOW', 'DECLINED', 'COMPLETED', 'SCHEDULED', 'IN_PROGRESS'].includes(interview.status) ? (
+                <Button
+                  onClick={() => triggerMutation.mutate()}
+                  disabled={triggerMutation.isPending}
+                  className="bg-[var(--color-primary-600)] hover:bg-[var(--color-primary-700)] text-white border-transparent"
+                >
+                  {triggerMutation.isPending ? 'Creating link...' : (
+                    <><Mic className="w-4 h-4 mr-2" /> {interview ? 'Resend Interview Link' : 'Create Interview Link'}</>
+                  )}
+                </Button>
+              ) : null}
+              {interview && !['COMPLETED', 'DECLINED', 'NO_SHOW'].includes(interview.status) && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => declineMutation.mutate()}
+                  disabled={declineMutation.isPending}
+                >
+                  <UserX className="w-4 h-4 mr-1" /> Mark as Declined
+                </Button>
+              )}
             </>
           }
         />
@@ -265,7 +336,13 @@ export const InterviewWorkspace = () => {
                 <Clock className="w-4 h-4 text-[var(--text-tertiary)]" /> Lifecycle Status
               </h3>
               {interview ? (
-                <LifecycleStepper status={interview.status} scheduledAt={interview.scheduled_at} completedAt={interview.completed_at} />
+                <LifecycleStepper
+                  status={interview.status}
+                  scheduledAt={interview.scheduled_at}
+                  completedAt={interview.completed_at}
+                  outcome={interview.outcome}
+                  retryCount={interview.retry_count}
+                />
               ) : (
                 <div className="text-center py-10 px-4">
                   <div className="bg-[var(--bg-app)] w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3">
@@ -324,33 +401,73 @@ export const InterviewWorkspace = () => {
                 <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-2">
                   <BarChart3 className="w-4 h-4 text-[var(--text-tertiary)]" /> Interview Evaluation
                 </h3>
-                {isDograhEvaluation ? (
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs text-[var(--text-secondary)]">Disposition:</span>
-                      <Badge variant="primary">{(rawEvaluation as DograhEvaluationEnvelope).call_disposition || 'unknown'}</Badge>
-                      <span className="text-xs text-[var(--text-secondary)] ml-3">Call duration:</span>
-                      <span className="text-xs font-medium text-[var(--text-secondary)]">{formatDuration(callDuration)}</span>
-                    </div>
-                    {gatheredContext && Object.keys(gatheredContext).length > 0 && (
+                {hasEvaluation ? (
+                  <div className="space-y-4">
+                    {recommendation && (
+                      <div className={`rounded-lg p-3 flex items-start gap-2.5 border border-[var(--border-light)] ${
+                        recommendation.variant === 'success' ? 'bg-[var(--color-success-subtle-bg)]'
+                        : recommendation.variant === 'danger' ? 'bg-[var(--color-danger-subtle-bg)]'
+                        : 'bg-[var(--color-warning-subtle-bg)]'
+                      }`}>
+                        {recommendation.variant === 'success' ? <CheckCircle2 className="w-4 h-4 text-[var(--color-success-600)] mt-0.5 shrink-0" />
+                          : recommendation.variant === 'danger' ? <AlertCircle className="w-4 h-4 text-[var(--color-danger-600)] mt-0.5 shrink-0" />
+                          : <Clock className="w-4 h-4 text-[var(--color-warning-600)] mt-0.5 shrink-0" />}
+                        <div>
+                          <p className="text-sm font-semibold text-[var(--text-primary)]">{recommendation.label}</p>
+                          {recommendation.reason && (
+                            <p className="text-xs text-[var(--text-secondary)] mt-0.5">{recommendation.reason}</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {(evaluation?.communication_clarity || evaluation?.demonstrated_skill_depth) && (
+                      <div className="flex flex-wrap gap-4">
+                        {evaluation?.communication_clarity && (
+                          <div>
+                            <p className="text-xs text-[var(--text-tertiary)] mb-1">Communication Clarity</p>
+                            <Badge variant={ratingVariant(evaluation.communication_clarity)}>{evaluation.communication_clarity}</Badge>
+                          </div>
+                        )}
+                        {evaluation?.demonstrated_skill_depth && (
+                          <div>
+                            <p className="text-xs text-[var(--text-tertiary)] mb-1">Demonstrated Skill Depth</p>
+                            <Badge variant={ratingVariant(evaluation.demonstrated_skill_depth)}>{evaluation.demonstrated_skill_depth}</Badge>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {(evaluation?.call_disposition || evaluation?.call_duration_seconds != null) && (
+                      <div className="flex items-center gap-2 flex-wrap text-xs text-[var(--text-secondary)]">
+                        {evaluation?.call_disposition && (
+                          <>
+                            <span>Call ended:</span>
+                            <Badge variant="neutral">{evaluation.call_disposition}</Badge>
+                          </>
+                        )}
+                        {evaluation?.call_duration_seconds != null && (
+                          <>
+                            <span className="ml-2">Duration:</span>
+                            <span className="font-medium">{formatDuration(evaluation.call_duration_seconds)}</span>
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {qaFieldsPresent.length > 0 && (
                       <div className="bg-[var(--bg-app)] rounded-lg p-4">
-                        <p className="text-xs font-semibold text-[var(--text-secondary)] mb-2 uppercase tracking-wide">Gathered Context</p>
+                        <p className="text-xs font-semibold text-[var(--text-secondary)] mb-2 uppercase tracking-wide">From the Conversation</p>
                         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
-                          {Object.entries(gatheredContext).map(([key, value]) => (
+                          {qaFieldsPresent.map(({ key, label }) => (
                             <div key={key}>
-                              <dt className="text-xs text-[var(--text-tertiary)]">{key}</dt>
-                              <dd className="text-sm text-[var(--text-secondary)] break-words">{String(value)}</dd>
+                              <dt className="text-xs text-[var(--text-tertiary)]">{label}</dt>
+                              <dd className="text-sm text-[var(--text-secondary)] break-words">{String(evaluation?.[key])}</dd>
                             </div>
                           ))}
                         </dl>
                       </div>
                     )}
-                  </div>
-                ) : interview?.evaluation ? (
-                  <div className="bg-[var(--bg-app)] p-4 rounded-lg text-sm text-[var(--text-secondary)]">
-                    <pre className="whitespace-pre-wrap font-mono text-xs">
-                      {JSON.stringify(interview.evaluation, null, 2)}
-                    </pre>
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center py-12 px-4 border-2 border-dashed border-[var(--border-light)] rounded-lg bg-[var(--bg-app)]">
@@ -363,7 +480,7 @@ export const InterviewWorkspace = () => {
                 )}
               </div>
 
-              {interview?.link_expires_at && interview.status !== 'COMPLETED' && (
+              {interview?.link_expires_at && !['COMPLETED', 'NO_SHOW', 'DECLINED'].includes(interview.status) && (
                 <p className="text-xs text-[var(--text-tertiary)] text-right">
                   Link expires {format(new Date(interview.link_expires_at), 'PPp')}
                 </p>

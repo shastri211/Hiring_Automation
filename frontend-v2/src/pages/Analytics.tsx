@@ -6,7 +6,7 @@ import {
 import { Loader2, BarChart as BarChartIcon } from 'lucide-react';
 import { jobsApi } from '../api/jobs';
 import { queryKeys } from '../api/queryKeys';
-import { useFunnel, useDecisionBreakdown, useThroughput, useJobVolume } from '../hooks/useAnalytics';
+import { useFunnel, useDecisionBreakdown, useThroughput, useJobVolume, useTimeInStage } from '../hooks/useAnalytics';
 import { Card, CardContent, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../components/ui';
 
 /**
@@ -30,6 +30,15 @@ function useChartColors() {
     };
   }, []);
 }
+
+const formatDurationSeconds = (seconds: number): string => {
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  const minutes = seconds / 60;
+  if (minutes < 60) return `${Math.round(minutes)}m`;
+  const hours = minutes / 60;
+  if (hours < 24) return `${hours.toFixed(1)}h`;
+  return `${(hours / 24).toFixed(1)}d`;
+};
 
 const ChartSection = ({
   title, isLoading, isError, isEmpty, emptyMessage, children,
@@ -62,6 +71,7 @@ export const Analytics = () => {
   const decisionsQuery = useDecisionBreakdown(jobId);
   const throughputQuery = useThroughput(30, jobId);
   const jobVolumeQuery = useJobVolume();
+  const timeInStageQuery = useTimeInStage(jobId);
 
   const funnelData = useMemo(() => {
     const f = funnelQuery.data;
@@ -169,6 +179,39 @@ export const Analytics = () => {
                 <Line type="monotone" dataKey="count" stroke={colors.primary} strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
+          </div>
+        </ChartSection>
+      </div>
+
+      <div className="mb-6">
+        <ChartSection
+          title="Average Time in Stage"
+          isLoading={timeInStageQuery.isLoading}
+          isError={timeInStageQuery.isError}
+          isEmpty={
+            !timeInStageQuery.data
+            || (timeInStageQuery.data.resume_to_screened_seconds_approx == null
+              && timeInStageQuery.data.screened_to_interview_seconds_approx == null)
+          }
+          emptyMessage="Not enough completed transitions yet for this filter."
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="rounded-lg border border-[var(--border-light)] p-4">
+              <p className="text-xs text-[var(--text-tertiary)] mb-1">Upload &rarr; Screened</p>
+              <p className="text-2xl font-semibold text-[var(--text-primary)]">
+                {timeInStageQuery.data?.resume_to_screened_seconds_approx != null
+                  ? formatDurationSeconds(timeInStageQuery.data.resume_to_screened_seconds_approx)
+                  : '—'}
+              </p>
+            </div>
+            <div className="rounded-lg border border-[var(--border-light)] p-4">
+              <p className="text-xs text-[var(--text-tertiary)] mb-1">Screened &rarr; Interview Scheduled</p>
+              <p className="text-2xl font-semibold text-[var(--text-primary)]">
+                {timeInStageQuery.data?.screened_to_interview_seconds_approx != null
+                  ? formatDurationSeconds(timeInStageQuery.data.screened_to_interview_seconds_approx)
+                  : '—'}
+              </p>
+            </div>
           </div>
         </ChartSection>
       </div>

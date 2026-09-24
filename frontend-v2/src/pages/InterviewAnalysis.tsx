@@ -6,6 +6,7 @@ import { jobsApi } from '../api/jobs';
 import { queryKeys } from '../api/queryKeys';
 import { useInterviewAnalysisSummary, useInterviewAnalysisList } from '../hooks/useInterviewAnalysis';
 import { Card, CardContent, Badge, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../components/ui';
+import { parseRecommendation } from '../utils/interviewEvaluation';
 
 const PAGE_SIZE = 20;
 
@@ -124,22 +125,33 @@ export const InterviewAnalysis = () => {
                     <th className="px-6 py-4 font-medium">Candidate</th>
                     <th className="px-6 py-4 font-medium">Job</th>
                     <th className="px-6 py-4 font-medium">Disposition</th>
+                    <th className="px-6 py-4 font-medium">Recommendation</th>
                     <th className="px-6 py-4 font-medium">Duration</th>
                     <th className="px-6 py-4 font-medium">Date</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--border-light)]">
-                  {listQuery.data.items.map((item) => (
-                    <tr key={item.id} className="hover:bg-[var(--bg-hover)] transition-colors">
-                      <td className="px-6 py-4 font-medium text-[var(--text-primary)]">{item.candidate_name || `Resume #${item.resume_id}`}</td>
-                      <td className="px-6 py-4 text-[var(--text-secondary)]">{item.job_title}</td>
-                      <td className="px-6 py-4"><Badge variant="neutral">{item.call_disposition || 'unspecified'}</Badge></td>
-                      <td className="px-6 py-4 text-[var(--text-secondary)]">{formatDuration(item.cost_info?.call_duration_seconds)}</td>
-                      <td className="px-6 py-4 text-xs text-[var(--text-tertiary)]">
-                        {item.created_at ? new Date(item.created_at).toLocaleDateString() : '—'}
-                      </td>
-                    </tr>
-                  ))}
+                  {listQuery.data.items.map((item) => {
+                    const recommendation = parseRecommendation(item.interview_recommendation);
+                    return (
+                      <tr key={item.id} className="hover:bg-[var(--bg-hover)] transition-colors">
+                        <td className="px-6 py-4 font-medium text-[var(--text-primary)]">{item.candidate_name || `Resume #${item.resume_id}`}</td>
+                        <td className="px-6 py-4 text-[var(--text-secondary)]">{item.job_title}</td>
+                        <td className="px-6 py-4"><Badge variant="neutral">{item.call_disposition || 'unspecified'}</Badge></td>
+                        <td className="px-6 py-4">
+                          {recommendation ? (
+                            <Badge variant={recommendation.variant} title={recommendation.reason || undefined}>{recommendation.label}</Badge>
+                          ) : (
+                            <span className="text-[var(--text-tertiary)] text-xs">—</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-[var(--text-secondary)]">{formatDuration(item.cost_info?.call_duration_seconds)}</td>
+                        <td className="px-6 py-4 text-xs text-[var(--text-tertiary)]">
+                          {item.created_at ? new Date(item.created_at).toLocaleDateString() : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

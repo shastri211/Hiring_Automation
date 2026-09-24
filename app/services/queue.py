@@ -83,6 +83,28 @@ class QueueService:
         await self.redis_client.xack(self.stream_name, self.group_name, msg_id)
         await self.clear_retry_metadata(msg_id)
 
+    async def heartbeat(self, worker_id: str, msg_id: str) -> None:
+        """Re-claims msg_id onto worker_id with JUSTID, resetting its idle
+        time in the consumer group's pending-entries list without touching
+        its content or delivery count.
+
+        Called periodically by worker_loop while a message is still being
+        actively processed. Without this, a single message that
+        legitimately takes longer than claim_stuck_messages' min_idle_ms
+        (e.g. a large resume + slow LLM calls) looks identical to one
+        whose consumer actually crashed - recover_stuck_messages would
+        claim and redeliver it to a second consumer while the first is
+        still genuinely working on it, causing duplicate processing.
+        """
+        await self.redis_client.xclaim(
+            name=self.stream_name,
+            groupname=self.group_name,
+            consumername=worker_id,
+            min_idle_time=0,
+            message_ids=[msg_id],
+            justid=True,
+        )
+
     async def claim_stuck_messages(self, worker_id: str, min_idle_ms: int = 300000):
         """Scan for stuck messages and claim them."""
         pending = await self.redis_client.xpending_range(

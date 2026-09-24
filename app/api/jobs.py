@@ -12,6 +12,11 @@ from app.models.resume import Resume
 from app.models.profile import CandidateProfile
 from app.models.screening import ScreeningResult
 from app.models.interview import Interview
+from app.models.application import Application, ApplicationResumeHistory
+from app.models.decision_audit import DecisionAudit
+from app.models.email import EmailMessage
+from app.models.talent_pool import TalentPoolEntry
+from app.models.candidate import CandidateMatchSuggestion
 from app.schemas.job import JobCreate, JobResponse
 from app.schemas.screening import (
     ScreeningResultResponse,
@@ -24,7 +29,9 @@ from app.schemas.screening import (
     BulkDecisionUpdate,
     InterviewResponse,
     JobBatchOverviewItem,
+    is_evaluation_failed,
 )
+from app.services.screener import screener_service
 from app.services.profiler import profiler_service
 from app.services.embeddings import embedding_router
 from app.services.queue import queue_service
@@ -35,6 +42,11 @@ from app.services.outreach import outreach_service
 from app.services.interview import interview_adapter
 from app.services.dograh import dograh_client
 from app.services.storage import sanitize_filename
+from app.services import screening_trigger
+from app.services import screening_audit
+from app.services.candidate_directory import get_candidate_summaries
+from app.api.deps import get_current_user
+from app.models.user import User
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -60,20 +72,63 @@ async def get_batches_overview(db: AsyncSession = Depends(get_db)):
         .limit(100)
     )
     rows = result.all()
-    return [
-        JobBatchOverviewItem(
-            job_id=batch.job_id,
-            job_title=job_title,
-            job_status=job_status,
-            batch_id=batch.id,
-            batch_status=batch.status,
-            total=batch.total_resumes,
-            processed=batch.processed,
-            failed=batch.failed,
-            created_at=batch.created_at,
+
+    # total_resumes/processed/failed on ScreeningBatch are snapshots updated
+    # incrementally as resumes are processed (see
+    # orchestrator.update_batch_progress) - they never get corrected if a
+    # resume is later deleted out from under a batch (no such "delete a
+    # resume" feature exists yet, but it has happened via direct DB
+    # intervention), leaving a batch permanently showing candidates that no
+    # longer exist. Computed live from Resume instead, in one grouped query
+    # covering every batch on this page rather than one query per batch.
+    batch_ids = [batch.id for batch, _, _ in rows]
+    counts_by_batch: dict[int, dict[str, int]] = {}
+    if batch_ids:
+        count_rows = await db.execute(
+            select(Resume.batch_id, Resume.status, func.count(Resume.id))
+            .where(Resume.batch_id.in_(batch_ids))
+            .group_by(Resume.batch_id, Resume.status)
         )
-        for batch, job_title, job_status in rows
-    ]
+        for batch_id, status_value, count in count_rows.all():
+            counts_by_batch.setdefault(batch_id, {})[status_value] = count
+
+    items = []
+    for batch, job_title, job_status in rows:
+        status_counts = counts_by_batch.get(batch.id, {})
+        # A SCREEN batch never has Resume rows pointing at its batch_id (see
+        # screening_trigger.enqueue_screen_job) - its total_resumes is
+        # assigned directly there and stays meaningful. Only an UPLOAD batch
+        # gets its total recomputed live, since it's the one whose
+        # total_resumes can go stale (a resume deleted after upload leaves
+        # the snapshot pointing at candidates that no longer exist).
+        # A SCREEN batch has no Resume rows pointing at its batch_id (see
+        # screening_trigger.enqueue_screen_job), so status_counts is always
+        # empty for one - processed/failed have to come from the batch's own
+        # snapshot columns (kept correct by the worker's screen_job handling)
+        # instead, the same way total already does below.
+        if batch.batch_type == "SCREEN":
+            total = batch.total_resumes
+            processed = batch.processed
+            failed = batch.failed
+        else:
+            total = sum(status_counts.values())
+            processed = status_counts.get("READY", 0)
+            failed = status_counts.get("FAILED", 0)
+        items.append(
+            JobBatchOverviewItem(
+                job_id=batch.job_id,
+                job_title=job_title,
+                job_status=job_status,
+                batch_id=batch.id,
+                batch_status=batch.status,
+                total=total,
+                processed=processed,
+                failed=failed,
+                created_at=batch.created_at,
+                batch_type=batch.batch_type,
+            )
+        )
+    return items
 
 
 
@@ -175,7 +230,11 @@ def _require_meaningful_description(description: str) -> None:
 
 
 @router.post("/", response_model=JobResponse, status_code=201)
-async def create_job(job_in: JobCreate, db: AsyncSession = Depends(get_db)):
+async def create_job(
+    job_in: JobCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     _require_meaningful_description(job_in.description)
     job = Job(title=job_in.title, description=job_in.description)
     db.add(job)
@@ -192,7 +251,8 @@ async def upload_job(
     title: str = Form(...),
     description: Optional[str] = Form(None),
     file: Optional[UploadFile] = File(None),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     if not description and not file:
         raise HTTPException(status_code=400, detail="Must provide either a description or a file")
@@ -200,16 +260,32 @@ async def upload_job(
     extracted_text = ""
     
     if file:
+        from app.api.resumes import ALLOWED_CONTENT_TYPES, ALLOWED_EXTENSIONS, MAX_RESUME_FILE_SIZE_BYTES
+
+        ext = os.path.splitext(file.filename or "")[1].lower()
+        if file.content_type not in ALLOWED_CONTENT_TYPES or ext not in ALLOWED_EXTENSIONS:
+            raise HTTPException(status_code=400, detail="Job description file must be a .pdf or .docx.")
+
+        content = await file.read()
+        if len(content) == 0 or len(content) > MAX_RESUME_FILE_SIZE_BYTES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Job description file must be non-empty and under {settings.MAX_RESUME_FILE_SIZE_MB}MB.",
+            )
+
         os.makedirs("uploads/jobs", exist_ok=True)
         file_path = os.path.join("uploads/jobs", sanitize_filename(file.filename))
         async with aiofiles.open(file_path, 'wb') as out_file:
-            content = await file.read()
             await out_file.write(content)
-            
+
         try:
             extractor = get_extractor(file_path, file.content_type)
             extracted_text = await extractor.extract(file_path)
         except Exception as e:
+            try:
+                os.remove(file_path)
+            except OSError:
+                pass
             raise HTTPException(status_code=400, detail=f"Failed to parse JD file: {str(e)}")
             
     # Converge paths
@@ -240,7 +316,11 @@ async def get_job(job_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{job_id}/pause", response_model=JobResponse)
-async def pause_job(job_id: int, db: AsyncSession = Depends(get_db)):
+async def pause_job(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     job = await _get_job_or_404(job_id, db)
     if job.status == "ACTIVE":
         job.status = "PAUSED"
@@ -250,20 +330,46 @@ async def pause_job(job_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{job_id}/resume", response_model=JobResponse)
-async def resume_job(job_id: int, db: AsyncSession = Depends(get_db)):
+async def resume_job(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     job = await _get_job_or_404(job_id, db)
     if job.status == "PAUSED":
         job.status = "ACTIVE"
         await db.commit()
         await db.refresh(job)
-        # Note: In-flight batches that were paused might need to be re-enqueued,
-        # but current architecture just skips new items when paused. So resume 
-        # means subsequent items in queue will process, or new batches can be triggered.
+
+        # Bug fix: while this job was paused, orchestrator.process_candidate
+        # (app/services/orchestrator.py) drops any in-flight resume for it
+        # back to UPLOADED and returns without raising - which means the
+        # worker acks and permanently discards that queue message (no
+        # exception was raised, so app/worker.py treats it as a completed
+        # task). Nothing was re-enqueuing those resumes on resume, so they
+        # sat in UPLOADED forever with no further action. Re-enqueue them
+        # here so pausing a job can never silently and permanently drop a
+        # resume out of the pipeline.
+        stuck_res = await db.execute(
+            select(Resume).where(Resume.job_id == job_id, Resume.status == "UPLOADED")
+        )
+        stuck_resumes = stuck_res.scalars().all()
+        for r in stuck_resumes:
+            await queue_service.enqueue_resume(r.id, job_id=job_id, batch_id=r.batch_id)
+        if stuck_resumes:
+            logger.info(
+                f"Resumed job {job_id}: re-enqueued {len(stuck_resumes)} resume(s) "
+                f"left stuck in UPLOADED status by the pause."
+            )
     return job
 
 
 @router.post("/{job_id}/archive", response_model=JobResponse)
-async def archive_job(job_id: int, db: AsyncSession = Depends(get_db)):
+async def archive_job(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     job = await _get_job_or_404(job_id, db)
     if job.status != "ARCHIVED":
         job.status = "ARCHIVED"
@@ -273,7 +379,11 @@ async def archive_job(job_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.delete("/{job_id}", status_code=204)
-async def delete_job(job_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_job(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     job = await _get_job_or_404(job_id, db)
     
     # Clean up Qdrant vectors
@@ -296,12 +406,41 @@ async def delete_job(job_id: int, db: AsyncSession = Depends(get_db)):
     if os.path.exists(job_dir):
         shutil.rmtree(job_dir, ignore_errors=True)
 
-    # Delete from DB (manual cascade to avoid FK constraint errors)
-    from sqlalchemy import delete
+    # Delete from DB (manual cascade to avoid FK constraint errors). Order
+    # matters: every table below is deleted before the row(s) it references,
+    # working from the leaves of the FK graph up to Job itself. Application
+    # and its dependents (DecisionAudit, ApplicationResumeHistory) are the
+    # ones most recently added and are the reason DELETE /jobs/{id} used to
+    # fail with "applications_current_resume_id_fkey" - Resume can't be
+    # deleted while an Application still points at it.
+    from sqlalchemy import delete, update
+    resume_ids_subq = select(Resume.id).where(Resume.job_id == job_id)
+    application_ids_subq = select(Application.id).where(Application.job_id == job_id)
+
+    await db.execute(delete(DecisionAudit).where(DecisionAudit.application_id.in_(application_ids_subq)))
     await db.execute(delete(ScreeningResult).where(ScreeningResult.job_id == job_id))
-    await db.execute(delete(CandidateProfile).where(CandidateProfile.resume_id.in_(
-        select(Resume.id).where(Resume.job_id == job_id)
-    )))
+    await db.execute(delete(EmailMessage).where(EmailMessage.job_id == job_id))
+    # A talent-pool entry whose own resume belongs to this job is deleted
+    # (the resume it points at is about to be destroyed below). One whose
+    # resume belongs to a DIFFERENT, surviving job but was merely added
+    # while viewing this job (added_from_job_id) keeps existing - only that
+    # informational pointer is cleared, mirroring the *_email_template_id
+    # FKs' ondelete="SET NULL" - deleting the whole entry here would
+    # silently destroy curated tags/notes for a candidate this job's
+    # deletion has nothing to do with.
+    await db.execute(delete(TalentPoolEntry).where(TalentPoolEntry.resume_id.in_(resume_ids_subq)))
+    await db.execute(
+        update(TalentPoolEntry)
+        .where(TalentPoolEntry.added_from_job_id == job_id)
+        .values(added_from_job_id=None)
+    )
+    await db.execute(delete(CandidateMatchSuggestion).where(CandidateMatchSuggestion.resume_id.in_(resume_ids_subq)))
+    await db.execute(delete(ApplicationResumeHistory).where(
+        ApplicationResumeHistory.application_id.in_(application_ids_subq)
+        | ApplicationResumeHistory.resume_id.in_(resume_ids_subq)
+    ))
+    await db.execute(delete(Application).where(Application.job_id == job_id))
+    await db.execute(delete(CandidateProfile).where(CandidateProfile.resume_id.in_(resume_ids_subq)))
     await db.execute(delete(Interview).where(Interview.job_id == job_id))
     await db.execute(delete(Resume).where(Resume.job_id == job_id))
     await db.execute(delete(ScreeningBatch).where(ScreeningBatch.job_id == job_id))
@@ -315,29 +454,49 @@ async def delete_job(job_id: int, db: AsyncSession = Depends(get_db)):
 # -- trigger screening ---------------------------------------------------------
 
 @router.post("/{job_id}/screen", status_code=202)
-async def trigger_screening(job_id: int, db: AsyncSession = Depends(get_db)):
-    job = await _get_job_or_404(job_id, db)
+async def trigger_screening(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await _get_job_or_404(job_id, db)
 
     # total_resumes = candidates this run will actually attempt to screen, so
     # the cross-job Processing overview (/jobs/batches/overview) shows real
     # progress instead of a permanent 0/0/0 row for screening-trigger batches.
-    ready_count_res = await db.execute(
-        select(func.count(Resume.id)).where(Resume.job_id == job_id, Resume.status == "READY")
-    )
-    ready_count = ready_count_res.scalar_one()
-
-    batch = ScreeningBatch(job_id=job.id, status="PROCESSING", total_resumes=ready_count)
-    db.add(batch)
-    await db.commit()
-    await db.refresh(batch)
-
-    await queue_service.enqueue_task({
-        "action": "screen_job",
-        "job_id": job.id,
-        "batch_id": batch.id,
-    })
+    try:
+        batch = await screening_trigger.enqueue_screen_job(db, job_id)
+    except Exception:
+        logger.exception("Failed to enqueue screening for job %s", job_id)
+        raise HTTPException(status_code=502, detail="Failed to enqueue screening - the queue may be unavailable. Try again shortly.")
 
     return {"message": "Screening batch created and enqueued", "batch_id": batch.id}
+
+
+# -- manual embedding-profile migration (admin safety net; nothing currently --
+# -- auto-detects a job's embedding profile going ineligible) -----------------
+
+@router.post("/{job_id}/migrate-embedding-profile", status_code=202)
+async def trigger_embedding_migration(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    job = await _get_job_or_404(job_id, db)
+
+    if job.embedding_status == "MIGRATING":
+        raise HTTPException(status_code=409, detail="This job's embedding profile is already migrating.")
+
+    try:
+        await queue_service.enqueue_task({"action": "migrate_job", "job_id": job_id})
+    except Exception:
+        logger.exception("Failed to enqueue embedding migration for job %s", job_id)
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to enqueue migration - the queue may be unavailable. Try again shortly.",
+        )
+
+    return {"message": "Embedding profile migration enqueued"}
 
 
 # -- paginated, filtered, sorted results ---------------------------------------
@@ -360,10 +519,8 @@ async def get_screening_results(
         select(
             Resume,
             ScreeningResult,
-            CandidateProfile.name.label("candidate_name")
         )
         .outerjoin(ScreeningResult, (ScreeningResult.resume_id == Resume.id) & (ScreeningResult.job_id == job_id))
-        .outerjoin(CandidateProfile, CandidateProfile.resume_id == Resume.id)
         .where(Resume.job_id == job_id)
     )
 
@@ -394,15 +551,17 @@ async def get_screening_results(
     result = await db.execute(query)
     rows = result.all()
 
+    # Phase 6: one batched candidate-identity resolution (display name,
+    # canonical candidate_id, applications_count) covering every resume on
+    # this page - not a lookup per row.
+    summaries = await get_candidate_summaries(db, [row.Resume.id for row in rows])
+
     items = []
     for row in rows:
         resume = row.Resume
         sr = row.ScreeningResult
-        cname = row.candidate_name
-        
-        # Centralized candidate identity
-        display_name = cname if cname else (resume.filename.rsplit('.', 1)[0] if resume.filename else f"Resume #{resume.id}")
-        
+        summary = summaries.get(resume.id, {})
+
         if sr:
             items.append(ScreeningResultResponse(
                 id=sr.id,
@@ -418,7 +577,10 @@ async def get_screening_results(
                 created_at=sr.created_at,
                 status=resume.status,
                 error_message=_safe_error_message(resume),
-                display_name=display_name
+                display_name=summary.get("display_name"),
+                candidate_id=summary.get("candidate_id"),
+                applications_count=summary.get("applications_count"),
+                evaluation_failed=is_evaluation_failed(sr.notes),
             ))
         else:
             items.append(ScreeningResultResponse(
@@ -435,7 +597,9 @@ async def get_screening_results(
                 created_at=None,
                 status=resume.status,
                 error_message=_safe_error_message(resume),
-                display_name=display_name
+                display_name=summary.get("display_name"),
+                candidate_id=summary.get("candidate_id"),
+                applications_count=summary.get("applications_count"),
             ))
 
     return PaginatedScreeningResultResponse(
@@ -500,9 +664,10 @@ async def get_candidate_detail(
     )
     interview = interview_res.scalar_one_or_none()
 
-    # We need display_name for the single view too
-    display_name = profile.name if profile and profile.name else (resume.filename.rsplit('.', 1)[0] if resume.filename else f"Resume #{resume.id}")
-    
+    # Phase 6: centralized candidate-identity resolution (single resume, but
+    # still through the shared batched function for one consistent chain).
+    summary = (await get_candidate_summaries(db, [resume.id])).get(resume.id, {})
+
     screening_response = None
     if screening:
         screening_response = ScreeningResultResponse(
@@ -519,7 +684,11 @@ async def get_candidate_detail(
             created_at=screening.created_at,
             status=resume.status,
             error_message=_safe_error_message(resume),
-            display_name=display_name
+            display_name=summary.get("display_name"),
+            candidate_id=summary.get("candidate_id"),
+            applications_count=summary.get("applications_count"),
+            raw_candidate_id=resume.candidate_id,
+            evaluation_failed=is_evaluation_failed(screening.notes),
         )
 
     return CandidateDetailResponse(
@@ -541,6 +710,7 @@ async def resync_interview(
     job_id: int,
     resume_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     await _get_job_or_404(job_id, db)
 
@@ -588,6 +758,46 @@ async def resync_interview(
     return {"success": True, "message": "Interview resynced from Dograh"}
 
 
+# Terminal statuses this endpoint refuses to reopen - COMPLETED/DECLINED/
+# NO_SHOW are all closed; a recruiter decision only makes sense for anything
+# still active or awaiting review.
+_DECLINE_BLOCKED_STATUSES = ("COMPLETED", "DECLINED", "NO_SHOW")
+
+
+@router.post("/{job_id}/interviews/{resume_id}/decline", response_model=dict)
+async def decline_interview(
+    job_id: int,
+    resume_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Manual recruiter action - purely a recorded decision, never inferred
+    from transcript/session data. DECLINED is manual-only by design."""
+    await _get_job_or_404(job_id, db)
+
+    result = await db.execute(
+        select(Interview).where(
+            Interview.resume_id == resume_id,
+            Interview.job_id == job_id,
+        )
+    )
+    interview = result.scalar_one_or_none()
+    if not interview:
+        raise HTTPException(status_code=404, detail="Interview not found for this candidate")
+
+    if interview.status in _DECLINE_BLOCKED_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Interview is already closed (status={interview.status}); cannot mark as declined.",
+        )
+
+    interview.status = "DECLINED"
+    interview.outcome = "manual_decline"
+    await db.commit()
+
+    return {"success": True, "message": "Interview marked as declined"}
+
+
 # -- update decision -----------------------------------------------------------
 
 @router.patch("/{job_id}/results/{resume_id}/decision", response_model=ScreeningResultResponse)
@@ -595,10 +805,11 @@ async def update_screening_decision(
     job_id: int,
     resume_id: int,
     payload: DecisionUpdate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     await _get_job_or_404(job_id, db)
-    
+
     # Ownership check
     resume_res = await db.execute(
         select(Resume).where(Resume.id == resume_id, Resume.job_id == job_id)
@@ -606,7 +817,7 @@ async def update_screening_decision(
     resume = resume_res.scalar_one_or_none()
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found for this job")
-        
+
     screening_res = await db.execute(
         select(ScreeningResult).where(
             ScreeningResult.resume_id == resume_id,
@@ -614,7 +825,7 @@ async def update_screening_decision(
         )
     )
     screening = screening_res.scalar_one_or_none()
-    
+
     if not screening:
         # If there's no screening result yet but we are setting a decision, we should create one?
         # Typically decisions are only set on evaluated candidates, but maybe we want to force it.
@@ -625,23 +836,41 @@ async def update_screening_decision(
             score=None
         )
         db.add(screening)
-        
+
     update_data = payload.model_dump(exclude_unset=True)
+
+    # Phase 4: preload BEFORE mutating screening.decision/.score below - if
+    # this ScreeningResult is already linked to an Application (a second HR
+    # override on the same result), the preload query will identity-map
+    # back to this exact same object, so its old decision/score must be
+    # snapshotted before this loop overwrites them, not after.
+    audit_context = None
+    if "decision" in update_data:
+        audit_context = await screening_audit.preload_application_context(
+            db, job_id=job_id, resume_ids=[resume_id]
+        )
+
     for key, value in update_data.items():
         setattr(screening, key, value)
-        
+
+    # An HR-set decision is a DecisionAudit event (a pure notes edit is
+    # not) - links this ScreeningResult to its Application and keeps
+    # Application.status in sync with the override.
+    if audit_context is not None:
+        screening_audit.record_screening_event(
+            db, audit_context, resume_id=resume_id, screening_result=screening,
+            actor_type="HR_USER", actor_id=current_user.id,
+        )
+
     await db.commit()
     await db.refresh(screening)
 
     if update_data.get("decision") == "SHORTLIST":
         await outreach_service.on_decision_shortlisted(job_id, [resume_id])
 
-    profile_res = await db.execute(
-        select(CandidateProfile).where(CandidateProfile.resume_id == resume_id)
-    )
-    profile = profile_res.scalar_one_or_none()
-    display_name = profile.name if profile and profile.name else (resume.filename.rsplit('.', 1)[0] if resume.filename else f"Resume #{resume.id}")
-    
+    # Phase 6: centralized candidate-identity resolution.
+    summary = (await get_candidate_summaries(db, [resume_id])).get(resume_id, {})
+
     return ScreeningResultResponse(
         id=screening.id,
         job_id=job_id,
@@ -656,7 +885,69 @@ async def update_screening_decision(
         created_at=screening.created_at,
         status=resume.status,
         error_message=_safe_error_message(resume),
-        display_name=display_name
+        display_name=summary.get("display_name"),
+        candidate_id=summary.get("candidate_id"),
+        applications_count=summary.get("applications_count"),
+        evaluation_failed=is_evaluation_failed(screening.notes),
+    )
+
+
+# --- retry a failed AI evaluation ---------------------------------------------
+#
+# screener.py's per-candidate fallback path (screen_job) leaves a
+# ScreeningResult with no score/decision and a "provider error" note when
+# every configured LLM provider fails for that one candidate - usually a
+# transient outage, not a real evaluation outcome. This lets HR re-run just
+# that one candidate's evaluation once the outage has cleared, without
+# re-screening (and re-billing) the whole batch.
+
+@router.post("/{job_id}/results/{resume_id}/retry-evaluation", response_model=ScreeningResultResponse)
+async def retry_candidate_evaluation(
+    job_id: int,
+    resume_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    job = await _get_job_or_404(job_id, db)
+
+    resume_res = await db.execute(
+        select(Resume).where(Resume.id == resume_id, Resume.job_id == job_id)
+    )
+    resume = resume_res.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found for this job")
+
+    try:
+        screening = await screener_service.retry_evaluation(db, job=job, resume_id=resume_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Retry failed again - the LLM providers may still be unavailable: {str(e)[:200]}",
+        )
+
+    summary = (await get_candidate_summaries(db, [resume_id])).get(resume_id, {})
+
+    return ScreeningResultResponse(
+        id=screening.id,
+        job_id=job_id,
+        resume_id=resume.id,
+        score=screening.score,
+        semantic_score=screening.semantic_score,
+        strengths=screening.strengths,
+        gaps=screening.gaps,
+        evidence=screening.evidence,
+        decision=screening.decision,
+        notes=screening.notes,
+        created_at=screening.created_at,
+        status=resume.status,
+        error_message=_safe_error_message(resume),
+        display_name=summary.get("display_name"),
+        candidate_id=summary.get("candidate_id"),
+        applications_count=summary.get("applications_count"),
+        raw_candidate_id=resume.candidate_id,
+        evaluation_failed=is_evaluation_failed(screening.notes),
     )
 
 
@@ -664,10 +955,11 @@ async def update_screening_decision(
 async def bulk_update_decision(
     job_id: int,
     payload: BulkDecisionUpdate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     await _get_job_or_404(job_id, db)
-    
+
     # Fetch all matching screening results
     res = await db.execute(
         select(ScreeningResult).where(
@@ -676,9 +968,9 @@ async def bulk_update_decision(
         )
     )
     screenings = res.scalars().all()
-    
+
     found_resume_ids = {s.resume_id for s in screenings}
-    
+
     # What if they don't have a screening result yet? We create blank ones.
     missing_ids = set(payload.resume_ids) - found_resume_ids
     if missing_ids:
@@ -699,11 +991,29 @@ async def bulk_update_decision(
             )
             db.add(new_sr)
             screenings.append(new_sr)
-            
+
+    # Phase 4: preload BEFORE mutating .decision below - for a resume whose
+    # ScreeningResult is already linked to an Application (a second bulk
+    # override on the same results), the preload query identity-maps back
+    # to these exact objects, so old decision/score must be snapshotted
+    # before the loop below overwrites them, not after. One batched preload
+    # for every resume_id in this request, then a pure in-memory
+    # DecisionAudit write per result - no N+1 query pattern regardless of
+    # how many resume_ids are in the request.
+    audit_context = await screening_audit.preload_application_context(
+        db, job_id=job_id, resume_ids=[s.resume_id for s in screenings]
+    )
+
     for screening in screenings:
         if hasattr(screening, 'id') and screening.id is not None:
             screening.decision = payload.decision
-            
+
+    for screening in screenings:
+        screening_audit.record_screening_event(
+            db, audit_context, resume_id=screening.resume_id, screening_result=screening,
+            actor_type="HR_USER", actor_id=current_user.id,
+        )
+
     await db.commit()
 
     if payload.decision == "SHORTLIST":
@@ -725,29 +1035,50 @@ async def get_batch_progress(job_id: int, db: AsyncSession = Depends(get_db)):
 
     batch_details = []
     for batch in batches:
-        total = batch.total_resumes
-
-        # Count READY resumes as completed
-        completed_res = await db.execute(
-            select(func.count(Resume.id)).where(
-                Resume.batch_id == batch.id, Resume.status == "READY"
+        # A SCREEN batch (see screening_trigger.enqueue_screen_job) never has
+        # Resume rows pointing at its batch_id, so total_resumes (assigned
+        # directly there) is the only meaningful total. An UPLOAD batch's
+        # total_resumes is a snapshot taken at upload time and goes stale if
+        # a resume is later deleted from it - live-count it instead so a
+        # deleted resume doesn't keep showing up here.
+        if batch.batch_type == "SCREEN":
+            # Same reasoning as total above: a SCREEN batch has no Resume
+            # rows at all under its batch_id, so completed/failed have to
+            # come from the batch's own snapshot columns (kept correct by
+            # the worker's screen_job handling) rather than a Resume count
+            # that would always read 0 - and there's no per-resume
+            # "processing" state during screening to count either.
+            total = batch.total_resumes
+            completed = batch.processed
+            failed_count = batch.failed
+            processing = 0
+        else:
+            total_res = await db.execute(
+                select(func.count(Resume.id)).where(Resume.batch_id == batch.id)
             )
-        )
-        completed = completed_res.scalar_one()
+            total = total_res.scalar_one()
 
-        failed_res = await db.execute(
-            select(func.count(Resume.id)).where(
-                Resume.batch_id == batch.id, Resume.status == "FAILED"
+            # Count READY resumes as completed
+            completed_res = await db.execute(
+                select(func.count(Resume.id)).where(
+                    Resume.batch_id == batch.id, Resume.status == "READY"
+                )
             )
-        )
-        failed_count = failed_res.scalar_one()
+            completed = completed_res.scalar_one()
 
-        processing_res = await db.execute(
-            select(func.count(Resume.id)).where(
-                Resume.batch_id == batch.id, Resume.status == "PROCESSING"
+            failed_res = await db.execute(
+                select(func.count(Resume.id)).where(
+                    Resume.batch_id == batch.id, Resume.status == "FAILED"
+                )
             )
-        )
-        processing = processing_res.scalar_one()
+            failed_count = failed_res.scalar_one()
+
+            processing_res = await db.execute(
+                select(func.count(Resume.id)).where(
+                    Resume.batch_id == batch.id, Resume.status == "PROCESSING"
+                )
+            )
+            processing = processing_res.scalar_one()
 
         # Screening decision counts (only for this job - ownership already enforced via batch.job_id)
         shortlisted_res = await db.execute(
@@ -794,6 +1125,7 @@ async def get_batch_progress(job_id: int, db: AsyncSession = Depends(get_db)):
                 review=review,
                 rejected=rejected,
                 pre_screened_out=pre_screened_out,
+                batch_type=batch.batch_type,
             )
         )
 

@@ -143,7 +143,12 @@ async def test_delete_job_cleans_up_correct_qdrant_collection(client: AsyncClien
     job_exec = MagicMock()
     job_exec.scalar_one_or_none.return_value = job
 
-    mock_db.execute = AsyncMock(side_effect=[job_exec] + [MagicMock()] * 5)
+    # job lookup + one delete()/update() per statement in delete_job's
+    # cascade (see app/api/jobs.py): DecisionAudit, ScreeningResult,
+    # EmailMessage, TalentPoolEntry (delete), TalentPoolEntry (SET NULL
+    # added_from_job_id), CandidateMatchSuggestion, ApplicationResumeHistory,
+    # Application, CandidateProfile, Interview, Resume, ScreeningBatch.
+    mock_db.execute = AsyncMock(side_effect=[job_exec] + [MagicMock()] * 12)
     mock_db.delete = AsyncMock()
     mock_db.commit = AsyncMock()
 
@@ -225,7 +230,11 @@ async def test_get_batches_overview_returns_cross_job_batches(client: AsyncClien
     """GET /jobs/batches/overview backs the sidebar "Processing" page: it must
     resolve before the /{job_id} routes (job_id is typed int, so a literal
     "batches" segment there would 422) and return each batch alongside its
-    parent job's title/status using the batch's own stored counters."""
+    parent job's title/status. For an UPLOAD batch, total/processed/failed
+    are computed live from current Resume rows (not the batch's own
+    total_resumes/processed/failed snapshot columns, which go stale if a
+    resume is later deleted out from under the batch - see
+    app/api/jobs.py::get_batches_overview)."""
     from app.api import jobs
     from app.main import app as fastapi_app
     from app.models.batch import ScreeningBatch
@@ -242,14 +251,23 @@ async def test_get_batches_overview_returns_cross_job_batches(client: AsyncClien
     batch.id = 42
     batch.job_id = 7
     batch.status = "PROCESSING"
-    batch.total_resumes = 15
-    batch.processed = 9
-    batch.failed = 1
+    batch.batch_type = "UPLOAD"
+    batch.total_resumes = 15  # stale snapshot - must NOT be what's returned
+    batch.processed = 999
+    batch.failed = 999
     batch.created_at = datetime.datetime.utcnow()
 
     rows_exec = MagicMock()
     rows_exec.all.return_value = [(batch, "Backend Engineer", "ACTIVE")]
-    mock_db.execute = AsyncMock(return_value=rows_exec)
+
+    # Live per-status resume counts for this batch: 9 READY, 1 FAILED, 5
+    # still UPLOADED - total 15, matching the stale snapshot here on purpose
+    # so a naive "did it change" assertion wouldn't catch a regression back
+    # to reading the snapshot column.
+    counts_exec = MagicMock()
+    counts_exec.all.return_value = [(42, "READY", 9), (42, "FAILED", 1), (42, "UPLOADED", 5)]
+
+    mock_db.execute = AsyncMock(side_effect=[rows_exec, counts_exec])
 
     try:
         response = await client.get("/jobs/batches/overview")
@@ -265,6 +283,63 @@ async def test_get_batches_overview_returns_cross_job_batches(client: AsyncClien
             "processed": 9,
             "failed": 1,
             "created_at": body[0]["created_at"],
+            "batch_type": "UPLOAD",
         }]
     finally:
         fastapi_app.dependency_overrides.clear()
+
+
+# -- manual embedding-profile migration trigger --------------------------------
+# migration_service.migrate_job_embedding_profile's worker handler
+# ("migrate_job") previously had no caller anywhere in the codebase - this is
+# the missing trigger, mirroring trigger_screening's manual-enqueue pattern.
+
+@pytest.mark.asyncio
+async def test_trigger_embedding_migration_returns_404_for_missing_job(client: AsyncClient):
+    response = await client.post("/jobs/999999/migrate-embedding-profile")
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_trigger_embedding_migration_returns_409_when_already_migrating(client: AsyncClient, db_session):
+    from app.models.job import Job
+
+    job = Job(title="Already Migrating Job", description="d", embedding_status="MIGRATING")
+    db_session.add(job)
+    await db_session.commit()
+    await db_session.refresh(job)
+
+    response = await client.post(f"/jobs/{job.id}/migrate-embedding-profile")
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_trigger_embedding_migration_enqueues_task(client: AsyncClient, db_session):
+    from app.models.job import Job
+
+    job = Job(title="Migrate Me Job", description="d", embedding_status="READY", embedding_profile="old-profile")
+    db_session.add(job)
+    await db_session.commit()
+    await db_session.refresh(job)
+
+    with patch("app.api.jobs.queue_service.enqueue_task", new_callable=AsyncMock) as mock_enqueue:
+        response = await client.post(f"/jobs/{job.id}/migrate-embedding-profile")
+
+    assert response.status_code == 202
+    mock_enqueue.assert_awaited_once_with({"action": "migrate_job", "job_id": job.id})
+
+
+@pytest.mark.asyncio
+async def test_trigger_embedding_migration_returns_502_on_enqueue_failure(client: AsyncClient, db_session):
+    from app.models.job import Job
+
+    job = Job(title="Migrate Me Failing Job", description="d", embedding_status="READY")
+    db_session.add(job)
+    await db_session.commit()
+    await db_session.refresh(job)
+
+    with patch("app.api.jobs.queue_service.enqueue_task", new_callable=AsyncMock) as mock_enqueue:
+        mock_enqueue.side_effect = Exception("redis unavailable")
+        response = await client.post(f"/jobs/{job.id}/migrate-embedding-profile")
+
+    assert response.status_code == 502

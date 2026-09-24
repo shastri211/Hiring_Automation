@@ -19,13 +19,19 @@ from app.schemas.email import (
 from app.services.email import email_service
 from app.services.queue import queue_service
 from app.services.candidate_directory import get_candidate_summaries
+from app.api.deps import get_current_user
+from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 @router.post("/templates", response_model=EmailTemplateResponse, status_code=status.HTTP_201_CREATED)
-async def create_template(template: EmailTemplateCreate, db: AsyncSession = Depends(get_db)):
+async def create_template(
+    template: EmailTemplateCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     # Check if exists
     existing = await db.execute(select(EmailTemplate).where(EmailTemplate.name == template.name))
     if existing.scalar_one_or_none():
@@ -47,7 +53,12 @@ async def list_templates(db: AsyncSession = Depends(get_db)):
     return result.scalars().all()
 
 @router.patch("/templates/{template_id}", response_model=EmailTemplateResponse)
-async def update_template(template_id: int, payload: EmailTemplateUpdate, db: AsyncSession = Depends(get_db)):
+async def update_template(
+    template_id: int,
+    payload: EmailTemplateUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     result = await db.execute(select(EmailTemplate).where(EmailTemplate.id == template_id))
     template = result.scalar_one_or_none()
     if not template:
@@ -72,7 +83,11 @@ async def update_template(template_id: int, payload: EmailTemplateUpdate, db: As
     return template
 
 @router.delete("/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_template(template_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_template(
+    template_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     result = await db.execute(select(EmailTemplate).where(EmailTemplate.id == template_id))
     template = result.scalar_one_or_none()
     if not template:
@@ -99,7 +114,12 @@ async def delete_template(template_id: int, db: AsyncSession = Depends(get_db)):
     return None
 
 @router.post("/jobs/{job_id}/bulk-send")
-async def bulk_send_emails(job_id: int, request: BulkEmailRequest, db: AsyncSession = Depends(get_db)):
+async def bulk_send_emails(
+    job_id: int,
+    request: BulkEmailRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
     Queue emails to be sent to a list of candidates for a specific job.
     """
@@ -108,9 +128,14 @@ async def bulk_send_emails(job_id: int, request: BulkEmailRequest, db: AsyncSess
             job_id=job_id,
             resume_ids=request.resume_ids,
             template_id=request.template_id,
-            queue_service=queue_service
+            queue_service=queue_service,
+            override_recipient_email=request.override_recipient_email,
         )
-        return {"status": "success", "queued_count": queued_count}
+        return {
+            "status": "success",
+            "queued_count": queued_count,
+            "requested_count": len(request.resume_ids),
+        }
     except ValueError as e:
         # e.g., missing template or missing dograh link
         raise HTTPException(status_code=400, detail=str(e))

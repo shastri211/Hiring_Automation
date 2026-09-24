@@ -76,6 +76,19 @@ export type CandidateDecision = 'SHORTLIST' | 'REVIEW' | 'REJECT' | 'PRE_SCREENE
 
 export interface ScreeningResultResponse extends ScreeningResult {
   display_name?: string | null;
+  // Phase 6 (backend): the canonical Candidate this resume resolves to
+  // (following any merge), and how many jobs they've applied to in total.
+  candidate_id?: number | null;
+  applications_count?: number | null;
+  // Phase 8 (backend): this resume's own unresolved candidate id - use this,
+  // not candidate_id, to check/undo THIS resume's merge state (candidate_id
+  // is always the canonical survivor, whose merged_into_id is always null).
+  // Only populated by the single-resume detail endpoint.
+  raw_candidate_id?: number | null;
+  // True when this is the placeholder result from every LLM provider
+  // failing for this one candidate (a transient outage) - offers a "Retry
+  // Evaluation" action instead of showing it as a genuine (if empty) outcome.
+  evaluation_failed?: boolean;
 }
 
 export interface GlobalScreeningResultResponse extends ScreeningResultResponse {
@@ -87,9 +100,15 @@ export interface Interview {
   id: number;
   job_id: number;
   resume_id: number;
+  // PENDING | SCHEDULED | IN_PROGRESS | COMPLETED | FAILED |
+  // RESCHEDULE_PENDING | NO_SHOW | DECLINED
   status: string;
   transcript?: string | null;
-  evaluation?: any | null;
+  evaluation?: InterviewEvaluationData | null;
+  /** Latest-attempt-only classified outcome (verbatim call_disposition, or "manual_decline"). */
+  outcome?: string | null;
+  /** Number of retries consumed so far, capped by the backend's INTERVIEW_MAX_RETRY_ATTEMPTS. */
+  retry_count?: number;
 
   // Dograh browser/web-interview provider fields (A10).
   provider?: string | null;
@@ -106,16 +125,28 @@ export interface Interview {
 
 // Canonical Dograh evaluation envelope (see app/services/interview.py::_normalize_evaluation_data).
 // Legacy/unrecognized evaluation JSON won't match this shape - always check `source` before relying on it.
-export interface DograhEvaluationEnvelope {
-  source: 'dograh';
+// Mirrors the flat shape app/services/interview.py::_normalize_evaluation_data
+// stores Interview.evaluation as - no gathered_context/cost_info/source
+// wrapper, every field directly at the top level.
+export interface InterviewEvaluationData {
   workflow_run_id?: string | number | null;
-  call_disposition?: string | null;
-  gathered_context?: Record<string, any> | string | null;
-  cost_info?: Record<string, any> | string | null;
   transcript_url?: string | null;
   recording_url?: string | null;
   user_recording_url?: string | null;
   bot_recording_url?: string | null;
+  call_duration_seconds?: number | null;
+  call_disposition?: string | null;
+  years_relevant_experience?: string | null;
+  key_skills_mentioned?: string | null;
+  notice_period?: string | null;
+  salary_expectation?: string | null;
+  motivation_summary?: string | null;
+  concerns_or_gaps?: string | null;
+  // Added alongside the interview-prompt review - assessed by the LLM from
+  // the conversation itself, not just captured facts.
+  communication_clarity?: string | null;
+  demonstrated_skill_depth?: string | null;
+  interview_recommendation?: string | null;
 }
 
 // GET /public/interview/{token}
@@ -185,6 +216,8 @@ export interface UploadResponse {
   accepted_files: number;
   duplicate_files: number;
   invalid_files: number;
+  /** ZIP uploads only: a corrupt/unreadable entry inside an otherwise-valid archive. Always 0 for non-ZIP requests. */
+  failed_files: number;
 }
 
 // Progress Responses
@@ -199,6 +232,7 @@ export interface BatchProgressDetail {
   review: number;
   rejected: number;
   pre_screened_out?: number;
+  batch_type: 'UPLOAD' | 'SCREEN';
 }
 
 export interface BatchProgressResponse {
@@ -216,6 +250,7 @@ export interface JobBatchOverviewItem {
   processed: number;
   failed: number;
   created_at?: string | null;
+  batch_type: 'UPLOAD' | 'SCREEN';
 }
 
 // Candidate Profile Detail
@@ -259,6 +294,75 @@ export interface IntegrationResponse {
   message: string;
 }
 
+// ---------------------------------------------------------------------------
+// Candidate identity / deduplication (mirrors app/schemas/candidate.py)
+// ---------------------------------------------------------------------------
+export interface CandidateResponse {
+  id: number;
+  canonical_name?: string | null;
+  primary_email?: string | null;
+  primary_phone?: string | null;
+  // Non-null means this candidate has been merged away and is no longer
+  // canonical - merged_into_name is resolved server-side for display only.
+  merged_into_id?: number | null;
+  merged_into_name?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface CandidateNameUpdateRequest {
+  canonical_name: string | null;
+}
+
+export interface CandidateSummary {
+  id: number;
+  canonical_name?: string | null;
+  primary_email?: string | null;
+  primary_phone?: string | null;
+  applications_count: number;
+}
+
+export type MatchSuggestionStatus = 'PENDING' | 'MERGED' | 'REJECTED';
+
+// Mirrors CandidateMatchSuggestionResponse - the actual response shape of
+// POST .../merge and .../reject, which return the bare suggestion row with
+// no candidate context (unlike the list endpoint below).
+export interface CandidateMatchSuggestionResponse {
+  id: number;
+  resume_id: number;
+  candidate_a_id: number;
+  candidate_b_id: number;
+  confidence: number;
+  signals?: Record<string, unknown> | null;
+  status: MatchSuggestionStatus;
+  reviewed_by?: number | null;
+  reviewed_at?: string | null;
+  created_at?: string | null;
+}
+
+// Mirrors CandidateMatchSuggestionDetailResponse - GET .../match-suggestions'
+// actual shape, adding the candidate/resume context a reviewer needs.
+export interface CandidateMatchSuggestion extends CandidateMatchSuggestionResponse {
+  // candidate_a is always the pre-existing candidate, candidate_b the newer
+  // one created for resume_id - merging always absorbs b into a.
+  candidate_a: CandidateSummary;
+  candidate_b: CandidateSummary;
+  resume_filename?: string | null;
+  job_id?: number | null;
+  job_title?: string | null;
+}
+
+export interface MergeCandidatesRequest {
+  absorbed_candidate_id: number;
+  into_candidate_id: number;
+}
+
+export interface UnmergeCandidateResponse {
+  absorbed_candidate_id: number;
+  into_candidate_id: number;
+  reverted_at: string;
+}
+
 export interface EmailTemplate {
   id: number;
   name: string;
@@ -284,6 +388,7 @@ export interface EmailMessage {
   status: 'PENDING' | 'SENT' | 'FAILED' | 'BLOCKED';
   provider_message_id?: string;
   error_message?: string;
+  override_recipient_email?: string;
   created_at: string;
   sent_at?: string;
 }
@@ -291,6 +396,7 @@ export interface EmailMessage {
 export interface BulkEmailRequest {
   resume_ids: number[];
   template_id: number;
+  override_recipient_email?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -304,9 +410,11 @@ export interface AppSettingsResponse {
   semantic_gap_threshold?: number | null;
   auto_email_on_shortlist: boolean;
   shortlist_email_template_id?: number | null;
+  auto_generate_interview_on_shortlist: boolean;
   auto_email_on_interview_scheduled: boolean;
   interview_scheduled_email_template_id?: number | null;
   email_test_allowlist?: string | null;
+  email_test_override_recipient?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 }
@@ -345,6 +453,8 @@ export interface TalentPoolEntry {
   phone?: string | null;
   job_id?: number | null;
   job_title?: string | null;
+  candidate_id?: number | null;
+  applications_count?: number | null;
 }
 
 export interface TalentPoolEntryCreate {
@@ -444,6 +554,9 @@ export interface InterviewAnalysisItem {
   user_recording_url?: string | null;
   bot_recording_url?: string | null;
   created_at?: string | null;
+  interview_recommendation?: string | null;
+  communication_clarity?: string | null;
+  demonstrated_skill_depth?: string | null;
 }
 
 // ---------------------------------------------------------------------------

@@ -26,3 +26,6 @@ class UploadResponse(BaseModel):
     accepted_files: int
     duplicate_files: int
     invalid_files: int
+    # ZIP uploads only (Phase 5): a corrupt/unreadable entry inside an
+    # otherwise-valid archive. Always 0 for a request with no ZIP files.
+    failed_files: int = 0

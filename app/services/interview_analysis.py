@@ -23,11 +23,20 @@ _UNSPECIFIED_ENVELOPE = {
 
 
 def parse_evaluation_envelope(evaluation: Any) -> dict:
-    """Defensively parse the canonical interview evaluation envelope.
+    """Defensively parse Interview.evaluation into this function's own
+    stable output envelope, regardless of how it's actually stored.
 
-    Canonical shape (populated by the Dograh webhook):
-    {source, workflow_run_id, call_disposition, gathered_context, cost_info,
-     user_recording_url, bot_recording_url}
+    Interview.evaluation is stored flat as of
+    app/services/interview.py::_normalize_evaluation_data - {call_disposition,
+    call_duration_seconds, years_relevant_experience, ...} directly at the
+    top level, no gathered_context/cost_info/source wrapper. Interviews
+    completed before that flattening shipped may still have the older
+    nested shape ({source, call_disposition, gathered_context: {...},
+    cost_info: {call_duration_seconds}, ...}) sitting in the DB, so both are
+    read here - falling back to the legacy nested location only when the
+    flat one is absent - while this function's own output shape (consumed
+    by interview_analysis_summary/list_interviews and InterviewAnalysis.tsx)
+    stays exactly as it always has, so neither needs to change.
 
     Never raises - any unrecognized/legacy/malformed shape is bucketed under
     "unspecified" rather than erroring.
@@ -36,27 +45,33 @@ def parse_evaluation_envelope(evaluation: Any) -> dict:
         return dict(_UNSPECIFIED_ENVELOPE)
 
     try:
-        gathered_context = evaluation.get("gathered_context")
-        if not isinstance(gathered_context, dict):
-            gathered_context = {}
+        legacy_gathered_context = evaluation.get("gathered_context")
+        if not isinstance(legacy_gathered_context, dict):
+            legacy_gathered_context = {}
 
-        cost_info = evaluation.get("cost_info")
-        if not isinstance(cost_info, dict):
-            cost_info = {}
+        legacy_cost_info = evaluation.get("cost_info")
+        if not isinstance(legacy_cost_info, dict):
+            legacy_cost_info = {}
 
-        source = evaluation.get("source")
-        if not isinstance(source, str) or not source:
-            source = "unspecified"
+        call_duration = evaluation.get("call_duration_seconds", legacy_cost_info.get("call_duration_seconds"))
+        cost_info = {"call_duration_seconds": call_duration} if call_duration is not None else {}
 
-        call_disposition = evaluation.get("call_disposition")
+        call_disposition = evaluation.get("call_disposition") or legacy_gathered_context.get("call_disposition")
         if not isinstance(call_disposition, str) or not call_disposition:
             call_disposition = "unspecified"
+
+        # Every real evaluation dict came from our own receive_evaluation
+        # flow, which only Dograh ever calls into - "source" was previously
+        # only set by the manual-resync path, so most real interviews
+        # (delivered by the normal webhook) always showed "unspecified" here
+        # even though they were genuine Dograh data.
+        source = "dograh" if evaluation else "unspecified"
 
         return {
             "source": source,
             "workflow_run_id": evaluation.get("workflow_run_id"),
             "call_disposition": call_disposition,
-            "gathered_context": gathered_context,
+            "gathered_context": legacy_gathered_context,
             "cost_info": cost_info,
             "user_recording_url": evaluation.get("user_recording_url"),
             "bot_recording_url": evaluation.get("bot_recording_url"),
@@ -149,6 +164,7 @@ class InterviewAnalysisService:
         for row in rows:
             interview = row[0]
             envelope = parse_evaluation_envelope(interview.evaluation)
+            evaluation = interview.evaluation if isinstance(interview.evaluation, dict) else {}
             items.append(
                 {
                     "id": interview.id,
@@ -159,6 +175,9 @@ class InterviewAnalysisService:
                     "candidate_name": row.candidate_name,
                     "created_at": interview.created_at,
                     **envelope,
+                    "interview_recommendation": evaluation.get("interview_recommendation"),
+                    "communication_clarity": evaluation.get("communication_clarity"),
+                    "demonstrated_skill_depth": evaluation.get("demonstrated_skill_depth"),
                 }
             )
 

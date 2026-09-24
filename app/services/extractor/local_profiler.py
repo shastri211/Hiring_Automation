@@ -195,6 +195,7 @@ class LocalProfilerService:
 
         local_profile = {
             "name": cls._extract_name(extracted_text, sections),
+            "contact": cls._extract_contact(extracted_text),
             "summary": cls._extract_summary(sections),
             "skills": cls._extract_skills(sections.get("skills", "")),
             "experience": cls._extract_experience(sections.get("experience", "")),
@@ -334,6 +335,43 @@ class LocalProfilerService:
 
         # Fall back to first candidate, normalised to title case
         return candidates[0].title()
+
+    # ------------------------------------------------------------------ #
+    # Contact extraction                                                   #
+    # ------------------------------------------------------------------ #
+
+    # A real phone number needs this many digits; without the floor, the
+    # loose separator-tolerant _PHONE_RE above also matches a plain year
+    # range like "2019 - 2023" (8 digits, well-formed per that pattern).
+    _MIN_PHONE_DIGITS = 10
+
+    @classmethod
+    def _extract_contact(cls, text: str) -> Dict[str, Optional[str]]:
+        """Best-effort email/phone lookup. This was previously never wired
+        up at all (see _EMAIL_RE/_PHONE_RE above) - every locally-profiled
+        candidate (i.e. any resume clean enough to skip the LLM fallback)
+        silently got no email and no phone stored, which also meant
+        email-based outreach and phone-based duplicate-candidate matching
+        (see app/services/candidate_identity.py) could never fire for them.
+
+        Email is searched across the whole document (the pattern itself is
+        precise enough that false positives are effectively a non-issue).
+        Phone is restricted to roughly the header block, where resumes
+        conventionally put contact info, to keep the loose phone pattern
+        from picking up a stray long number elsewhere in the body.
+        """
+        email_match = _EMAIL_RE.search(text)
+        email = email_match.group(0) if email_match else None
+
+        phone = None
+        header_text = "\n".join(text.split("\n")[:15])
+        for m in _PHONE_RE.finditer(header_text):
+            candidate = m.group(0)
+            if sum(ch.isdigit() for ch in candidate) >= cls._MIN_PHONE_DIGITS:
+                phone = candidate.strip()
+                break
+
+        return {"email": email, "phone": phone}
 
     # ------------------------------------------------------------------ #
     # Summary extraction                                                   #

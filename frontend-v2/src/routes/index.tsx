@@ -12,6 +12,7 @@ import { JobProcessing } from '../pages/JobProcessing';
 import { Processing } from '../pages/Processing';
 import { JobCandidates } from '../pages/JobCandidates';
 import { GlobalCandidates } from '../pages/GlobalCandidates';
+import { MatchSuggestions } from '../pages/MatchSuggestions';
 import { GlobalInterviews } from '../pages/GlobalInterviews';
 import { TalentPool } from '../pages/TalentPool';
 import { Outreach } from '../pages/Outreach';
@@ -96,6 +97,10 @@ const router = createBrowserRouter([
           {
             path: 'candidates',
             element: <GlobalCandidates />
+          },
+          {
+            path: 'candidates/duplicates',
+            element: <MatchSuggestions />
           },
           {
             path: 'shortlisted',

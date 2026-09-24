@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
-import { Loader2, Users, FileText, ChevronLeft, ChevronRight, PackagePlus } from 'lucide-react';
+import { Loader2, Users, FileText, ChevronLeft, ChevronRight, PackagePlus, Mail } from 'lucide-react';
 import { candidatesApi } from '../api/candidates';
 import { queryKeys } from '../api/queryKeys';
 import { useAddToTalentPool } from '../hooks/useTalentPool';
 import { CandidateDrawer } from '../components/CandidateDrawer';
+import { BulkEmailModal, type ResumeGroup } from '../components/BulkEmailModal';
 import { Badge, Button, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../components/ui';
 import { getDecisionBadgeVariant } from '../utils/decision';
 import type { CandidateDecision, GlobalScreeningResultResponse } from '../types';
@@ -25,6 +26,8 @@ export const GlobalCandidates = () => {
   const [decision, setDecision] = useState<CandidateDecision | undefined>(undefined);
   const [page, setPage] = useState(1);
   const [selectedCandidate, setSelectedCandidate] = useState<{ jobId: number; resumeId: number } | null>(null);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [showEmailModal, setShowEmailModal] = useState(false);
 
   const params = { decision, page, page_size: PAGE_SIZE };
 
@@ -35,6 +38,47 @@ export const GlobalCandidates = () => {
   });
 
   const addToPool = useAddToTalentPool();
+
+  // resumeGroups (below) is derived by filtering the CURRENT page's
+  // data.items against selectedIds - a selection made on a previous page
+  // would otherwise silently vanish from the send (while the toolbar still
+  // shows a stale "N selected" count) once the page/filter changes and
+  // data.items no longer contains those rows. Selection is page-scoped by
+  // design (see Phase 7 plan), so clear it whenever the page changes.
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [page, decision]);
+
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked && data?.items) {
+      setSelectedIds(data.items.map((c) => c.resume_id));
+    } else {
+      setSelectedIds([]);
+    }
+  };
+
+  const handleSelect = (e: React.ChangeEvent<HTMLInputElement>, resumeId: number) => {
+    if (e.target.checked) {
+      setSelectedIds((prev) => [...prev, resumeId]);
+    } else {
+      setSelectedIds((prev) => prev.filter((id) => id !== resumeId));
+    }
+  };
+
+  // Selected rows span multiple jobs here (unlike JobCandidates) - group by
+  // job_id since the bulk-send endpoint is job-scoped.
+  const resumeGroups: ResumeGroup[] = data?.items
+    ? Object.values(
+        data.items
+          .filter((c) => selectedIds.includes(c.resume_id))
+          .reduce((acc, c) => {
+            const key = c.job_id;
+            if (!acc[key]) acc[key] = { jobId: c.job_id, jobTitle: c.job_title, resumeIds: [] };
+            acc[key].resumeIds.push(c.resume_id);
+            return acc;
+          }, {} as Record<number, ResumeGroup>)
+      )
+    : [];
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
@@ -48,28 +92,44 @@ export const GlobalCandidates = () => {
         </div>
       </div>
 
-      <div className="flex justify-end mb-4">
-        <div className="w-56">
-          <Select
-            value={decision || 'all'}
-            onValueChange={(value) => {
-              setDecision(value === 'all' ? undefined : (value as CandidateDecision));
-              setPage(1);
-            }}
+      {selectedIds.length > 0 ? (
+        <div className="bg-[var(--color-primary-subtle-bg)] border border-[var(--color-primary-200)] p-4 rounded-t-xl border-b-0 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <span className="text-[var(--color-primary-subtle-text)] font-medium text-sm">{selectedIds.length} candidates selected</span>
+            <div className="h-4 w-px bg-[var(--color-primary-200)]"></div>
+            <button onClick={() => setSelectedIds([])} className="transition-base text-sm text-[var(--color-primary-600)] hover:text-[var(--color-primary-700)]">Clear</button>
+          </div>
+          <button
+            onClick={() => setShowEmailModal(true)}
+            className="transition-base px-3 py-1.5 bg-[var(--bg-surface)] text-[var(--color-primary-subtle-text)] border border-[var(--color-primary-200)] rounded text-sm hover:bg-[var(--color-primary-subtle-bg)] focus-ring font-medium flex items-center gap-1.5"
           >
-            <SelectTrigger>
-              <SelectValue placeholder="All Decisions" />
-            </SelectTrigger>
-            <SelectContent>
-              {DECISION_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <Mail className="w-4 h-4" /> Email
+          </button>
         </div>
-      </div>
+      ) : (
+        <div className="flex justify-end mb-4">
+          <div className="w-56">
+            <Select
+              value={decision || 'all'}
+              onValueChange={(value) => {
+                setDecision(value === 'all' ? undefined : (value as CandidateDecision));
+                setPage(1);
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="All Decisions" />
+              </SelectTrigger>
+              <SelectContent>
+                {DECISION_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )}
 
-      <div className="bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-xl shadow-sm overflow-hidden">
+      <div className={`bg-[var(--bg-surface)] border border-[var(--border-light)] shadow-sm overflow-hidden ${selectedIds.length > 0 ? 'rounded-b-xl' : 'rounded-xl'}`}>
         {isLoading && !data ? (
           <div className="flex justify-center items-center h-64">
             <Loader2 className="w-8 h-8 animate-spin text-[var(--color-primary-500)]" />
@@ -91,6 +151,14 @@ export const GlobalCandidates = () => {
               <table className="w-full text-left text-sm">
                 <thead className="bg-[var(--bg-app)] border-b border-[var(--border-light)] text-[var(--text-secondary)]">
                   <tr>
+                    <th className="px-6 py-4 w-12">
+                      <input
+                        type="checkbox"
+                        checked={data.items.length > 0 && selectedIds.length === data.items.length}
+                        onChange={handleSelectAll}
+                        className="rounded border-[var(--border-strong)] text-[var(--color-primary-600)] focus:ring-[var(--color-primary-600)]"
+                      />
+                    </th>
                     <th className="px-6 py-4 font-medium">Candidate</th>
                     <th className="px-6 py-4 font-medium">Job</th>
                     <th className="px-6 py-4 font-medium">Score</th>
@@ -102,11 +170,19 @@ export const GlobalCandidates = () => {
                   {data.items.map((candidate: GlobalScreeningResultResponse) => (
                     <tr
                       key={`${candidate.job_id}-${candidate.resume_id}`}
-                      className="hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+                      className={`transition-colors cursor-pointer ${selectedIds.includes(candidate.resume_id) ? 'bg-[var(--color-primary-subtle-bg)]' : 'hover:bg-[var(--bg-hover)]'}`}
                       onClick={() => setSelectedCandidate({ jobId: candidate.job_id, resumeId: candidate.resume_id })}
                       tabIndex={0}
                       onKeyDown={(e) => e.key === 'Enter' && setSelectedCandidate({ jobId: candidate.job_id, resumeId: candidate.resume_id })}
                     >
+                      <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.includes(candidate.resume_id)}
+                          onChange={(e) => handleSelect(e, candidate.resume_id)}
+                          className="rounded border-[var(--border-strong)] text-[var(--color-primary-600)] focus:ring-[var(--color-primary-600)]"
+                        />
+                      </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center space-x-3">
                           <div className="w-8 h-8 bg-[var(--color-primary-subtle-bg)] text-[var(--color-primary-subtle-text)] rounded flex items-center justify-center">
@@ -187,6 +263,17 @@ export const GlobalCandidates = () => {
           onClose={() => setSelectedCandidate(null)}
           onView360={() => {
             navigate(`/jobs/${selectedCandidate.jobId}/candidates/${selectedCandidate.resumeId}`, { state: { from: 'candidates' } });
+          }}
+        />
+      )}
+
+      {showEmailModal && (
+        <BulkEmailModal
+          resumeGroups={resumeGroups}
+          onClose={() => setShowEmailModal(false)}
+          onSuccess={() => {
+            setShowEmailModal(false);
+            setSelectedIds([]);
           }}
         />
       )}

@@ -70,10 +70,19 @@ def do_run_migrations(connection: Connection) -> None:
 async def run_async_migrations() -> None:
     section = config.get_section(config.config_ini_section, {})
     section['sqlalchemy.url'] = config.get_main_option('sqlalchemy.url')
+    # See Settings.DB_SCHEMA and app/db/session.py's matching comment -
+    # lets `alembic upgrade` target the isolated test schema (e.g.
+    # DB_SCHEMA=test_isolation alembic upgrade head) without touching the
+    # real "public" schema's migration state. No "public" fallback in the
+    # search_path: that previously made alembic_version resolve to the
+    # already-migrated public table on a brand new test schema, so it
+    # concluded there was nothing to migrate and created nothing.
+    connect_args = {"server_settings": {"search_path": settings.DB_SCHEMA}} if settings.DB_SCHEMA else {}
     connectable = async_engine_from_config(
         section,
         prefix='sqlalchemy.',
         poolclass=pool.NullPool,
+        connect_args=connect_args,
     )
 
     async with connectable.connect() as connection:

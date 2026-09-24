@@ -16,6 +16,12 @@ def _make_app_settings(**overrides):
     s.id = 1
     s.auto_email_on_shortlist = False
     s.shortlist_email_template_id = None
+    # Explicitly False by default: MagicMock(spec=...) otherwise leaks a
+    # truthy child mock for this attribute, which would make every existing
+    # test below silently exercise the real (unmocked) trigger_interview
+    # path - see test_on_decision_shortlisted_generates_interview_when_enabled
+    # for the dedicated, properly-mocked test of that behavior.
+    s.auto_generate_interview_on_shortlist = False
     s.auto_email_on_interview_scheduled = False
     s.interview_scheduled_email_template_id = None
     for k, v in overrides.items():
@@ -65,6 +71,62 @@ async def test_on_decision_shortlisted_calls_queue_bulk_emails_when_enabled(
     assert kwargs["job_id"] == 1
     assert kwargs["resume_ids"] == [7, 8]
     assert kwargs["template_id"] == 42
+
+
+@pytest.mark.asyncio
+@patch("app.services.outreach.AsyncSessionLocal", new_callable=MagicMock)
+@patch("app.services.interview.interview_adapter.trigger_interview", new_callable=AsyncMock)
+@patch("app.services.outreach.email_service")
+async def test_on_decision_shortlisted_generates_interview_when_enabled(
+    mock_email_service, mock_trigger_interview, mock_session_local
+):
+    """auto_generate_interview_on_shortlist closes the shortlist -> link ->
+    email gap: nothing previously called trigger_interview automatically, so
+    auto_email_on_interview_scheduled (a separate, already-wired toggle -
+    see app/services/interview.py calling on_interview_triggered) only ever
+    fired once a human manually clicked "Create Interview Link"."""
+    from app.services.outreach import outreach_service
+
+    mock_session = _mock_session_local(mock_session_local)
+    settings_exec = MagicMock()
+    settings_exec.scalar_one_or_none.return_value = _make_app_settings(
+        auto_generate_interview_on_shortlist=True
+    )
+    mock_session.execute = AsyncMock(return_value=settings_exec)
+    mock_email_service.queue_bulk_emails = AsyncMock()
+    mock_trigger_interview.return_value = True
+
+    await outreach_service.on_decision_shortlisted(job_id=1, resume_ids=[7, 8])
+
+    assert mock_trigger_interview.await_count == 2
+    mock_trigger_interview.assert_any_await(candidate_id=7, job_id=1)
+    mock_trigger_interview.assert_any_await(candidate_id=8, job_id=1)
+    # auto_email_on_shortlist is off by default in _make_app_settings - this
+    # toggle is independent of it.
+    mock_email_service.queue_bulk_emails.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@patch("app.services.outreach.AsyncSessionLocal", new_callable=MagicMock)
+@patch("app.services.interview.interview_adapter.trigger_interview", new_callable=AsyncMock)
+async def test_on_decision_shortlisted_one_resumes_trigger_failure_does_not_block_others(
+    mock_trigger_interview, mock_session_local
+):
+    """One resume's trigger_interview failure (e.g. a DB hiccup) must not
+    stop the rest of the batch from getting their interview link."""
+    from app.services.outreach import outreach_service
+
+    mock_session = _mock_session_local(mock_session_local)
+    settings_exec = MagicMock()
+    settings_exec.scalar_one_or_none.return_value = _make_app_settings(
+        auto_generate_interview_on_shortlist=True
+    )
+    mock_session.execute = AsyncMock(return_value=settings_exec)
+    mock_trigger_interview.side_effect = [Exception("boom"), True]
+
+    await outreach_service.on_decision_shortlisted(job_id=1, resume_ids=[7, 8])
+
+    assert mock_trigger_interview.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -213,7 +275,13 @@ async def test_single_decision_shortlist_triggers_outreach(client: AsyncClient):
     profile_exec = MagicMock()
     profile_exec.scalar_one_or_none.return_value = None
 
-    mock_db.execute = AsyncMock(side_effect=[job_exec, resume_exec, sr_exec, profile_exec])
+    # Phase 4: one extra db.execute call for screening_audit's batched
+    # Application-context preload (resume has no candidate_id here, so it's
+    # the only query that runs for that lookup).
+    candidate_lookup_exec = MagicMock()
+    candidate_lookup_exec.all.return_value = []
+
+    mock_db.execute = AsyncMock(side_effect=[job_exec, resume_exec, sr_exec, candidate_lookup_exec, profile_exec])
 
     with patch("app.api.jobs.outreach_service.on_decision_shortlisted", new_callable=AsyncMock) as mock_outreach:
         try:
@@ -273,7 +341,13 @@ async def test_single_decision_review_does_not_trigger_outreach(client: AsyncCli
     profile_exec = MagicMock()
     profile_exec.scalar_one_or_none.return_value = None
 
-    mock_db.execute = AsyncMock(side_effect=[job_exec, resume_exec, sr_exec, profile_exec])
+    # Phase 4: one extra db.execute call for screening_audit's batched
+    # Application-context preload (resume has no candidate_id here, so it's
+    # the only query that runs for that lookup).
+    candidate_lookup_exec = MagicMock()
+    candidate_lookup_exec.all.return_value = []
+
+    mock_db.execute = AsyncMock(side_effect=[job_exec, resume_exec, sr_exec, candidate_lookup_exec, profile_exec])
 
     with patch("app.api.jobs.outreach_service.on_decision_shortlisted", new_callable=AsyncMock) as mock_outreach:
         try:
@@ -314,7 +388,13 @@ async def test_bulk_decision_shortlist_triggers_outreach(client: AsyncClient):
     screenings_exec = MagicMock()
     screenings_exec.scalars.return_value.all.return_value = [sr1, sr2]
 
-    mock_db.execute = AsyncMock(side_effect=[job_exec, screenings_exec])
+    # Phase 4: one extra db.execute call for screening_audit's batched
+    # Application-context preload across both resume_ids (neither has a
+    # candidate_id here, so it's the only query that runs for that lookup).
+    candidate_lookup_exec = MagicMock()
+    candidate_lookup_exec.all.return_value = []
+
+    mock_db.execute = AsyncMock(side_effect=[job_exec, screenings_exec, candidate_lookup_exec])
     mock_db.commit = AsyncMock()
 
     with patch("app.api.jobs.outreach_service.on_decision_shortlisted", new_callable=AsyncMock) as mock_outreach:
@@ -381,7 +461,13 @@ async def test_decision_endpoint_survives_outreach_failure_end_to_end(client: As
     profile_exec = MagicMock()
     profile_exec.scalar_one_or_none.return_value = None
 
-    mock_db.execute = AsyncMock(side_effect=[job_exec, resume_exec, sr_exec, profile_exec])
+    # Phase 4: one extra db.execute call for screening_audit's batched
+    # Application-context preload (resume has no candidate_id here, so it's
+    # the only query that runs for that lookup).
+    candidate_lookup_exec = MagicMock()
+    candidate_lookup_exec.all.return_value = []
+
+    mock_db.execute = AsyncMock(side_effect=[job_exec, resume_exec, sr_exec, candidate_lookup_exec, profile_exec])
 
     with patch("app.services.outreach.AsyncSessionLocal", side_effect=RuntimeError("db down")):
         try:

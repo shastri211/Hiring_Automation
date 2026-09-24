@@ -1,9 +1,10 @@
 import { useNavigate } from 'react-router-dom';
 import { useShortlistedCandidates } from '../hooks/useShortlistedCandidates';
 import { useAddToTalentPool } from '../hooks/useTalentPool';
-import { Users, FileText, CheckCircle2, PackagePlus } from 'lucide-react';
+import { Users, FileText, CheckCircle2, PackagePlus, Mail } from 'lucide-react';
 import { useState } from 'react';
 import { CandidateDrawer } from '../components/CandidateDrawer';
+import { BulkEmailModal, type ResumeGroup } from '../components/BulkEmailModal';
 import { Button, PageHeader, ScoreRing, SkeletonRow } from '../components/ui';
 import type { GlobalScreeningResultResponse } from '../types';
 
@@ -11,7 +12,38 @@ export const Shortlisted = () => {
   const { candidates, isLoading, isError, refetch } = useShortlistedCandidates();
   const navigate = useNavigate();
   const [selectedCandidate, setSelectedCandidate] = useState<{jobId: number, resumeId: number} | null>(null);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [showEmailModal, setShowEmailModal] = useState(false);
   const addToPool = useAddToTalentPool();
+
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      setSelectedIds(candidates.map((c: GlobalScreeningResultResponse) => c.resume_id));
+    } else {
+      setSelectedIds([]);
+    }
+  };
+
+  const handleSelect = (e: React.ChangeEvent<HTMLInputElement>, resumeId: number) => {
+    if (e.target.checked) {
+      setSelectedIds((prev) => [...prev, resumeId]);
+    } else {
+      setSelectedIds((prev) => prev.filter((id) => id !== resumeId));
+    }
+  };
+
+  // Selected rows can span multiple jobs - group by job_id since the
+  // bulk-send endpoint is job-scoped.
+  const resumeGroups: ResumeGroup[] = Object.values(
+    candidates
+      .filter((c: GlobalScreeningResultResponse) => selectedIds.includes(c.resume_id))
+      .reduce((acc: Record<number, ResumeGroup>, c: GlobalScreeningResultResponse) => {
+        const key = c.job_id;
+        if (!acc[key]) acc[key] = { jobId: c.job_id, jobTitle: c.job_title, resumeIds: [] };
+        acc[key].resumeIds.push(c.resume_id);
+        return acc;
+      }, {})
+  );
 
   if (isError) {
     return (
@@ -43,10 +75,33 @@ export const Shortlisted = () => {
         </div>
       ) : (
         <div className="bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-xl shadow-[var(--shadow-sm)] overflow-hidden">
+          {selectedIds.length > 0 && (
+            <div className="bg-[var(--color-primary-subtle-bg)] border-b border-[var(--color-primary-200)] p-4 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <span className="text-[var(--color-primary-subtle-text)] font-medium text-sm">{selectedIds.length} candidates selected</span>
+                <div className="h-4 w-px bg-[var(--color-primary-200)]"></div>
+                <button onClick={() => setSelectedIds([])} className="transition-base text-sm text-[var(--color-primary-600)] hover:text-[var(--color-primary-700)]">Clear</button>
+              </div>
+              <button
+                onClick={() => setShowEmailModal(true)}
+                className="transition-base px-3 py-1.5 bg-[var(--bg-surface)] text-[var(--color-primary-subtle-text)] border border-[var(--color-primary-200)] rounded text-sm hover:bg-[var(--color-primary-subtle-bg)] focus-ring font-medium flex items-center gap-1.5"
+              >
+                <Mail className="w-4 h-4" /> Email
+              </button>
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm text-[var(--text-secondary)]">
               <thead className="bg-[var(--bg-app)] border-b border-[var(--border-light)] text-[var(--text-secondary)]">
                 <tr>
+                  <th className="px-6 py-4 w-12">
+                    <input
+                      type="checkbox"
+                      checked={candidates.length > 0 && selectedIds.length === candidates.length}
+                      onChange={handleSelectAll}
+                      className="rounded border-[var(--border-strong)] text-[var(--color-primary-600)] focus:ring-[var(--color-primary-600)]"
+                    />
+                  </th>
                   <th className="px-6 py-4 font-medium">Candidate</th>
                   <th className="px-6 py-4 font-medium">Job</th>
                   <th className="px-6 py-4 font-medium">Fit Score</th>
@@ -57,16 +112,24 @@ export const Shortlisted = () => {
               <tbody className="divide-y divide-[var(--border-light)]">
                 {isLoading ? (
                   Array.from({ length: 6 }).map((_, i) => (
-                    <SkeletonRow key={i} columns={['avatar', 'text', 'score', 'text', 'actions']} />
+                    <SkeletonRow key={i} columns={['checkbox', 'avatar', 'score', 'text', 'actions']} />
                   ))
                 ) : candidates.map((candidate: GlobalScreeningResultResponse) => (
                   <tr
                     key={`${candidate.job_id}-${candidate.resume_id}`}
-                    className="transition-base hover:bg-[var(--bg-app)] group cursor-pointer"
+                    className={`transition-base group cursor-pointer ${selectedIds.includes(candidate.resume_id) ? 'bg-[var(--color-primary-subtle-bg)]' : 'hover:bg-[var(--bg-app)]'}`}
                     onClick={() => setSelectedCandidate({ jobId: candidate.job_id, resumeId: candidate.resume_id })}
                     tabIndex={0}
                     onKeyDown={(e) => e.key === 'Enter' && setSelectedCandidate({ jobId: candidate.job_id, resumeId: candidate.resume_id })}
                   >
+                    <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(candidate.resume_id)}
+                        onChange={(e) => handleSelect(e, candidate.resume_id)}
+                        className="rounded border-[var(--border-strong)] text-[var(--color-primary-600)] focus:ring-[var(--color-primary-600)]"
+                      />
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center space-x-3">
                         <div className="w-8 h-8 bg-[var(--color-primary-subtle-bg)] text-[var(--color-primary-subtle-text)] rounded flex items-center justify-center">
@@ -143,6 +206,17 @@ export const Shortlisted = () => {
           onClose={() => setSelectedCandidate(null)}
           onView360={() => {
             navigate(`/jobs/${selectedCandidate.jobId}/candidates/${selectedCandidate.resumeId}`, { state: { from: 'shortlisted' } });
+          }}
+        />
+      )}
+
+      {showEmailModal && (
+        <BulkEmailModal
+          resumeGroups={resumeGroups}
+          onClose={() => setShowEmailModal(false)}
+          onSuccess={() => {
+            setShowEmailModal(false);
+            setSelectedIds([]);
           }}
         />
       )}

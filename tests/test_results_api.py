@@ -96,10 +96,15 @@ async def test_results_pagination(client: AsyncClient):
         side_effect=[job_exec, count_exec, items_exec]
     )
 
+    # Phase 6: candidate-name resolution now goes through the separate,
+    # batched get_candidate_summaries call rather than a query this
+    # endpoint issues itself - mocked directly rather than simulated
+    # through mock_db.execute's side_effect sequence.
     try:
-        response = await client.get(
-            "/jobs/1/results?page=1&page_size=10"
-        )
+        with patch("app.api.jobs.get_candidate_summaries", new_callable=AsyncMock, return_value={}):
+            response = await client.get(
+                "/jobs/1/results?page=1&page_size=10"
+            )
 
         assert response.status_code == 200
         body = response.json()
@@ -153,7 +158,8 @@ async def test_results_sanitizes_error_message(client: AsyncClient):
     mock_db.execute = AsyncMock(side_effect=[job_exec, count_exec, items_exec])
 
     try:
-        response = await client.get("/jobs/1/results?page=1&page_size=10")
+        with patch("app.api.jobs.get_candidate_summaries", new_callable=AsyncMock, return_value={}):
+            response = await client.get("/jobs/1/results?page=1&page_size=10")
         assert response.status_code == 200
         body = response.json()
         error_message = body["items"][0]["error_message"]
@@ -246,7 +252,8 @@ async def test_candidate_detail_includes_summary_and_experience(client: AsyncCli
     )
 
     try:
-        response = await client.get("/jobs/1/results/1")
+        with patch("app.api.jobs.get_candidate_summaries", new_callable=AsyncMock, return_value={}):
+            response = await client.get("/jobs/1/results/1")
         assert response.status_code == 200
         body = response.json()
         assert body["profile"]["summary"] == "Senior backend engineer with distributed systems experience."
@@ -333,8 +340,24 @@ async def test_duplicate_screening_idempotent():
         settings_exec = MagicMock()
         settings_exec.scalar_one_or_none.return_value = None
 
+        # Phase 4: screen_job now preloads a batched Application/audit
+        # context (screening_audit.preload_application_context) once before
+        # the per-candidate loop - one extra db.execute call (the batched
+        # Resume.candidate_id lookup); the candidate has no resolved
+        # candidate_id here, so nothing downstream of it is queried.
+        candidate_lookup_exec = MagicMock()
+        candidate_lookup_exec.all.return_value = []
+
+        # screen_job also preloads which resumes already have an Interview
+        # (so the idempotency-guard branch below can tell a genuinely
+        # already-processed SHORTLIST apart from one whose outreach never
+        # fired after a crash) - one more db.execute call, right before the
+        # per-candidate idempotency check.
+        interview_lookup_exec = MagicMock()
+        interview_lookup_exec.scalars.return_value.all.return_value = []
+
         mock_db.execute = AsyncMock(
-            side_effect=[count_exec, settings_exec, existing_exec]
+            side_effect=[count_exec, settings_exec, candidate_lookup_exec, interview_lookup_exec, existing_exec]
         )
         mock_db.add = MagicMock()
         mock_db.commit = AsyncMock()
@@ -393,9 +416,19 @@ async def test_update_decision_valid(client: AsyncClient):
     
     mock_profile_res = MagicMock()
     mock_profile_res.scalar_one_or_none.return_value = None
-    
-    mock_db.execute.side_effect = [mock_job_res, mock_resume_res, mock_sr_res, mock_profile_res]
-    
+
+    # Phase 4: update_screening_decision now runs one extra db.execute call
+    # (screening_audit.preload_application_context's batched Resume lookup)
+    # before commit - the resume has no candidate_id here, so that's the
+    # only query it needs (Application/ScreeningResult/DecisionAudit
+    # lookups are all skipped when there's nothing resolved to look up).
+    mock_candidate_lookup_res = MagicMock()
+    mock_candidate_lookup_res.all.return_value = []
+
+    mock_db.execute.side_effect = [
+        mock_job_res, mock_resume_res, mock_sr_res, mock_candidate_lookup_res, mock_profile_res,
+    ]
+
     response = await client.patch("/jobs/1/results/1/decision", json={"decision": "SHORTLIST"})
     assert response.status_code == 200
     assert response.json()["decision"] == "SHORTLIST"

@@ -31,7 +31,33 @@ class OutreachAutomationService:
             async with AsyncSessionLocal() as session:
                 result = await session.execute(select(AppSettings).where(AppSettings.id == 1))
                 app_settings = result.scalar_one_or_none()
-                if not app_settings or not app_settings.auto_email_on_shortlist:
+                if not app_settings:
+                    return
+
+                # Closes the shortlist -> link -> email chain: trigger_interview
+                # itself calls on_interview_triggered below once it commits, so
+                # if auto_email_on_interview_scheduled is also configured this
+                # is what actually sends the "here's your interview link"
+                # email - this toggle only controls whether the link gets
+                # minted automatically in the first place. Deferred import:
+                # app.services.interview imports outreach_service from this
+                # module, so importing it back at module scope would be
+                # circular.
+                if app_settings.auto_generate_interview_on_shortlist:
+                    from app.services.interview import interview_adapter
+
+                    for resume_id in resume_ids:
+                        try:
+                            await interview_adapter.trigger_interview(candidate_id=resume_id, job_id=job_id)
+                        except Exception:
+                            logger.exception(
+                                "Outreach automation: auto-generating interview link failed for "
+                                "job=%s resume=%s",
+                                job_id,
+                                resume_id,
+                            )
+
+                if not app_settings.auto_email_on_shortlist:
                     return
                 if not app_settings.shortlist_email_template_id:
                     logger.warning(
@@ -46,6 +72,7 @@ class OutreachAutomationService:
                     resume_ids=resume_ids,
                     template_id=app_settings.shortlist_email_template_id,
                     queue_service=queue_service,
+                    override_recipient_email=app_settings.email_test_override_recipient or None,
                 )
         except Exception:
             logger.exception(
@@ -55,9 +82,9 @@ class OutreachAutomationService:
             )
 
     async def on_interview_triggered(self, job_id: int, resume_id: int) -> None:
-        """Call this from app/services/interview.py::trigger_interview after a
-        successful trigger commit. Not wired in by this change - built here so
-        the Dograh work stream can call it without needing to touch this file.
+        """Called from app/services/interview.py::trigger_interview after a
+        successful trigger commit (for both a manual "Create Interview Link"
+        click and the auto_generate_interview_on_shortlist path above).
 
         NOTE: InterviewIntegrationAdapter.trigger_interview's first parameter
         is named `candidate_id` but is actually a resume_id - call as
@@ -84,6 +111,7 @@ class OutreachAutomationService:
                     resume_ids=[resume_id],
                     template_id=app_settings.interview_scheduled_email_template_id,
                     queue_service=queue_service,
+                    override_recipient_email=app_settings.email_test_override_recipient or None,
                 )
         except Exception:
             logger.exception(
