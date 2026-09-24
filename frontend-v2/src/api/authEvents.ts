@@ -17,3 +17,17 @@ export const registerUnauthorizedHandler = (fn: UnauthorizedHandler | null) => {
 export const notifyUnauthorized = () => {
   handler?.();
 };
+
+type PasswordChangeRequiredHandler = () => void;
+
+let passwordChangeHandler: PasswordChangeRequiredHandler | null = null;
+
+/** Registered by AuthProvider: a 403 password_change_required means the
+ * session's user must change their temporary password first. */
+export const registerPasswordChangeRequiredHandler = (fn: PasswordChangeRequiredHandler | null) => {
+  passwordChangeHandler = fn;
+};
+
+export const notifyPasswordChangeRequired = () => {
+  passwordChangeHandler?.();
+};

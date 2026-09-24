@@ -26,6 +26,10 @@ import { InterviewRoom } from '../pages/InterviewRoom';
 import { ApplyPage } from '../pages/ApplyPage';
 import { Login } from '../pages/Login';
 import { RequireAuth } from '../components/auth/RequireAuth';
+import { RequirePlatformAdmin } from '../components/auth/RequirePlatformAdmin';
+import { Signup } from '../pages/Signup';
+import { VerifyEmail } from '../pages/VerifyEmail';
+import { ChangePassword } from '../pages/ChangePassword';
 
 const RouteError = () => {
   const error = useRouteError();
@@ -55,6 +59,13 @@ const router = createBrowserRouter([
     element: <RequireAuth />,
     errorElement: <RouteError />,
     children: [
+      // Authenticated but outside AppLayout: while an admin-issued temporary
+      // password is still in place, RequireAuth sends the user here and every
+      // other API call is refused, so the app chrome couldn't load.
+      {
+        path: 'change-password',
+        element: <ChangePassword />
+      },
       {
         element: <AppLayout />,
         children: [
@@ -147,7 +158,9 @@ const router = createBrowserRouter([
           // SYSTEM
           {
             path: 'integrations',
-            element: <Integrations />
+            // Platform-level (shared provider configuration) - platform
+            // admins only; everyone else sees a "not available" state.
+            element: <RequirePlatformAdmin><Integrations /></RequirePlatformAdmin>
           },
           {
             path: 'settings',
@@ -177,6 +190,17 @@ const router = createBrowserRouter([
   {
     path: '/login',
     element: <Login />,
+    errorElement: <RouteError />
+  },
+  // Public self-service company signup and its email-verification landing.
+  {
+    path: '/signup',
+    element: <Signup />,
+    errorElement: <RouteError />
+  },
+  {
+    path: '/verify-email',
+    element: <VerifyEmail />,
     errorElement: <RouteError />
   }
 ]);
