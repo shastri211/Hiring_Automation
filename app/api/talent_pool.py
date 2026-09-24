@@ -110,9 +110,12 @@ async def list_talent_pool(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    query = select(TalentPoolEntry).outerjoin(
-        CandidateProfile, CandidateProfile.resume_id == TalentPoolEntry.resume_id
+    query = (
+        select(TalentPoolEntry)
+        .outerjoin(CandidateProfile, CandidateProfile.resume_id == TalentPoolEntry.resume_id)
+        .where(TalentPoolEntry.organization_id == current_user.organization_id)
     )
 
     if q:
@@ -160,10 +163,7 @@ async def update_talent_pool_entry(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(TalentPoolEntry).where(TalentPoolEntry.id == entry_id))
-    entry = result.scalar_one_or_none()
-    if entry is None:
-        raise HTTPException(status_code=404, detail="Talent pool entry not found")
+    entry = await tenancy.get_talent_entry_for_org_or_404(db, entry_id, current_user.organization_id)
 
     update_data = payload.model_dump(exclude_unset=True)
     for key, value in update_data.items():
@@ -182,10 +182,7 @@ async def remove_from_talent_pool(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(TalentPoolEntry).where(TalentPoolEntry.id == entry_id))
-    entry = result.scalar_one_or_none()
-    if entry is None:
-        raise HTTPException(status_code=404, detail="Talent pool entry not found")
+    entry = await tenancy.get_talent_entry_for_org_or_404(db, entry_id, current_user.organization_id)
 
     await db.delete(entry)
     await db.commit()

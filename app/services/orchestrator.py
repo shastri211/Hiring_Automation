@@ -148,7 +148,8 @@ class RecruitmentOrchestrator:
                 # itself is untouched: it's always computed fresh per
                 # (job_id, resume_id) regardless of what was reused upstream.
                 reusable_source = await resume_reuse.find_reusable_source(
-                    session, file_hash=resume.file_hash, exclude_resume_id=resume.id
+                    session, file_hash=resume.file_hash, exclude_resume_id=resume.id,
+                    organization_id=job.organization_id,
                 )
 
                 # Phase 4: did this resume turn out to be a new version of an

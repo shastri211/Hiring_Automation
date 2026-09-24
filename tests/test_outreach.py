@@ -394,7 +394,13 @@ async def test_bulk_decision_shortlist_triggers_outreach(client: AsyncClient):
     candidate_lookup_exec = MagicMock()
     candidate_lookup_exec.all.return_value = []
 
-    mock_db.execute = AsyncMock(side_effect=[job_exec, screenings_exec, candidate_lookup_exec])
+    # Tenancy: bulk-decision first checks every resume id belongs to the job.
+    job_resumes_exec = MagicMock()
+    job_resumes_exec.scalars.return_value.all.return_value = [7, 8]
+
+    mock_db.execute = AsyncMock(
+        side_effect=[job_exec, job_resumes_exec, screenings_exec, candidate_lookup_exec]
+    )
     mock_db.commit = AsyncMock()
 
     with patch("app.api.jobs.outreach_service.on_decision_shortlisted", new_callable=AsyncMock) as mock_outreach:

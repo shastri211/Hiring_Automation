@@ -50,9 +50,20 @@ async def test_trigger_interview(setup_data, client: AsyncClient):
 @pytest.mark.asyncio
 async def test_trigger_interview_invalid_ownership(setup_data, client: AsyncClient):
     job, resume = setup_data
+    # A job that doesn't exist (in the caller's organization) now 404s at the
+    # job lookup, before the resume/job ownership check.
     response = await client.post("/integration/interview/trigger", json={
         "job_id": job.id + 100,  # Invalid job id
         "resume_id": resume.id
+    })
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Job not found"
+
+    # A real job with a resume that isn't one of its own still hits the
+    # ownership check.
+    response = await client.post("/integration/interview/trigger", json={
+        "job_id": job.id,
+        "resume_id": resume.id + 100,
     })
     assert response.status_code == 404
     assert "Resume not found for this job" in response.json()["detail"]

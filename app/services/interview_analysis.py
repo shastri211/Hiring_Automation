@@ -4,6 +4,7 @@ from typing import Optional, Tuple, List, Any
 from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.tenancy import org_job_ids
 from app.models.interview import Interview
 from app.models.resume import Resume
 from app.models.job import Job
@@ -82,8 +83,8 @@ def parse_evaluation_envelope(evaluation: Any) -> dict:
 
 
 class InterviewAnalysisService:
-    async def summary(self, db: AsyncSession, job_id: Optional[int] = None) -> dict:
-        query = select(Interview)
+    async def summary(self, db: AsyncSession, *, organization_id: int, job_id: Optional[int] = None) -> dict:
+        query = select(Interview).where(Interview.job_id.in_(org_job_ids(organization_id)))
         if job_id is not None:
             query = query.where(Interview.job_id == job_id)
 
@@ -119,6 +120,8 @@ class InterviewAnalysisService:
     async def list_interviews(
         self,
         db: AsyncSession,
+        *,
+        organization_id: int,
         job_id: Optional[int] = None,
         disposition: Optional[str] = None,
         page: int = 1,
@@ -134,6 +137,7 @@ class InterviewAnalysisService:
             .join(Resume, Resume.id == Interview.resume_id)
             .join(Job, Job.id == Interview.job_id)
             .outerjoin(CandidateProfile, CandidateProfile.resume_id == Interview.resume_id)
+            .where(Job.organization_id == organization_id)
         )
 
         if job_id is not None:

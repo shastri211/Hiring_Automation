@@ -26,7 +26,8 @@ from app.schemas.candidate import (
     MergeCandidatesRequest,
     UnmergeCandidateResponse,
 )
-from app.services import candidate_identity
+from app.services import candidate_identity, tenancy
+from app.services.tenancy import NotInOrganization
 from app.services.candidate_directory import get_candidate_summaries
 
 router = APIRouter()
@@ -37,6 +38,7 @@ async def get_global_candidates(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     # Base query joining necessary tables
     query = (
@@ -51,6 +53,7 @@ async def get_global_candidates(
         .select_from(Resume)
         .join(Job, Job.id == Resume.job_id)
         .outerjoin(ScreeningResult, (ScreeningResult.resume_id == Resume.id) & (ScreeningResult.job_id == Job.id))
+        .where(Job.organization_id == current_user.organization_id)
     )
 
     if decision:
@@ -131,11 +134,9 @@ async def update_candidate_name(
     candidate_id: int,
     payload: CandidateNameUpdateRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(Candidate).where(Candidate.id == candidate_id))
-    candidate = result.scalar_one_or_none()
-    if not candidate:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Candidate not found")
+    candidate = await tenancy.get_candidate_for_org_or_404(db, candidate_id, current_user.organization_id)
 
     # Blank/whitespace-only clears the override, letting the fallback chain
     # (extracted profile name / email-derived / filename) take over again.
@@ -160,8 +161,16 @@ async def update_candidate_name(
 async def list_match_suggestions(
     status_filter: Optional[str] = Query("PENDING", alias="status", description="PENDING | MERGED | REJECTED"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    query = select(CandidateMatchSuggestion).order_by(CandidateMatchSuggestion.created_at.desc())
+    # A suggestion only pairs candidates of one organization, so its newer
+    # candidate's organization is the suggestion's.
+    query = (
+        select(CandidateMatchSuggestion)
+        .join(Candidate, Candidate.id == CandidateMatchSuggestion.candidate_b_id)
+        .where(Candidate.organization_id == current_user.organization_id)
+        .order_by(CandidateMatchSuggestion.created_at.desc())
+    )
     if status_filter:
         query = query.where(CandidateMatchSuggestion.status == status_filter.upper())
     result = await db.execute(query)
@@ -235,15 +244,14 @@ async def list_match_suggestions(
 
 
 @router.get("/{candidate_id}", response_model=CandidateResponse)
-async def get_candidate(candidate_id: int, db: AsyncSession = Depends(get_db)):
+async def get_candidate(
+    candidate_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)
+):
     """Read-only candidate identity + merge state - the counterpart the
     frontend needs to show "merged into X" / an Unmerge action, and to
     prefill a name-edit control, without the side effects PATCH's
     clear-on-blank semantics would have if misused for a plain read."""
-    result = await db.execute(select(Candidate).where(Candidate.id == candidate_id))
-    candidate = result.scalar_one_or_none()
-    if not candidate:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Candidate not found")
+    candidate = await tenancy.get_candidate_for_org_or_404(db, candidate_id, current_user.organization_id)
 
     merged_into_name = None
     if candidate.merged_into_id is not None:
@@ -264,7 +272,12 @@ async def merge_match_suggestion(
     current_user: User = Depends(get_current_user),
 ):
     try:
-        await candidate_identity.merge_from_suggestion(db, suggestion_id=suggestion_id, merged_by=current_user.id)
+        await candidate_identity.merge_from_suggestion(
+            db, suggestion_id=suggestion_id, merged_by=current_user.id,
+            organization_id=current_user.organization_id,
+        )
+    except NotInOrganization as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     await db.commit()
@@ -283,8 +296,11 @@ async def reject_match_suggestion(
 ):
     try:
         suggestion = await candidate_identity.reject_match_suggestion(
-            db, suggestion_id=suggestion_id, reviewed_by=current_user.id
+            db, suggestion_id=suggestion_id, reviewed_by=current_user.id,
+            organization_id=current_user.organization_id,
         )
+    except NotInOrganization as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     await db.commit()
@@ -304,7 +320,10 @@ async def merge_candidates(
             absorbed_id=payload.absorbed_candidate_id,
             into_id=payload.into_candidate_id,
             merged_by=current_user.id,
+            organization_id=current_user.organization_id,
         )
+    except NotInOrganization as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     await db.commit()
@@ -317,7 +336,12 @@ async def unmerge_candidate(
     current_user: User = Depends(get_current_user),
 ):
     try:
-        log = await candidate_identity.unmerge_candidate(db, absorbed_id=candidate_id, reverted_by=current_user.id)
+        log = await candidate_identity.unmerge_candidate(
+            db, absorbed_id=candidate_id, reverted_by=current_user.id,
+            organization_id=current_user.organization_id,
+        )
+    except NotInOrganization as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     await db.commit()

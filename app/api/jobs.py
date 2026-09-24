@@ -46,6 +46,7 @@ from app.services.interview import interview_adapter
 from app.services.dograh import dograh_client
 from app.services.storage import sanitize_filename
 from app.services import screening_trigger
+from app.services import tenancy
 from app.services import screening_audit
 from app.services.candidate_directory import get_candidate_summaries
 from app.api.deps import get_current_user
@@ -57,8 +58,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 @router.get("/", response_model=List[JobResponse])
-async def list_jobs(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Job).order_by(Job.id.desc()))
+async def list_jobs(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    result = await db.execute(
+        select(Job).where(Job.organization_id == current_user.organization_id).order_by(Job.id.desc())
+    )
     return result.scalars().all()
 
 
@@ -67,10 +70,11 @@ async def list_jobs(db: AsyncSession = Depends(get_db)):
 # swallowed by the int path-converter on job_id.
 
 @router.get("/batches/overview", response_model=List[JobBatchOverviewItem])
-async def get_batches_overview(db: AsyncSession = Depends(get_db)):
+async def get_batches_overview(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     result = await db.execute(
         select(ScreeningBatch, Job.title, Job.status)
         .join(Job, Job.id == ScreeningBatch.job_id)
+        .where(Job.organization_id == current_user.organization_id)
         .order_by(ScreeningBatch.created_at.desc())
         .limit(100)
     )
@@ -137,12 +141,12 @@ async def get_batches_overview(db: AsyncSession = Depends(get_db)):
 
 # -- helpers -------------------------------------------------------------------
 
-async def _get_job_or_404(job_id: int, db: AsyncSession) -> Job:
-    result = await db.execute(select(Job).where(Job.id == job_id))
-    job = result.scalar_one_or_none()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    return job
+async def _get_job_or_404(job_id: int, db: AsyncSession, organization_id: int) -> Job:
+    """The job, only within the caller's organization - another
+    organization's job 404s exactly like a missing one. Every /{job_id}/...
+    route resolves its job here first and anchors all child queries
+    (resumes, results, interviews, batches) on that job_id."""
+    return await tenancy.get_job_for_org_or_404(db, job_id, organization_id)
 
 
 def _safe_error_message(resume: Resume) -> Optional[str]:
@@ -314,8 +318,8 @@ async def upload_job(
 # -- get job -------------------------------------------------------------------
 
 @router.get("/{job_id}", response_model=JobResponse)
-async def get_job(job_id: int, db: AsyncSession = Depends(get_db)):
-    return await _get_job_or_404(job_id, db)
+async def get_job(job_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return await _get_job_or_404(job_id, db, current_user.organization_id)
 
 
 @router.post("/{job_id}/pause", response_model=JobResponse)
@@ -324,7 +328,7 @@ async def pause_job(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    job = await _get_job_or_404(job_id, db)
+    job = await _get_job_or_404(job_id, db, current_user.organization_id)
     if job.status == "ACTIVE":
         job.status = "PAUSED"
         await db.commit()
@@ -338,7 +342,7 @@ async def resume_job(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    job = await _get_job_or_404(job_id, db)
+    job = await _get_job_or_404(job_id, db, current_user.organization_id)
     if job.status == "PAUSED":
         job.status = "ACTIVE"
         await db.commit()
@@ -373,7 +377,7 @@ async def archive_job(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    job = await _get_job_or_404(job_id, db)
+    job = await _get_job_or_404(job_id, db, current_user.organization_id)
     if job.status != "ARCHIVED":
         job.status = "ARCHIVED"
         await db.commit()
@@ -391,7 +395,7 @@ async def open_application_link(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    job = await _get_job_or_404(job_id, db)
+    job = await _get_job_or_404(job_id, db, current_user.organization_id)
     if not job.application_token:
         job.application_token = secrets.token_urlsafe(32)
         await db.commit()
@@ -405,7 +409,7 @@ async def rotate_application_link(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    job = await _get_job_or_404(job_id, db)
+    job = await _get_job_or_404(job_id, db, current_user.organization_id)
     job.application_token = secrets.token_urlsafe(32)
     await db.commit()
     await db.refresh(job)
@@ -418,7 +422,7 @@ async def close_application_link(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    job = await _get_job_or_404(job_id, db)
+    job = await _get_job_or_404(job_id, db, current_user.organization_id)
     if job.application_token:
         job.application_token = None
         await db.commit()
@@ -432,7 +436,7 @@ async def delete_job(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    job = await _get_job_or_404(job_id, db)
+    job = await _get_job_or_404(job_id, db, current_user.organization_id)
     
     # Clean up Qdrant vectors
     if job.embedding_profile:
@@ -508,7 +512,7 @@ async def trigger_screening(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await _get_job_or_404(job_id, db)
+    await _get_job_or_404(job_id, db, current_user.organization_id)
 
     # total_resumes = candidates this run will actually attempt to screen, so
     # the cross-job Processing overview (/jobs/batches/overview) shows real
@@ -531,7 +535,7 @@ async def trigger_embedding_migration(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    job = await _get_job_or_404(job_id, db)
+    job = await _get_job_or_404(job_id, db, current_user.organization_id)
 
     if job.embedding_status == "MIGRATING":
         raise HTTPException(status_code=409, detail="This job's embedding profile is already migrating.")
@@ -561,8 +565,9 @@ async def get_screening_results(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    await _get_job_or_404(job_id, db)
+    await _get_job_or_404(job_id, db, current_user.organization_id)
 
     query = (
         select(
@@ -660,9 +665,10 @@ async def get_screening_results(
 
 @router.get("/{job_id}/results/{resume_id}", response_model=CandidateDetailResponse)
 async def get_candidate_detail(
-    job_id: int, resume_id: int, db: AsyncSession = Depends(get_db)
+    job_id: int, resume_id: int, db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    await _get_job_or_404(job_id, db)
+    await _get_job_or_404(job_id, db, current_user.organization_id)
 
     # Ownership check: resume must belong to this job
     resume_res = await db.execute(
@@ -778,7 +784,7 @@ async def resync_interview(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await _get_job_or_404(job_id, db)
+    await _get_job_or_404(job_id, db, current_user.organization_id)
 
     result = await db.execute(
         select(Interview).where(
@@ -839,7 +845,7 @@ async def decline_interview(
 ):
     """Manual recruiter action - purely a recorded decision, never inferred
     from transcript/session data. DECLINED is manual-only by design."""
-    await _get_job_or_404(job_id, db)
+    await _get_job_or_404(job_id, db, current_user.organization_id)
 
     result = await db.execute(
         select(Interview).where(
@@ -874,7 +880,7 @@ async def update_screening_decision(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await _get_job_or_404(job_id, db)
+    await _get_job_or_404(job_id, db, current_user.organization_id)
 
     # Ownership check
     resume_res = await db.execute(
@@ -974,7 +980,7 @@ async def retry_candidate_evaluation(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    job = await _get_job_or_404(job_id, db)
+    job = await _get_job_or_404(job_id, db, current_user.organization_id)
 
     resume_res = await db.execute(
         select(Resume).where(Resume.id == resume_id, Resume.job_id == job_id)
@@ -1024,7 +1030,11 @@ async def bulk_update_decision(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await _get_job_or_404(job_id, db)
+    await _get_job_or_404(job_id, db, current_user.organization_id)
+    # Every id must be one of this job's resumes - the whole request is
+    # refused otherwise (never a silent partial write, never another
+    # organization's resume).
+    await tenancy.require_resumes_in_job(db, job_id, payload.resume_ids)
 
     # Fetch all matching screening results
     res = await db.execute(
@@ -1091,8 +1101,10 @@ async def bulk_update_decision(
 # -- batch progress ------------------------------------------------------------
 
 @router.get("/{job_id}/progress", response_model=BatchProgressResponse)
-async def get_batch_progress(job_id: int, db: AsyncSession = Depends(get_db)):
-    await _get_job_or_404(job_id, db)
+async def get_batch_progress(
+    job_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)
+):
+    await _get_job_or_404(job_id, db, current_user.organization_id)
 
     batches_res = await db.execute(
         select(ScreeningBatch).where(ScreeningBatch.job_id == job_id)

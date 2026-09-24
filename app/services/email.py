@@ -11,6 +11,7 @@ from app.db.session import AsyncSessionLocal
 from app.models.email import EmailTemplate, EmailMessage
 from app.models.profile import CandidateProfile
 from app.models.job import Job
+from app.models.resume import Resume
 from app.models.interview import Interview
 from app.services import tenancy
 from app.services.settings import settings_service
@@ -109,16 +110,32 @@ class EmailService:
         queued_count = 0
         
         async with AsyncSessionLocal() as session:
-            # 1. Fetch template
+            # 1. Fetch template - only from the job's own organization.
+            # Callers (bulk-send route, outreach automation) already pass
+            # same-organization ids; this is the service-level guarantee.
+            job_org_id = await tenancy.organization_id_for_job(session, job_id)
             result = await session.execute(
-                select(EmailTemplate).where(EmailTemplate.id == template_id)
+                select(EmailTemplate).where(
+                    EmailTemplate.id == template_id,
+                    EmailTemplate.organization_id == job_org_id,
+                )
             )
             template = result.scalar_one_or_none()
             if not template:
                 raise ValueError(f"Template {template_id} not found")
-                
+
+            # Only this job's resumes are ever messaged under this job.
+            job_resume_ids = set(
+                (await session.execute(
+                    select(Resume.id).where(Resume.job_id == job_id, Resume.id.in_(set(resume_ids)))
+                )).scalars().all()
+            )
+
             # 2. Process each candidate
             for resume_id in resume_ids:
+                if resume_id not in job_resume_ids:
+                    logger.warning(f"Skipping resume {resume_id}: not a resume of job {job_id}")
+                    continue
                 # Check if already pending or sent for this template to prevent duplicates
                 existing = await session.execute(
                     select(EmailMessage).where(
