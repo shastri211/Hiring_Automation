@@ -1,20 +1,34 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { authApi } from '../api/auth';
-import { registerUnauthorizedHandler } from '../api/authEvents';
-import type { UserResponse } from '../types';
+import { registerPasswordChangeRequiredHandler, registerUnauthorizedHandler } from '../api/authEvents';
+import { queryClient } from '../api/queryClient';
+import type { MeResponse } from '../types';
 
 interface AuthContextValue {
-  user: UserResponse | null;
+  /** The logged-in user with their organization, role and account flags. */
+  user: MeResponse | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  isAdmin: boolean;
+  isPlatformAdmin: boolean;
+  login: (email: string, password: string) => Promise<MeResponse>;
   logout: () => Promise<void>;
+  /** Re-read /auth/me (e.g. after changing a temporary password). */
+  refreshMe: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<UserResponse | null>(null);
+  const [user, setUser] = useState<MeResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Every cached query is organization-scoped data - drop it whenever the
+  // session identity changes so nothing from a previous user (possibly of
+  // another organization) is ever rendered.
+  const resetSession = useCallback((next: MeResponse | null) => {
+    queryClient.clear();
+    setUser(next);
+  }, []);
 
   // Establish whether a session already exists (e.g. page refresh with a
   // still-valid cookie). Any failure - 401 "not authenticated" is the
@@ -29,29 +43,54 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => { cancelled = true; };
   }, []);
 
+  const refreshMe = useCallback(async () => {
+    try {
+      setUser(await authApi.getMe());
+    } catch {
+      resetSession(null);
+    }
+  }, [resetSession]);
+
   // React to a mid-session 401 (cookie expired/revoked while the app was
   // open) reported by client.ts's response interceptor: clear the user so
-  // RequireAuth redirects to /login.
+  // RequireAuth redirects to /login. A 403 password_change_required means
+  // the account must replace its temporary password first - re-read the
+  // session so RequireAuth routes to /change-password.
   useEffect(() => {
-    registerUnauthorizedHandler(() => setUser(null));
-    return () => registerUnauthorizedHandler(null);
-  }, []);
+    registerUnauthorizedHandler(() => resetSession(null));
+    registerPasswordChangeRequiredHandler(() => { void refreshMe(); });
+    return () => {
+      registerUnauthorizedHandler(null);
+      registerPasswordChangeRequiredHandler(null);
+    };
+  }, [resetSession, refreshMe]);
 
   const login = useCallback(async (email: string, password: string) => {
     const me = await authApi.login({ email, password });
-    setUser(me);
-  }, []);
+    resetSession(me);
+    return me;
+  }, [resetSession]);
 
   const logout = useCallback(async () => {
     try {
       await authApi.logout();
     } finally {
-      setUser(null);
+      resetSession(null);
     }
-  }, []);
+  }, [resetSession]);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        isLoading,
+        isAdmin: user?.role === 'admin',
+        isPlatformAdmin: !!user?.is_platform_admin,
+        login,
+        logout,
+        refreshMe,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

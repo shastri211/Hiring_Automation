@@ -21,5 +21,11 @@ export const RequireAuth = () => {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
+  // An admin-created account must replace its temporary password before
+  // anything else (the server refuses every other route until then).
+  if (user.must_change_password && location.pathname !== '/change-password') {
+    return <Navigate to="/change-password" replace />;
+  }
+
   return <Outlet />;
 };

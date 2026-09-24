@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useMatchSuggestions } from '../../hooks/useCandidateIdentity';
+import { useAuth } from '../../hooks/useAuth';
 
 type NavItem = {
   to: string;
@@ -35,6 +36,7 @@ export const Sidebar = ({
   // beyond what that page already needs.
   const { data: pendingSuggestions } = useMatchSuggestions('PENDING');
   const pendingCount = pendingSuggestions?.length ?? 0;
+  const { user, isPlatformAdmin } = useAuth();
 
   const navGroups: NavGroup[] = [
     {
@@ -73,7 +75,8 @@ export const Sidebar = ({
     {
       title: 'SYSTEM',
       items: [
-        { to: '/integrations', label: 'Integrations', icon: Puzzle },
+        // Platform-level (shared provider config) - platform admins only.
+        ...(isPlatformAdmin ? [{ to: '/integrations', label: 'Integrations', icon: Puzzle }] : []),
         { to: '/settings', label: 'Settings', icon: Settings },
       ]
     }
@@ -102,6 +105,12 @@ export const Sidebar = ({
             <X size={20} />
           </button>
         </div>
+        {user?.organization && (
+          <div className="px-4 pt-3 -mb-2" title="Your organization">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">Organization</p>
+            <p className="text-sm font-medium text-[var(--text-primary)] truncate">{user.organization.name}</p>
+          </div>
+        )}
         <nav id="main-navigation" aria-label="Primary navigation" className="flex-1 p-4 flex flex-col gap-6 overflow-y-auto">
           {navGroups.map((group, i) => (
             <div key={i} className="flex flex-col gap-1">
