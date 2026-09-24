@@ -114,6 +114,15 @@ class Settings(BaseSettings):
     INTERVIEW_MAX_RETRY_ATTEMPTS: int = 2
     INTERVIEW_NO_SHOW_SWEEP_INTERVAL_SECONDS: int = 900
 
+    # Public candidate apply link (app/api/public_application.py).
+    # Fixed one-hour windows, counted in Redis.
+    PUBLIC_APPLY_MAX_PER_IP_PER_HOUR: int = 5
+    PUBLIC_APPLY_MAX_PER_JOB_PER_HOUR: int = 100
+    # Recovery sweep for applications whose queue enqueue was never
+    # confirmed (see PublicApplicationSubmission.enqueued_at).
+    PUBLIC_APPLY_REQUEUE_SWEEP_INTERVAL_SECONDS: int = 60
+    PUBLIC_APPLY_REQUEUE_MIN_AGE_SECONDS: int = 120
+
 
     @property
     def gemini_ocr_model(self) -> str:

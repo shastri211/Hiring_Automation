@@ -82,6 +82,18 @@ async def mark_expired_interviews_no_show_loop():
         await asyncio.sleep(settings.INTERVIEW_NO_SHOW_SWEEP_INTERVAL_SECONDS)
 
 
+async def requeue_unenqueued_applications_loop():
+    """Recovery for public applications whose queue enqueue was never
+    confirmed - see app/services/public_application.py."""
+    from app.services.public_application import requeue_unenqueued_applications
+    while True:
+        try:
+            await requeue_unenqueued_applications()
+        except Exception:
+            logger.exception("Public application requeue sweep error")
+        await asyncio.sleep(settings.PUBLIC_APPLY_REQUEUE_SWEEP_INTERVAL_SECONDS)
+
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -208,6 +220,7 @@ async def main():
     tasks = [asyncio.create_task(worker_loop(f"{WORKER_ID}-{i}")) for i in range(settings.WORKER_CONCURRENCY)]
     tasks.append(asyncio.create_task(recover_stuck_messages()))
     tasks.append(asyncio.create_task(mark_expired_interviews_no_show_loop()))
+    tasks.append(asyncio.create_task(requeue_unenqueued_applications_loop()))
     await asyncio.gather(*tasks)
 
 if __name__ == "__main__":

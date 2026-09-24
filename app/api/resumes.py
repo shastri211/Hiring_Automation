@@ -2,7 +2,6 @@ import os
 import logging
 import zipfile
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status, BackgroundTasks
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from typing import List
@@ -12,9 +11,9 @@ from app.models.job import Job
 from app.models.batch import ScreeningBatch
 from app.models.resume import Resume
 from app.schemas.resume import UploadResponse
-from app.services.storage import storage_service, make_unique_basename, sanitize_filename
+from app.services.storage import storage_service
 from app.services.queue import queue_service
-from app.services import zip_ingest
+from app.services import zip_ingest, resume_intake
 from app.api.deps import get_current_user
 from app.models.user import User
 
@@ -22,19 +21,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-ALLOWED_CONTENT_TYPES = ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]
-ALLOWED_EXTENSIONS = {".pdf", ".docx"}
-MAX_RESUME_FILE_SIZE_BYTES = settings.MAX_RESUME_FILE_SIZE_MB * 1024 * 1024
+# Re-exported for existing importers (app/api/jobs.py's JD upload check).
+from app.services.resume_intake import ALLOWED_CONTENT_TYPES, ALLOWED_EXTENSIONS, MAX_RESUME_FILE_SIZE_BYTES  # noqa: F401
 
 ZIP_EXTENSION = ".zip"
 MAX_ZIP_FILE_SIZE_BYTES = int(settings.max_zip_file_size_mb * 1024 * 1024)
-
-
-def _is_allowed_resume_file(file: UploadFile) -> bool:
-    """Belt-and-suspenders check: the client-supplied Content-Type header is
-    trivially spoofable on its own, so also require a matching extension."""
-    ext = os.path.splitext(file.filename or "")[1].lower()
-    return file.content_type in ALLOWED_CONTENT_TYPES and ext in ALLOWED_EXTENSIONS
 
 
 def _is_zip_file(file: UploadFile) -> bool:
@@ -152,58 +143,16 @@ async def bulk_upload_resumes(
             added_resumes.extend(zip_result.accepted_resume_ids)
             continue
 
-        if not _is_allowed_resume_file(file):
+        intake = await resume_intake.ingest_uploaded_file(
+            db, file, job_id=job_id, batch_id=batch.id, used_basenames=used_basenames
+        )
+        if intake.outcome == "invalid":
             invalid_files += 1
             continue
-
-        # Enforce a per-file size cap without buffering the whole file in memory:
-        # peek the size via the underlying spooled file, then rewind for
-        # hashing/saving. UploadFile.seek() itself has no `whence` param, so
-        # this goes through the sync file object it wraps.
-        file.file.seek(0, os.SEEK_END)
-        file_size = file.file.tell()
-        await file.seek(0)
-        if file_size == 0 or file_size > MAX_RESUME_FILE_SIZE_BYTES:
-            invalid_files += 1
-            continue
-
-        file_hash = await storage_service.compute_hash(file)
-
-        # Check duplicate (app-level pre-check; the DB unique constraint on
-        # (job_id, file_hash) is the authoritative guard against the
-        # concurrent-upload race this alone can't close).
-        dup_result = await db.execute(
-            select(Resume).where(Resume.job_id == job_id, Resume.file_hash == file_hash)
-        )
-        if dup_result.scalar_one_or_none():
+        if intake.outcome == "duplicate":
             duplicate_files += 1
             continue
-
-        # Store file
-        prefix = f"job_{job_id}/batch_{batch.id}"
-        basename = make_unique_basename(sanitize_filename(file.filename), used_basenames)
-        storage_key = await storage_service.save_file(file, prefix, filename_override=basename)
-
-        # Save metadata. Flushed inside a SAVEPOINT so that losing the
-        # duplicate-hash race on this one file only undoes this insert -
-        # not the other resumes already flushed earlier in this same loop,
-        # since the whole batch is committed together at the end.
-        resume = Resume(
-            batch_id=batch.id,
-            job_id=job_id,
-            filename=file.filename,
-            file_hash=file_hash,
-            storage_key=storage_key
-        )
-        try:
-            async with db.begin_nested():
-                db.add(resume)
-                await db.flush()  # flush to get resume.id
-        except IntegrityError:
-            # Lost the race with a concurrent upload of the same file.
-            duplicate_files += 1
-            continue
-        added_resumes.append(resume.id)
+        added_resumes.append(intake.resume.id)
         accepted_files += 1
 
     batch.total_resumes = accepted_files

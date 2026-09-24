@@ -214,7 +214,9 @@ const BatchCard = ({ batch, jobId, onNavigate }: { batch: BatchProgressDetail, j
     <div className={`bg-white border rounded-xl p-5 shadow-sm ${getBorderColor()}`}>
       <div className="flex justify-between items-start mb-4">
         <div>
-          <h3 className="font-semibold text-slate-900">Upload Batch #{batch.batch_id}</h3>
+          <h3 className="font-semibold text-slate-900">
+            {batch.batch_type === 'APPLICATION' ? 'Application' : 'Upload Batch'} #{batch.batch_id}
+          </h3>
         </div>
         <div className="flex items-center gap-2">
           {isLive && <Loader2 className="w-4 h-4 text-[var(--color-primary-500)] animate-spin" />}

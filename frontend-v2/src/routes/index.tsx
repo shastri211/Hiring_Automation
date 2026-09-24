@@ -23,6 +23,7 @@ import { Integrations } from '../pages/Integrations';
 import { Settings } from '../pages/Settings';
 import { EmailTemplates } from '../pages/EmailTemplates';
 import { InterviewRoom } from '../pages/InterviewRoom';
+import { ApplyPage } from '../pages/ApplyPage';
 import { Login } from '../pages/Login';
 import { RequireAuth } from '../components/auth/RequireAuth';
 
@@ -162,6 +163,13 @@ const router = createBrowserRouter([
   {
     path: '/interview-room/:token',
     element: <InterviewRoom />,
+    errorElement: <RouteError />
+  },
+  // Public candidate apply page - same sibling-of-RequireAuth placement as
+  // the interview room; auth is possession of the job's application token.
+  {
+    path: '/apply/:token',
+    element: <ApplyPage />,
     errorElement: <RouteError />
   },
   // Public HR login page - also a sibling of the RequireAuth root, since it

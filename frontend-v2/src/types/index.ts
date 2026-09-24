@@ -16,6 +16,10 @@ export interface Job {
    * `description` in the UI when null (older jobs, or profiling failure). */
   role_summary?: string | null;
   responsibilities?: string[] | null;
+  /** Public candidate apply link token - null when applications are closed. */
+  application_token?: string | null;
+  /** Full /apply/<token> URL; null when closed or PUBLIC_APP_BASE_URL is unset. */
+  application_url?: string | null;
 }
 
 export interface ScreeningBatch {
@@ -171,6 +175,25 @@ export interface PublicInterviewRoomResponse {
 
 export type PublicInterviewErrorReason = 'not_found' | 'expired' | 'already_completed';
 
+// GET /public/jobs/{token}
+export interface PublicJobResponse {
+  title: string;
+  role_summary?: string | null;
+  responsibilities: string[];
+  description: string;
+}
+
+export type PublicApplyErrorReason =
+  | 'not_found'
+  | 'closed'
+  | 'rate_limited'
+  | 'temporarily_unavailable'
+  | 'invalid_file'
+  | 'consent_required'
+  | 'invalid_email'
+  | 'invalid_name'
+  | 'invalid_phone';
+
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
@@ -232,7 +255,7 @@ export interface BatchProgressDetail {
   review: number;
   rejected: number;
   pre_screened_out?: number;
-  batch_type: 'UPLOAD' | 'SCREEN';
+  batch_type: 'UPLOAD' | 'SCREEN' | 'APPLICATION';
 }
 
 export interface BatchProgressResponse {
@@ -250,7 +273,7 @@ export interface JobBatchOverviewItem {
   processed: number;
   failed: number;
   created_at?: string | null;
-  batch_type: 'UPLOAD' | 'SCREEN';
+  batch_type: 'UPLOAD' | 'SCREEN' | 'APPLICATION';
 }
 
 // Candidate Profile Detail
@@ -277,6 +300,16 @@ export interface CandidateDetailResponse {
   profile?: CandidateProfileDetail | null;
   screening?: ScreeningResultResponse | null;
   interview?: Interview | null;
+  /** Only for resumes submitted via the public apply link: what the candidate
+   * typed into the form - unverified, never merged into the extracted profile. */
+  self_reported_contact?: SelfReportedContact | null;
+}
+
+export interface SelfReportedContact {
+  name: string;
+  email: string;
+  phone?: string | null;
+  submitted_at: string;
 }
 
 export interface ScreeningResultsParams {

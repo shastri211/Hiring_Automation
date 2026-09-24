@@ -6,6 +6,7 @@ import { api } from '../api';
 import { queryKeys } from '../api/queryKeys';
 import { Button, Card, EmptyState, Spinner, Badge, PageHeader } from '../components/ui';
 import { useConfirm } from '../hooks/useConfirm';
+import { ApplicationLinkCard } from '../components/job/ApplicationLinkCard';
 
 export const JobWorkspace = () => {
   const { id } = useParams<{ id: string }>();
@@ -226,6 +227,8 @@ export const JobWorkspace = () => {
         </div>
 
         <div className="flex flex-col gap-8">
+          {job.status !== 'ARCHIVED' && <ApplicationLinkCard job={job} />}
+
           <section>
             <h3 className="text-card-title mb-4 pb-2 border-b border-[var(--border-light)]">Required Skills</h3>
             {job.required_skills && job.required_skills.length > 0 ? (
