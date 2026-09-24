@@ -10,6 +10,7 @@ from app.models.job import Job
 from app.services.orchestrator import orchestrator
 from app.worker import worker_loop, fail_task_permanently
 from unittest.mock import patch, MagicMock, AsyncMock
+from tenancy_fixtures import TEST_ORG_ID
 
 @pytest.mark.asyncio
 async def test_process_candidate_not_found():
@@ -63,7 +64,7 @@ async def test_unknown_action_is_logged_and_acked_not_silently_dropped(caplog):
 
 @pytest.mark.asyncio
 async def test_fail_task_permanently_marks_job_embedding_status_failed(db_session):
-    job = Job(title="Migration Failure Test", description="d", embedding_status="MIGRATING")
+    job = Job(organization_id=TEST_ORG_ID, title="Migration Failure Test", description="d", embedding_status="MIGRATING")
     db_session.add(job)
     await db_session.commit()
     await db_session.refresh(job)

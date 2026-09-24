@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 from httpx import AsyncClient
 from sqlalchemy import select
+from tenancy_fixtures import TEST_ORG_ID
 
 @pytest.mark.asyncio
 async def test_create_job(client: AsyncClient):
@@ -39,7 +40,7 @@ async def test_bootstrap_job_profile_falls_back_when_profile_is_empty_dict():
     from app.api.jobs import _bootstrap_job_profile_and_embedding
     from app.models.job import Job
 
-    job = Job(id=3, title="Ghost Role", description="Build things")
+    job = Job(organization_id=TEST_ORG_ID, id=3, title="Ghost Role", description="Build things")
 
     with patch(
         "app.api.jobs.profiler_service.profile_job",
@@ -65,7 +66,7 @@ async def test_bootstrap_job_profile_falls_back_when_llm_unavailable():
     from app.services.llm_provider import LLMExhaustionError
     from app.models.job import Job
 
-    job = Job(id=1, title="Backend Engineer", description="Build APIs")
+    job = Job(organization_id=TEST_ORG_ID, id=1, title="Backend Engineer", description="Build APIs")
 
     with patch(
         "app.api.jobs.profiler_service.profile_job",
@@ -91,7 +92,7 @@ async def test_bootstrap_job_profile_pins_embedding_profile_on_success():
     from app.models.job import Job
     from app.services.model_registry import EmbeddingProfileConfig
 
-    job = Job(id=2, title="Data Engineer", description="Build pipelines")
+    job = Job(organization_id=TEST_ORG_ID, id=2, title="Data Engineer", description="Build pipelines")
 
     fake_profile = EmbeddingProfileConfig(
         provider="local",
@@ -190,6 +191,7 @@ async def test_trigger_screening_sets_batch_total_to_ready_resume_count(client: 
     import hashlib
 
     job = Job(
+        organization_id=TEST_ORG_ID,
         title="Trigger Screening Job",
         description="Testing trigger_screening batch accounting",
         job_profile={"title": "Trigger Screening Job"},
@@ -305,7 +307,7 @@ async def test_trigger_embedding_migration_returns_404_for_missing_job(client: A
 async def test_trigger_embedding_migration_returns_409_when_already_migrating(client: AsyncClient, db_session):
     from app.models.job import Job
 
-    job = Job(title="Already Migrating Job", description="d", embedding_status="MIGRATING")
+    job = Job(organization_id=TEST_ORG_ID, title="Already Migrating Job", description="d", embedding_status="MIGRATING")
     db_session.add(job)
     await db_session.commit()
     await db_session.refresh(job)
@@ -318,7 +320,7 @@ async def test_trigger_embedding_migration_returns_409_when_already_migrating(cl
 async def test_trigger_embedding_migration_enqueues_task(client: AsyncClient, db_session):
     from app.models.job import Job
 
-    job = Job(title="Migrate Me Job", description="d", embedding_status="READY", embedding_profile="old-profile")
+    job = Job(organization_id=TEST_ORG_ID, title="Migrate Me Job", description="d", embedding_status="READY", embedding_profile="old-profile")
     db_session.add(job)
     await db_session.commit()
     await db_session.refresh(job)
@@ -334,7 +336,7 @@ async def test_trigger_embedding_migration_enqueues_task(client: AsyncClient, db
 async def test_trigger_embedding_migration_returns_502_on_enqueue_failure(client: AsyncClient, db_session):
     from app.models.job import Job
 
-    job = Job(title="Migrate Me Failing Job", description="d", embedding_status="READY")
+    job = Job(organization_id=TEST_ORG_ID, title="Migrate Me Failing Job", description="d", embedding_status="READY")
     db_session.add(job)
     await db_session.commit()
     await db_session.refresh(job)

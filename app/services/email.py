@@ -12,7 +12,8 @@ from app.models.email import EmailTemplate, EmailMessage
 from app.models.profile import CandidateProfile
 from app.models.job import Job
 from app.models.interview import Interview
-from app.models.settings import AppSettings
+from app.services import tenancy
+from app.services.settings import settings_service
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -298,9 +299,12 @@ class EmailService:
             recipient_email = msg.override_recipient_email
             app_settings_row = None
             if not recipient_email:
+                # The organization that owns this message's job - never
+                # another organization's override/allowlist.
+                msg_org_id = await tenancy.organization_id_for_job(session, msg.job_id)
                 app_settings_row = (
-                    await session.execute(select(AppSettings).where(AppSettings.id == 1))
-                ).scalar_one_or_none()
+                    await settings_service.get_row(session, msg_org_id) if msg_org_id is not None else None
+                )
                 global_test_override = (
                     (app_settings_row.email_test_override_recipient or "").strip() if app_settings_row else ""
                 )

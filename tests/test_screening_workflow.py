@@ -10,6 +10,7 @@ from app.services.orchestrator import orchestrator
 from app.services.screener import screener_service
 from app.core.config import settings
 from app.services.embeddings import embedding_router
+from tenancy_fixtures import TEST_ORG_ID
 
 
 @pytest.mark.asyncio
@@ -50,6 +51,7 @@ async def test_process_candidate_stops_at_embedded(db_session):
         mock_sm_embed.return_value = ([0.1, 0.2], MagicMock(collection="test", dimensions=2))
 
         job = Job(
+        organization_id=TEST_ORG_ID,
             title="Test",
             description="Test",
             job_profile={"title": "Test Job"},
@@ -100,6 +102,7 @@ async def test_screen_job_filters_by_job_id(db_session):
     # to Qdrant without calling a real embedding provider.
 
     job = Job(
+        organization_id=TEST_ORG_ID,
         title="Test Job",
         description="Desc",
         job_profile={"title": "Dev"},

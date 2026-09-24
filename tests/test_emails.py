@@ -475,6 +475,16 @@ def _make_candidate_profile(email):
     return profile
 
 
+def _org_exec():
+    """Result of the job -> organization_id lookup the send path does before
+    reading that organization's settings."""
+    from tenancy_fixtures import TEST_ORG_ID
+
+    org_exec = MagicMock()
+    org_exec.scalar_one_or_none.return_value = TEST_ORG_ID
+    return org_exec
+
+
 @pytest.mark.asyncio
 @patch("app.services.email.AsyncSessionLocal", new_callable=MagicMock)
 async def test_process_send_email_task_blocks_recipient_not_in_allowlist(mock_session_local):
@@ -500,9 +510,10 @@ async def test_process_send_email_task_blocks_recipient_not_in_allowlist(mock_se
     settings_exec = MagicMock()
     settings_exec.scalar_one_or_none.return_value = allowlist_row
 
-    # process_send_email_task looks up AppSettings (for a possible global
-    # test-override recipient) before the profile, so it comes second here.
-    mock_session.execute = AsyncMock(side_effect=[msg_exec, settings_exec, profile_exec])
+    # process_send_email_task resolves the message job's organization, then
+    # that organization's AppSettings (for a possible global test-override
+    # recipient), before the profile.
+    mock_session.execute = AsyncMock(side_effect=[msg_exec, _org_exec(), settings_exec, profile_exec])
     mock_session.commit = AsyncMock()
 
     with patch.object(email_service.provider, "send_email", new_callable=AsyncMock) as mock_send:
@@ -536,9 +547,10 @@ async def test_process_send_email_task_sends_when_recipient_in_allowlist(mock_se
     settings_exec = MagicMock()
     settings_exec.scalar_one_or_none.return_value = allowlist_row
 
-    # process_send_email_task looks up AppSettings (for a possible global
-    # test-override recipient) before the profile, so it comes second here.
-    mock_session.execute = AsyncMock(side_effect=[msg_exec, settings_exec, profile_exec])
+    # process_send_email_task resolves the message job's organization, then
+    # that organization's AppSettings (for a possible global test-override
+    # recipient), before the profile.
+    mock_session.execute = AsyncMock(side_effect=[msg_exec, _org_exec(), settings_exec, profile_exec])
     mock_session.commit = AsyncMock()
 
     with patch.object(email_service.provider, "send_email", new_callable=AsyncMock) as mock_send:
@@ -605,7 +617,7 @@ async def test_process_send_email_task_uses_global_test_override_and_skips_allow
     # Only two execute calls expected: message lookup, then settings lookup -
     # no CandidateProfile lookup should happen at all when the global
     # override is set.
-    mock_session.execute = AsyncMock(side_effect=[msg_exec, settings_exec])
+    mock_session.execute = AsyncMock(side_effect=[msg_exec, _org_exec(), settings_exec])
     mock_session.commit = AsyncMock()
 
     with patch.object(email_service.provider, "send_email", new_callable=AsyncMock) as mock_send:

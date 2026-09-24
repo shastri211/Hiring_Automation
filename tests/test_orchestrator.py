@@ -2,6 +2,7 @@ import hashlib
 
 import pytest
 from app.services.orchestrator import RecruitmentOrchestrator, update_batch_progress
+from tenancy_fixtures import TEST_ORG_ID
 
 @pytest.mark.asyncio
 async def test_orchestrator_initialization():
@@ -18,7 +19,7 @@ async def test_update_batch_progress_counts_failed_resumes(db_session):
     from app.models.batch import ScreeningBatch
     from app.models.resume import Resume
 
-    job = Job(title="Batch Progress Job", description="x", job_profile={"title": "x"})
+    job = Job(organization_id=TEST_ORG_ID, title="Batch Progress Job", description="x", job_profile={"title": "x"})
     db_session.add(job)
     await db_session.commit()
     await db_session.refresh(job)
@@ -56,7 +57,7 @@ async def test_update_batch_progress_allow_complete_false_keeps_status(db_sessio
     from app.models.batch import ScreeningBatch
     from app.models.resume import Resume
 
-    job = Job(title="Batch Progress Job 2", description="x", job_profile={"title": "x"})
+    job = Job(organization_id=TEST_ORG_ID, title="Batch Progress Job 2", description="x", job_profile={"title": "x"})
     db_session.add(job)
     await db_session.commit()
     await db_session.refresh(job)

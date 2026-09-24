@@ -32,12 +32,18 @@ async def create_template(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # Check if exists
-    existing = await db.execute(select(EmailTemplate).where(EmailTemplate.name == template.name))
+    # Names are unique per organization (uq_email_templates_org_name).
+    existing = await db.execute(
+        select(EmailTemplate).where(
+            EmailTemplate.organization_id == current_user.organization_id,
+            EmailTemplate.name == template.name,
+        )
+    )
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Template with this name already exists")
-        
+
     db_template = EmailTemplate(
+        organization_id=current_user.organization_id,
         name=template.name,
         subject=template.subject,
         body_content=template.body_content
@@ -69,7 +75,9 @@ async def update_template(
     if "name" in update_data and update_data["name"] != template.name:
         existing = await db.execute(
             select(EmailTemplate).where(
-                EmailTemplate.name == update_data["name"], EmailTemplate.id != template_id
+                EmailTemplate.organization_id == template.organization_id,
+                EmailTemplate.name == update_data["name"],
+                EmailTemplate.id != template_id,
             )
         )
         if existing.scalar_one_or_none():
@@ -101,12 +109,18 @@ async def delete_template(
     )
     await db.execute(
         update(AppSettings)
-        .where(AppSettings.shortlist_email_template_id == template_id)
+        .where(
+            AppSettings.organization_id == template.organization_id,
+            AppSettings.shortlist_email_template_id == template_id,
+        )
         .values(shortlist_email_template_id=None)
     )
     await db.execute(
         update(AppSettings)
-        .where(AppSettings.interview_scheduled_email_template_id == template_id)
+        .where(
+            AppSettings.organization_id == template.organization_id,
+            AppSettings.interview_scheduled_email_template_id == template_id,
+        )
         .values(interview_scheduled_email_template_id=None)
     )
     await db.delete(template)

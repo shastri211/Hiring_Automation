@@ -27,6 +27,7 @@ from app.models.resume import Resume
 from app.services import rate_limit
 from app.services.public_application import requeue_unenqueued_applications
 from app.services.storage import storage_service
+from tenancy_fixtures import TEST_ORG_ID
 
 PDF = "application/pdf"
 
@@ -70,6 +71,7 @@ def tmp_storage(tmp_path):
 
 async def _make_job(db_session, *, status="ACTIVE", token=True) -> Job:
     job = Job(
+        organization_id=TEST_ORG_ID,
         title="Platform Engineer",
         description="Build and run the platform.",
         job_profile={
@@ -162,16 +164,18 @@ async def test_application_url_uses_public_base_url(client: AsyncClient, db_sess
 
 async def test_link_endpoints_require_auth(client: AsyncClient, db_session):
     from app.main import app
-    from app.api.deps import get_current_user
+    from app.api.deps import get_authenticated_user, get_current_user
 
     job = await _make_job(db_session, token=False)
     override = app.dependency_overrides.pop(get_current_user)
+    auth_override = app.dependency_overrides.pop(get_authenticated_user)
     try:
         assert (await client.post(f"/jobs/{job.id}/application-link")).status_code == 401
         assert (await client.post(f"/jobs/{job.id}/application-link/rotate")).status_code == 401
         assert (await client.delete(f"/jobs/{job.id}/application-link")).status_code == 401
     finally:
         app.dependency_overrides[get_current_user] = override
+        app.dependency_overrides[get_authenticated_user] = auth_override
 
 
 # -- POST /public/jobs/{token}/apply ------------------------------------------

@@ -5,6 +5,7 @@ from httpx import AsyncClient
 from unittest.mock import patch, AsyncMock
 
 from app.models.job import Job
+from tenancy_fixtures import TEST_ORG_ID
 
 
 @pytest.fixture
@@ -26,6 +27,7 @@ def mock_upload_io():
 @pytest.mark.asyncio
 async def test_bulk_upload_resumes(client: AsyncClient, db_session, mock_upload_io):
     job = Job(
+        organization_id=TEST_ORG_ID,
         title="Test Upload Job",
         description="Testing resume upload",
         job_profile={"title": "Test Upload Job"},
@@ -82,6 +84,7 @@ async def test_bulk_upload_rejects_content_type_extension_mismatch(client: Async
     """A spoofed Content-Type header alone must not be enough to pass upload
     validation - the extension has to agree with it too."""
     job = Job(
+        organization_id=TEST_ORG_ID,
         title="Test Spoofed Upload Job",
         description="Testing resume upload",
         job_profile={"title": "Test Spoofed Upload Job"},
@@ -112,6 +115,7 @@ async def test_bulk_upload_rejects_content_type_extension_mismatch(client: Async
 @pytest.mark.asyncio
 async def test_bulk_upload_rejects_oversized_file(client: AsyncClient, db_session, mock_upload_io):
     job = Job(
+        organization_id=TEST_ORG_ID,
         title="Test Oversized Upload Job",
         description="Testing resume upload",
         job_profile={"title": "Test Oversized Upload Job"},
@@ -144,6 +148,7 @@ async def test_bulk_upload_dedupes_identical_files_in_same_request(client: Async
     only create one Resume row - the second is reported as a duplicate,
     not silently dropped or double-inserted."""
     job = Job(
+        organization_id=TEST_ORG_ID,
         title="Test Dedup Upload Job",
         description="Testing resume upload",
         job_profile={"title": "Test Dedup Upload Job"},

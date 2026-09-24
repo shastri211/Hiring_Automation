@@ -92,6 +92,7 @@ class ScreenerService:
         # loads later in the workflow.
         job_id = job.id
         job_profile = job.job_profile
+        organization_id = job.organization_id
 
         if not job_profile:
             raise ValueError("Job has no structured profile")
@@ -135,7 +136,7 @@ class ScreenerService:
         # field falling back individually to the env default when NULL) -
         # the gate algorithm itself (_adaptive_pre_screen) is unchanged.
         from app.services.settings import settings_service
-        min_keep, max_keep, gap_threshold = await settings_service.get_effective_screening_config(db)
+        min_keep, max_keep, gap_threshold = await settings_service.get_effective_screening_config(db, organization_id)
         passed_gate = _adaptive_pre_screen(
             candidates,
             min_keep=min_keep,

@@ -84,9 +84,17 @@ async def resolve_canonical_candidate_id(db: AsyncSession, candidate_id: int) ->
     return current_id
 
 
-async def _find_active_candidate_by_email(db: AsyncSession, email: str) -> Optional[Candidate]:
+async def _find_active_candidate_by_email(
+    db: AsyncSession, email: str, organization_id: int
+) -> Optional[Candidate]:
+    # Scoped exactly like uq_candidates_primary_email_active
+    # (organization_id, primary_email): identity never crosses organizations.
     result = await db.execute(
-        select(Candidate).where(Candidate.primary_email == email, Candidate.merged_into_id.is_(None))
+        select(Candidate).where(
+            Candidate.organization_id == organization_id,
+            Candidate.primary_email == email,
+            Candidate.merged_into_id.is_(None),
+        )
     )
     return result.scalar_one_or_none()
 
@@ -94,6 +102,7 @@ async def _find_active_candidate_by_email(db: AsyncSession, email: str) -> Optio
 async def _create_candidate(
     db: AsyncSession,
     *,
+    organization_id: int,
     canonical_name: Optional[str],
     primary_email: Optional[str],
     primary_phone: Optional[str],
@@ -102,12 +111,18 @@ async def _create_candidate(
 
     When primary_email is set, this can race another worker profiling a
     different resume with the same new email concurrently - closed by the
-    partial unique index on (primary_email) WHERE merged_into_id IS NULL.
+    partial unique index on (organization_id, primary_email) WHERE
+    merged_into_id IS NULL.
     On IntegrityError, created=False and the row we lost the race to is
     returned instead, mirroring the SAVEPOINT/IntegrityError pattern
     already used for resume file_hash uploads in app/api/resumes.py.
     """
-    candidate = Candidate(canonical_name=canonical_name, primary_email=primary_email, primary_phone=primary_phone)
+    candidate = Candidate(
+        organization_id=organization_id,
+        canonical_name=canonical_name,
+        primary_email=primary_email,
+        primary_phone=primary_phone,
+    )
 
     if primary_email is None:
         db.add(candidate)
@@ -120,7 +135,7 @@ async def _create_candidate(
             await db.flush()
         return candidate, True
     except IntegrityError:
-        existing = await _find_active_candidate_by_email(db, primary_email)
+        existing = await _find_active_candidate_by_email(db, primary_email, organization_id)
         if existing is None:
             # Vanishingly unlikely (the row we collided with would have to
             # have been deleted/merged in the same instant) - surface
@@ -171,7 +186,9 @@ async def _file_phone_match_suggestion(db: AsyncSession, *, resume_id: int, new_
             return
 
 
-async def resolve_candidate_for_resume(db: AsyncSession, resume: Resume, profile: CandidateProfile) -> int:
+async def resolve_candidate_for_resume(
+    db: AsyncSession, resume: Resume, profile: CandidateProfile, *, organization_id: int
+) -> int:
     """Assigns resume.candidate_id and returns the resolved candidate id.
 
     - Exact normalized-email match against an existing (non-merged)
@@ -187,14 +204,18 @@ async def resolve_candidate_for_resume(db: AsyncSession, resume: Resume, profile
     email = normalize_email(profile.email)
 
     if email:
-        existing = await _find_active_candidate_by_email(db, email)
+        existing = await _find_active_candidate_by_email(db, email, organization_id)
         if existing is not None:
             resolved_id = await resolve_canonical_candidate_id(db, existing.id)
             resume.candidate_id = resolved_id
             return resolved_id
 
     candidate, created = await _create_candidate(
-        db, canonical_name=profile.name, primary_email=email, primary_phone=profile.phone,
+        db,
+        organization_id=organization_id,
+        canonical_name=profile.name,
+        primary_email=email,
+        primary_phone=profile.phone,
     )
     resolved_id = await resolve_canonical_candidate_id(db, candidate.id)
     resume.candidate_id = resolved_id

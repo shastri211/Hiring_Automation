@@ -23,6 +23,7 @@ class Candidate(Base):
         # Candidate. See app/services/candidate_identity.py.
         Index(
             "uq_candidates_primary_email_active",
+            "organization_id",
             "primary_email",
             unique=True,
             postgresql_where=text("merged_into_id IS NULL"),
@@ -30,6 +31,7 @@ class Candidate(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
     canonical_name = Column(String(255), nullable=True)
     primary_email = Column(String(255), nullable=True, index=True)
     primary_phone = Column(String(50), nullable=True, index=True)

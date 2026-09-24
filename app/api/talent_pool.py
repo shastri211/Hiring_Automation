@@ -18,6 +18,7 @@ from app.schemas.talent_pool import (
     PaginatedTalentPoolResponse,
 )
 from app.services.candidate_directory import get_candidate_summaries
+from app.services import tenancy
 from app.api.deps import get_current_user
 from app.models.user import User
 
@@ -45,8 +46,14 @@ async def add_to_talent_pool(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    resume_result = await db.execute(select(Resume).where(Resume.id == payload.resume_id))
-    resume = resume_result.scalar_one_or_none()
+    # Organization invariant: the entry, its resume's job, and
+    # added_from_job_id all belong to the caller's organization. The resume
+    # is resolved only within that organization (another organization's
+    # resume is indistinguishable from a missing one), and
+    # added_from_job_id is derived from that resume, never trusted from the
+    # client - so it's in the same organization by construction.
+    organization_id = current_user.organization_id
+    resume = await tenancy.get_resume_in_org(db, payload.resume_id, organization_id)
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
     # Derived server-side from the resume itself, never trusted from the
@@ -70,6 +77,7 @@ async def add_to_talent_pool(
             entry.added_from_job_id = added_from_job_id
     else:
         entry = TalentPoolEntry(
+            organization_id=organization_id,
             resume_id=payload.resume_id,
             added_from_job_id=added_from_job_id,
             tags=sorted(set(payload.tags or [])),

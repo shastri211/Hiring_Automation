@@ -123,6 +123,14 @@ class Settings(BaseSettings):
     PUBLIC_APPLY_REQUEUE_SWEEP_INTERVAL_SECONDS: int = 60
     PUBLIC_APPLY_REQUEUE_MIN_AGE_SECONDS: int = 120
 
+    # Self-service company signup / email verification (app/api/auth.py).
+    # Fixed one-hour windows in Redis; the per-email key is a hash.
+    SIGNUP_MAX_PER_IP_PER_HOUR: int = 5
+    VERIFY_RESEND_MAX_PER_IP_PER_HOUR: int = 10
+    VERIFY_RESEND_MAX_PER_EMAIL_PER_HOUR: int = 3
+    # Platform-admin provider connectivity tests (real provider calls).
+    PLATFORM_PROVIDER_TEST_MAX_PER_IP_PER_HOUR: int = 20
+
 
     @property
     def gemini_ocr_model(self) -> str:
