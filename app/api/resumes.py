@@ -3,17 +3,14 @@ import logging
 import zipfile
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 from typing import List
 from app.core.config import settings
 from app.db.session import get_db
-from app.models.job import Job
 from app.models.batch import ScreeningBatch
-from app.models.resume import Resume
 from app.schemas.resume import UploadResponse
 from app.services.storage import storage_service
 from app.services.queue import queue_service
-from app.services import zip_ingest, resume_intake
+from app.services import zip_ingest, resume_intake, tenancy
 from app.api.deps import get_current_user
 from app.models.user import User
 
@@ -55,11 +52,8 @@ async def bulk_upload_resumes(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # Verify Job exists
-    result = await db.execute(select(Job).where(Job.id == job_id))
-    job = result.scalar_one_or_none()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    # The job must exist within the caller's organization.
+    await tenancy.get_job_for_org_or_404(db, job_id, current_user.organization_id)
 
     if len(files) > settings.MAX_RESUMES_PER_UPLOAD:
         raise HTTPException(
@@ -175,11 +169,10 @@ async def bulk_upload_resumes(
 from fastapi.responses import FileResponse
 
 @router.get("/file/{resume_id}")
-async def get_resume_file(resume_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Resume).where(Resume.id == resume_id))
-    resume = result.scalar_one_or_none()
-    if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
+async def get_resume_file(
+    resume_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)
+):
+    resume = await tenancy.get_resume_in_org_or_404(db, resume_id, current_user.organization_id)
         
     file_path = storage_service.get_secure_path(resume.storage_key)
     if not file_path or not os.path.exists(file_path):

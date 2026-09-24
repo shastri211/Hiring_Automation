@@ -17,6 +17,7 @@ from app.schemas.email import (
     BulkEmailRequest
 )
 from app.services.email import email_service
+from app.services import tenancy
 from app.services.queue import queue_service
 from app.services.candidate_directory import get_candidate_summaries
 from app.api.deps import get_current_user
@@ -54,8 +55,12 @@ async def create_template(
     return db_template
 
 @router.get("/templates", response_model=List[EmailTemplateResponse])
-async def list_templates(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(EmailTemplate).order_by(EmailTemplate.name))
+async def list_templates(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    result = await db.execute(
+        select(EmailTemplate)
+        .where(EmailTemplate.organization_id == current_user.organization_id)
+        .order_by(EmailTemplate.name)
+    )
     return result.scalars().all()
 
 @router.patch("/templates/{template_id}", response_model=EmailTemplateResponse)
@@ -65,10 +70,7 @@ async def update_template(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(EmailTemplate).where(EmailTemplate.id == template_id))
-    template = result.scalar_one_or_none()
-    if not template:
-        raise HTTPException(status_code=404, detail="Template not found")
+    template = await tenancy.get_template_for_org_or_404(db, template_id, current_user.organization_id)
 
     update_data = payload.model_dump(exclude_unset=True)
 
@@ -96,10 +98,7 @@ async def delete_template(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(EmailTemplate).where(EmailTemplate.id == template_id))
-    template = result.scalar_one_or_none()
-    if not template:
-        raise HTTPException(status_code=404, detail="Template not found")
+    template = await tenancy.get_template_for_org_or_404(db, template_id, current_user.organization_id)
 
     # Preserve send history (EmailMessage.subject/body_content are already
     # denormalized render-time copies) - null out references before deleting,
@@ -137,6 +136,13 @@ async def bulk_send_emails(
     """
     Queue emails to be sent to a list of candidates for a specific job.
     """
+    # Job and template must be the caller's organization's (404 otherwise),
+    # and every resume id one of this job's (422) - checked up front so no
+    # message is ever created for another organization's candidate.
+    organization_id = current_user.organization_id
+    await tenancy.get_job_for_org_or_404(db, job_id, organization_id)
+    await tenancy.get_template_for_org_or_404(db, request.template_id, organization_id)
+    await tenancy.require_resumes_in_job(db, job_id, request.resume_ids)
     try:
         queued_count = await email_service.queue_bulk_emails(
             job_id=job_id,
@@ -164,11 +170,15 @@ async def list_email_messages(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """Global, paginated email message list (needed by the Outreach dashboard)."""
+    """Organization-wide, paginated email message list (Outreach dashboard)."""
     from sqlalchemy import func
 
-    query = select(EmailMessage)
+    organization_id = current_user.organization_id
+    if job_id is not None:
+        await tenancy.get_job_for_org_or_404(db, job_id, organization_id)
+    query = select(EmailMessage).where(EmailMessage.job_id.in_(tenancy.org_job_ids(organization_id)))
     if status_filter:
         query = query.where(EmailMessage.status == status_filter.upper())
     if job_id is not None:
@@ -195,10 +205,13 @@ async def list_email_messages(
     return PaginatedEmailMessageResponse(items=items, total=total, page=page, page_size=page_size)
 
 @router.get("/candidates/{resume_id}", response_model=List[EmailMessageResponse])
-async def get_candidate_emails(resume_id: int, db: AsyncSession = Depends(get_db)):
+async def get_candidate_emails(
+    resume_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)
+):
     """
     Get email history for a candidate
     """
+    await tenancy.get_resume_in_org_or_404(db, resume_id, current_user.organization_id)
     result = await db.execute(
         select(EmailMessage)
         .where(EmailMessage.resume_id == resume_id)

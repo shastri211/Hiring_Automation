@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.core.config import settings
 from app.db.session import get_db
+from app.services import tenancy
 from app.api.deps import get_current_user
 from app.models.resume import Resume
 from app.models.user import User
@@ -105,6 +106,10 @@ async def trigger_interview(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # The job must be the caller's organization's (404 otherwise, before the
+    # resume/job ownership check). Webhook routes below are system actors
+    # keyed by (job, resume) from Dograh and don't take this check.
+    await tenancy.get_job_for_org_or_404(db, req.job_id, current_user.organization_id)
     await validate_ownership(req.job_id, req.resume_id, db)
     try:
         success = await interview_adapter.trigger_interview(req.resume_id, req.job_id)

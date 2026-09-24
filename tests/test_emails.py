@@ -14,6 +14,24 @@ def _mock_session_local(mock_session_local):
     return mock_session
 
 
+def _org_exec():
+    """Result of the job -> organization_id lookup the send path does before
+    reading that organization's settings."""
+    from tenancy_fixtures import TEST_ORG_ID
+
+    org_exec = MagicMock()
+    org_exec.scalar_one_or_none.return_value = TEST_ORG_ID
+    return org_exec
+
+
+def _job_resumes_exec(resume_ids):
+    """Result of queue_bulk_emails' "which of these resume ids belong to this
+    job" lookup."""
+    exec_result = MagicMock()
+    exec_result.scalars.return_value.all.return_value = list(resume_ids)
+    return exec_result
+
+
 @pytest.mark.asyncio
 @patch("app.services.email.AsyncSessionLocal", new_callable=MagicMock)
 async def test_queue_bulk_emails_enqueues_via_shared_queue_service(mock_session_local):
@@ -45,7 +63,7 @@ async def test_queue_bulk_emails_enqueues_via_shared_queue_service(mock_session_
     job_exec.scalar_one_or_none.return_value = job
 
     mock_session.execute = AsyncMock(
-        side_effect=[template_exec, existing_exec, candidate_exec, job_exec]
+        side_effect=[_org_exec(), template_exec, _job_resumes_exec([7]), existing_exec, candidate_exec, job_exec]
     )
 
     new_msg = MagicMock()
@@ -109,7 +127,7 @@ async def test_queue_bulk_emails_skips_candidate_without_interview_link(mock_ses
     interview_exec.scalar_one_or_none.return_value = None  # no Interview row yet
 
     mock_session.execute = AsyncMock(
-        side_effect=[template_exec, existing_exec, candidate_exec, job_exec, interview_exec]
+        side_effect=[_org_exec(), template_exec, _job_resumes_exec([7]), existing_exec, candidate_exec, job_exec, interview_exec]
     )
 
     mock_queue_service = MagicMock()
@@ -165,7 +183,7 @@ async def test_queue_bulk_emails_renders_interview_link_when_present(mock_sessio
     interview_exec.scalar_one_or_none.return_value = interview
 
     mock_session.execute = AsyncMock(
-        side_effect=[template_exec, existing_exec, candidate_exec, job_exec, interview_exec]
+        side_effect=[_org_exec(), template_exec, _job_resumes_exec([7]), existing_exec, candidate_exec, job_exec, interview_exec]
     )
 
     new_msg = MagicMock()
@@ -234,7 +252,7 @@ async def test_queue_bulk_emails_skips_when_link_expired(mock_session_local):
     interview_exec.scalar_one_or_none.return_value = interview
 
     mock_session.execute = AsyncMock(
-        side_effect=[template_exec, existing_exec, candidate_exec, job_exec, interview_exec]
+        side_effect=[_org_exec(), template_exec, _job_resumes_exec([7]), existing_exec, candidate_exec, job_exec, interview_exec]
     )
 
     mock_queue_service = MagicMock()
@@ -473,16 +491,6 @@ def _make_candidate_profile(email):
     profile.resume_id = 7
     profile.email = email
     return profile
-
-
-def _org_exec():
-    """Result of the job -> organization_id lookup the send path does before
-    reading that organization's settings."""
-    from tenancy_fixtures import TEST_ORG_ID
-
-    org_exec = MagicMock()
-    org_exec.scalar_one_or_none.return_value = TEST_ORG_ID
-    return org_exec
 
 
 @pytest.mark.asyncio
