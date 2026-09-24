@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
-import { ArrowLeft, ExternalLink, Briefcase, GraduationCap, PackagePlus, Pencil, Check, X, Undo2, Users2 } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Briefcase, GraduationCap, PackagePlus, Pencil, Check, X, Undo2, Users2, Inbox } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { jobsApi } from '../api/jobs';
 import { resumesApi } from '../api/resumes';
@@ -215,6 +215,24 @@ export const Candidate360 = () => {
               onDecision={(d) => decisionMutation.mutate({ resumeId, decision: d })}
             />
           </div>
+
+          {data.self_reported_contact && (
+            <div className="mb-6 rounded-xl border border-[var(--border-light)] bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                <Inbox className="w-4 h-4 text-[var(--text-tertiary)]" />
+                <h2 className="text-sm font-semibold text-[var(--text-primary)]">Applied via public link</h2>
+                <Badge variant="warning" title="Typed by the candidate into the apply form - not verified, and not part of the extracted profile.">
+                  Self-reported, unverified
+                </Badge>
+              </div>
+              <dl className="grid grid-cols-1 sm:grid-cols-4 gap-x-6 gap-y-1 text-sm">
+                <div><dt className="text-[var(--text-tertiary)]">Name</dt><dd className="text-[var(--text-primary)] break-words">{data.self_reported_contact.name}</dd></div>
+                <div><dt className="text-[var(--text-tertiary)]">Email</dt><dd className="text-[var(--text-primary)] break-all">{data.self_reported_contact.email}</dd></div>
+                <div><dt className="text-[var(--text-tertiary)]">Phone</dt><dd className="text-[var(--text-primary)]">{data.self_reported_contact.phone || '—'}</dd></div>
+                <div><dt className="text-[var(--text-tertiary)]">Submitted</dt><dd className="text-[var(--text-primary)]">{new Date(data.self_reported_contact.submitted_at).toLocaleString()}</dd></div>
+              </dl>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
             {/* Left Column: Profile Data */}

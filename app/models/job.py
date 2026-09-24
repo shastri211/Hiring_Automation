@@ -20,6 +20,11 @@ class Job(Base):
     embedding_profile = Column(String(255), nullable=True) # E.g., 'gemini-embedding-2'
     embedding_status = Column(String(50), nullable=True, default="READY") # READY, MIGRATING, FAILED
 
+    # Opaque token for the public candidate apply link (/apply/{token}).
+    # NULL = applications closed. Rotating replaces it, so an old link
+    # simply stops resolving (404) - see app/api/public_application.py.
+    application_token = Column(String(64), nullable=True, unique=True, index=True)
+
     screening_batches = relationship(
         "ScreeningBatch",
         back_populates="job",

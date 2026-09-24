@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field, ConfigDict, computed_field
 from typing import List, Optional, Any, Literal
 from datetime import datetime
+from app.schemas.public_application import SelfReportedContact
 
 # Set on ScreeningResult.notes by screener.py's per-candidate fallback path
 # when every configured LLM provider fails for that one candidate (a
@@ -150,6 +151,9 @@ class CandidateDetailResponse(BaseModel):
     profile: Optional[CandidateProfileDetail] = None
     screening: Optional[ScreeningResultResponse] = None
     interview: Optional[InterviewResponse] = None
+    # Present only for resumes submitted via the public apply link: what the
+    # candidate typed into the form - unverified, never merged into profile.
+    self_reported_contact: Optional[SelfReportedContact] = None
 
 
 class BatchProgressDetail(BaseModel):

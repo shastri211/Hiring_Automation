@@ -16,9 +16,9 @@ export const apiClient = axios.create({
 // Paths that are never subject to HR-session auth: the auth endpoints
 // themselves (a 401 from /auth/me or /auth/login is expected, normal
 // "not logged in" signal, not a session-expiry event) and the public,
-// candidate-facing interview room (which never has an HR session cookie at
-// all and must never be redirected to the HR login).
-const AUTH_EXEMPT_PREFIXES = ['/auth/', '/public/interview/'];
+// candidate-facing interview room and apply page (which never have an HR
+// session cookie at all and must never be redirected to the HR login).
+const AUTH_EXEMPT_PREFIXES = ['/auth/', '/public/interview/', '/public/jobs/'];
 
 const isAuthExempt = (url?: string): boolean => {
   if (!url) return false;

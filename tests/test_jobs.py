@@ -147,8 +147,9 @@ async def test_delete_job_cleans_up_correct_qdrant_collection(client: AsyncClien
     # cascade (see app/api/jobs.py): DecisionAudit, ScreeningResult,
     # EmailMessage, TalentPoolEntry (delete), TalentPoolEntry (SET NULL
     # added_from_job_id), CandidateMatchSuggestion, ApplicationResumeHistory,
-    # Application, CandidateProfile, Interview, Resume, ScreeningBatch.
-    mock_db.execute = AsyncMock(side_effect=[job_exec] + [MagicMock()] * 12)
+    # Application, CandidateProfile, PublicApplicationSubmission, Interview,
+    # Resume, ScreeningBatch.
+    mock_db.execute = AsyncMock(side_effect=[job_exec] + [MagicMock()] * 13)
     mock_db.delete = AsyncMock()
     mock_db.commit = AsyncMock()
 

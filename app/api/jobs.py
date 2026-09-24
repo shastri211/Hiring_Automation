@@ -1,5 +1,6 @@
 import os
 import logging
+import secrets
 import aiofiles
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from sqlalchemy import select, func
@@ -17,7 +18,9 @@ from app.models.decision_audit import DecisionAudit
 from app.models.email import EmailMessage
 from app.models.talent_pool import TalentPoolEntry
 from app.models.candidate import CandidateMatchSuggestion
+from app.models.public_application import PublicApplicationSubmission
 from app.schemas.job import JobCreate, JobResponse
+from app.schemas.public_application import SelfReportedContact
 from app.schemas.screening import (
     ScreeningResultResponse,
     PaginatedScreeningResultResponse,
@@ -378,6 +381,51 @@ async def archive_job(
     return job
 
 
+# -- public application link (candidate-initiated applications) ----------------
+# The token is the link's only credential (see app/api/public_application.py).
+# Closing clears it and rotating replaces it, so an old link stops resolving.
+
+@router.post("/{job_id}/application-link", response_model=JobResponse)
+async def open_application_link(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    job = await _get_job_or_404(job_id, db)
+    if not job.application_token:
+        job.application_token = secrets.token_urlsafe(32)
+        await db.commit()
+        await db.refresh(job)
+    return job
+
+
+@router.post("/{job_id}/application-link/rotate", response_model=JobResponse)
+async def rotate_application_link(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    job = await _get_job_or_404(job_id, db)
+    job.application_token = secrets.token_urlsafe(32)
+    await db.commit()
+    await db.refresh(job)
+    return job
+
+
+@router.delete("/{job_id}/application-link", response_model=JobResponse)
+async def close_application_link(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    job = await _get_job_or_404(job_id, db)
+    if job.application_token:
+        job.application_token = None
+        await db.commit()
+        await db.refresh(job)
+    return job
+
+
 @router.delete("/{job_id}", status_code=204)
 async def delete_job(
     job_id: int,
@@ -441,6 +489,7 @@ async def delete_job(
     ))
     await db.execute(delete(Application).where(Application.job_id == job_id))
     await db.execute(delete(CandidateProfile).where(CandidateProfile.resume_id.in_(resume_ids_subq)))
+    await db.execute(delete(PublicApplicationSubmission).where(PublicApplicationSubmission.job_id == job_id))
     await db.execute(delete(Interview).where(Interview.job_id == job_id))
     await db.execute(delete(Resume).where(Resume.job_id == job_id))
     await db.execute(delete(ScreeningBatch).where(ScreeningBatch.job_id == job_id))
@@ -691,6 +740,22 @@ async def get_candidate_detail(
             evaluation_failed=is_evaluation_failed(screening.notes),
         )
 
+    submission = (
+        await db.execute(
+            select(PublicApplicationSubmission).where(PublicApplicationSubmission.resume_id == resume_id)
+        )
+    ).scalar_one_or_none()
+    self_reported_contact = (
+        SelfReportedContact(
+            name=submission.applicant_name,
+            email=submission.applicant_email,
+            phone=submission.applicant_phone,
+            submitted_at=submission.created_at,
+        )
+        if submission
+        else None
+    )
+
     return CandidateDetailResponse(
         resume_id=resume.id,
         filename=resume.filename,
@@ -699,6 +764,7 @@ async def get_candidate_detail(
         profile=profile_detail,
         screening=screening_response,
         interview=InterviewResponse.model_validate(interview) if interview else None,
+        self_reported_contact=self_reported_contact,
     )
 
 
