@@ -27,6 +27,13 @@ class InterviewAnalysisItem(BaseModel):
     user_recording_url: Optional[str] = None
     bot_recording_url: Optional[str] = None
     created_at: Optional[datetime] = None
+    # Read directly off Interview.evaluation's flat top-level keys (see
+    # app/services/interview.py::_normalize_evaluation_data) - separate from
+    # the envelope fields above, which come from parse_evaluation_envelope's
+    # legacy/flat call_disposition+duration normalization, not this.
+    interview_recommendation: Optional[str] = None
+    communication_clarity: Optional[str] = None
+    demonstrated_skill_depth: Optional[str] = None
 
 
 class PaginatedInterviewAnalysisResponse(BaseModel):

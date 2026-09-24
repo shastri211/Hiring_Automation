@@ -10,6 +10,7 @@ export const AppLayout = () => {
   const getPageTitle = () => {
     if (location.pathname === '/') return 'Dashboard';
     if (location.pathname.startsWith('/jobs')) return 'Jobs';
+    if (location.pathname.startsWith('/candidates/duplicates')) return 'Duplicate Candidates';
     if (location.pathname.startsWith('/candidates')) return 'All Candidates';
     if (location.pathname.startsWith('/shortlisted')) return 'Shortlisted Candidates';
     if (location.pathname.startsWith('/interviews')) return 'All Interviews';

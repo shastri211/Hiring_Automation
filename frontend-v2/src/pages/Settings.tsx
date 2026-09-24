@@ -32,9 +32,11 @@ const schema = z
     semantic_gap_threshold: numericString(0, 1),
     auto_email_on_shortlist: z.boolean(),
     shortlist_email_template_id: z.number().nullable(),
+    auto_generate_interview_on_shortlist: z.boolean(),
     auto_email_on_interview_scheduled: z.boolean(),
     interview_scheduled_email_template_id: z.number().nullable(),
     email_test_allowlist: z.string(),
+    email_test_override_recipient: z.string(),
   })
   .refine(
     (d) =>
@@ -57,6 +59,10 @@ const schema = z
       return entries.every((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
     },
     { message: 'Enter valid, comma-separated email addresses.', path: ['email_test_allowlist'] }
+  )
+  .refine(
+    (d) => d.email_test_override_recipient === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email_test_override_recipient),
+    { message: 'Enter a valid email address, or leave blank.', path: ['email_test_override_recipient'] }
   );
 
 type FormValues = z.infer<typeof schema>;
@@ -68,9 +74,11 @@ const defaultValues: FormValues = {
   semantic_gap_threshold: '',
   auto_email_on_shortlist: false,
   shortlist_email_template_id: null,
+  auto_generate_interview_on_shortlist: false,
   auto_email_on_interview_scheduled: false,
   interview_scheduled_email_template_id: null,
   email_test_allowlist: '',
+  email_test_override_recipient: '',
 };
 
 function toFormValues(settings: AppSettingsResponse): FormValues {
@@ -81,9 +89,11 @@ function toFormValues(settings: AppSettingsResponse): FormValues {
     semantic_gap_threshold: settings.semantic_gap_threshold != null ? String(settings.semantic_gap_threshold) : '',
     auto_email_on_shortlist: settings.auto_email_on_shortlist,
     shortlist_email_template_id: settings.shortlist_email_template_id ?? null,
+    auto_generate_interview_on_shortlist: settings.auto_generate_interview_on_shortlist,
     auto_email_on_interview_scheduled: settings.auto_email_on_interview_scheduled,
     interview_scheduled_email_template_id: settings.interview_scheduled_email_template_id ?? null,
     email_test_allowlist: settings.email_test_allowlist ?? '',
+    email_test_override_recipient: settings.email_test_override_recipient ?? '',
   };
 }
 
@@ -95,9 +105,11 @@ function toPatch(values: FormValues): AppSettingsUpdate {
     semantic_gap_threshold: values.semantic_gap_threshold === '' ? null : Number(values.semantic_gap_threshold),
     auto_email_on_shortlist: values.auto_email_on_shortlist,
     shortlist_email_template_id: values.shortlist_email_template_id,
+    auto_generate_interview_on_shortlist: values.auto_generate_interview_on_shortlist,
     auto_email_on_interview_scheduled: values.auto_email_on_interview_scheduled,
     interview_scheduled_email_template_id: values.interview_scheduled_email_template_id,
     email_test_allowlist: values.email_test_allowlist === '' ? null : values.email_test_allowlist,
+    email_test_override_recipient: values.email_test_override_recipient === '' ? null : values.email_test_override_recipient,
   };
 }
 
@@ -281,6 +293,41 @@ export const Settings = () => {
               {formState.errors.email_test_allowlist && (
                 <p className="text-xs text-[var(--color-danger-600)] mt-1">{formState.errors.email_test_allowlist.message}</p>
               )}
+            </div>
+
+            <div>
+              <Label htmlFor="email_test_override_recipient">Redirect all test sends to</Label>
+              <p className="text-xs text-[var(--text-secondary)] mt-1 mb-2">
+                Optional. When set, every outbound email - including the automated ones below - goes to this
+                address instead of the candidate's own, and skips the allowlist above entirely. This is the one
+                place to redirect a fully automated send (a manual Bulk Email send has its own per-send override
+                field instead). Clear this before going to production.
+              </p>
+              <Input
+                id="email_test_override_recipient"
+                type="email"
+                placeholder="you@example.com"
+                {...register('email_test_override_recipient')}
+              />
+              {formState.errors.email_test_override_recipient && (
+                <p className="text-xs text-[var(--color-danger-600)] mt-1">{formState.errors.email_test_override_recipient.message}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="flex items-center gap-2 mb-2">
+                <input
+                  type="checkbox"
+                  className="rounded border-[var(--border-strong)] text-[var(--color-primary-600)] focus:ring-[var(--color-primary-500)]"
+                  {...register('auto_generate_interview_on_shortlist')}
+                />
+                <span className="text-sm font-medium text-[var(--text-primary)]">Automatically generate an interview link when shortlisted</span>
+              </label>
+              <p className="text-xs text-[var(--text-secondary)] ml-6">
+                Pair this with "Automatically email candidates when an interview is scheduled" below (using a
+                template with the <code>{'{{interview_link}}'}</code> variable) to get the full shortlist &rarr;
+                link &rarr; email flow with no manual steps.
+              </p>
             </div>
 
             <div>

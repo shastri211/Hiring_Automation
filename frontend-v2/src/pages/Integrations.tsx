@@ -12,10 +12,14 @@ const DetailRow = ({ label, value }: { label: string; value: React.ReactNode }) 
 
 export const Integrations = () => {
   const { data, isLoading, isError, refetch } = useIntegrationsStatus();
-  const testMutation = useTestIntegration();
+  // Two independent mutation instances - a single shared one would disable
+  // and spinner-ize BOTH cards' buttons while only one provider is actually
+  // being tested.
+  const smtpTestMutation = useTestIntegration();
+  const dograhTestMutation = useTestIntegration();
 
-  const handleTest = (provider: string) => {
-    testMutation.mutate(provider, {
+  const handleTest = (provider: string, mutation: typeof smtpTestMutation) => {
+    mutation.mutate(provider, {
       onSuccess: (result) => {
         if (result.success) toast.success(result.message);
         else toast.error(result.message);
@@ -64,10 +68,10 @@ export const Integrations = () => {
                 variant="secondary"
                 size="sm"
                 className="mt-4"
-                onClick={() => handleTest('smtp')}
-                disabled={testMutation.isPending}
+                onClick={() => handleTest('smtp', smtpTestMutation)}
+                disabled={smtpTestMutation.isPending}
               >
-                {testMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Test Connection'}
+                {smtpTestMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Test Connection'}
               </Button>
             </CardContent>
           </Card>
@@ -90,10 +94,10 @@ export const Integrations = () => {
                 variant="secondary"
                 size="sm"
                 className="mt-4"
-                onClick={() => handleTest('dograh')}
-                disabled={testMutation.isPending}
+                onClick={() => handleTest('dograh', dograhTestMutation)}
+                disabled={dograhTestMutation.isPending}
               >
-                {testMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Test Connection'}
+                {dograhTestMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Test Connection'}
               </Button>
             </CardContent>
           </Card>

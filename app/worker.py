@@ -13,6 +13,7 @@ from app.models.job import Job
 from app.models.batch import ScreeningBatch
 from app.services.orchestrator import orchestrator, update_batch_progress
 from app.services.llm_provider import ConfigurationError
+from app.services.interview import interview_adapter
 
 WORKER_ID = settings.WORKER_ID
 
@@ -28,7 +29,20 @@ async def fail_task_permanently(task_type: str, item_id: int, error_msg: str):
             from app.models.email import EmailMessage
             res = await session.execute(select(EmailMessage).where(EmailMessage.id == item_id))
             obj = res.scalar_one_or_none()
+        elif task_type == "migrate_job":
+            res = await session.execute(select(Job).where(Job.id == item_id))
+            job = res.scalar_one_or_none()
+            if job:
+                job.embedding_status = "FAILED"
+                await session.commit()
+            else:
+                logger.error(f"fail_task_permanently: migrate_job target Job {item_id} not found.")
+            return
         else:
+            logger.error(
+                f"fail_task_permanently: unknown task_type {task_type!r} for item_id={item_id}; "
+                "no failure bookkeeping performed."
+            )
             obj = None
 
         if obj:
@@ -59,8 +73,32 @@ async def recover_stuck_messages():
         await asyncio.sleep(60)
 
 
+async def mark_expired_interviews_no_show_loop():
+    while True:
+        try:
+            await interview_adapter.mark_expired_interviews_as_no_show()
+        except Exception:
+            logger.exception("NO_SHOW sweep error")
+        await asyncio.sleep(settings.INTERVIEW_NO_SHOW_SWEEP_INTERVAL_SECONDS)
+
+
 import logging
 logger = logging.getLogger(__name__)
+
+# Well under claim_stuck_messages' min_idle_ms (300000/5min default) so a
+# message being actively worked never looks idle enough to be reclaimed by
+# another consumer - see queue_service.heartbeat.
+_HEARTBEAT_INTERVAL_SEC = 90
+
+
+async def _heartbeat_loop(consumer_id: str, msg_id: str):
+    while True:
+        await asyncio.sleep(_HEARTBEAT_INTERVAL_SEC)
+        try:
+            await queue_service.heartbeat(consumer_id, msg_id)
+        except Exception:
+            logger.exception(f"Heartbeat failed for message {msg_id} (consumer {consumer_id})")
+
 
 async def worker_loop(consumer_id: str):
     logger.info(f"Worker {consumer_id} started. Waiting for jobs...")
@@ -92,6 +130,7 @@ async def worker_loop(consumer_id: str):
                         await asyncio.sleep(1)
                     continue
 
+                heartbeat_task = asyncio.create_task(_heartbeat_loop(consumer_id, msg_id))
                 try:
                     if action == "process_resume":
                         logger.info(f"Processing candidate {item_id} (msg_id: {msg_id})")
@@ -134,6 +173,15 @@ async def worker_loop(consumer_id: str):
                         logger.info(f"Sending email for message {item_id}")
                         from app.services.email import email_service
                         await email_service.process_send_email_task(item_id)
+                    else:
+                        # Retrying can never help here - the action will
+                        # never match a handler - so ack it instead of
+                        # looping it through retries, but log loudly rather
+                        # than silently dropping it (the previous behavior).
+                        logger.error(
+                            f"Unknown action {action!r} for message {msg_id}; payload={payload}. "
+                            "Dropping - no handler matches this action."
+                        )
 
                     await queue_service.ack(msg_id)
                 except ConfigurationError as e:
@@ -143,6 +191,12 @@ async def worker_loop(consumer_id: str):
                 except Exception as e:
                     attempt = await queue_service.record_failure(msg_id)
                     logger.exception(f"Task {action} on {item_id} failed (Attempt {attempt}). Not acking message {msg_id}.")
+                finally:
+                    heartbeat_task.cancel()
+                    try:
+                        await heartbeat_task
+                    except asyncio.CancelledError:
+                        pass
 
         except Exception as e:
             logger.exception(f"Worker Loop Error: {e}")
@@ -153,6 +207,7 @@ async def main():
     await queue_service.init_stream()
     tasks = [asyncio.create_task(worker_loop(f"{WORKER_ID}-{i}")) for i in range(settings.WORKER_CONCURRENCY)]
     tasks.append(asyncio.create_task(recover_stuck_messages()))
+    tasks.append(asyncio.create_task(mark_expired_interviews_no_show_loop()))
     await asyncio.gather(*tasks)
 
 if __name__ == "__main__":

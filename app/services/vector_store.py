@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from qdrant_client import AsyncQdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct
+from qdrant_client.models import Distance, VectorParams, PointStruct, PayloadSchemaType
 from app.core.config import settings
 import logging
 
@@ -22,6 +22,10 @@ class VectorStore(ABC):
 
     @abstractmethod
     async def delete_points_by_filter(self, collection_name: str, query_filter: dict):
+        pass
+
+    @abstractmethod
+    async def get_vector(self, collection_name: str, point_id) -> Optional[List[float]]:
         pass
 
 class QdrantVectorStore(VectorStore):
@@ -45,10 +49,26 @@ class QdrantVectorStore(VectorStore):
         if not exists:
             distance = getattr(Distance, metric.upper(), Distance.COSINE)
             logger.info(f"Creating Qdrant collection: {collection_name} with size {vector_size}, distance {distance}")
-            await self.client.create_collection(
-                collection_name=collection_name,
-                vectors_config=VectorParams(size=vector_size, distance=distance),
-            )
+            try:
+                await self.client.create_collection(
+                    collection_name=collection_name,
+                    vectors_config=VectorParams(size=vector_size, distance=distance),
+                )
+            except Exception:
+                # WORKER_CONCURRENCY > 1 means multiple resumes for a brand-
+                # new job can reach here at once, all seeing exists=False in
+                # the same race window - only one create_collection() call
+                # actually wins, and the rest previously failed the whole
+                # resume outright (retried, but a wasted attempt every time).
+                # Confirm before swallowing, so a genuine failure still
+                # raises instead of being masked.
+                refreshed = await self.client.get_collections()
+                if not any(c.name == collection_name for c in refreshed.collections):
+                    raise
+                logger.info(
+                    f"Qdrant collection {collection_name} was created concurrently "
+                    "by another worker; continuing."
+                )
         else:
             collection_info = await self.client.get_collection(collection_name)
             # collection_info.config.params.vectors might be dict or VectorParams depending on version, check carefully
@@ -64,7 +84,31 @@ class QdrantVectorStore(VectorStore):
                 error_msg = f"Incompatible dimension in Qdrant collection '{collection_name}'. Expected {vector_size}, found {existing_size}. Please migrate your data or use a different collection."
                 logger.error(error_msg)
                 raise ValueError(error_msg)
-            
+
+        # Every point's payload carries job_id/resume_id (see add_points call
+        # sites) and both are filtered on - job_id by search()'s query_filter
+        # and every delete_points_by_filter({"job_id": ...}) call, resume_id
+        # by any per-resume cleanup. Qdrant rejects a filter on a field with
+        # no payload index ("Index required but not found"), so both must
+        # exist before either kind of filter is ever issued. Called every
+        # time create_collection() runs (idempotent - Qdrant no-ops a
+        # create_payload_index() for a field that's already indexed with the
+        # same schema), so a collection created before this existed gets
+        # backfilled the next time it's used rather than needing a one-off
+        # migration.
+        for field_name in ("job_id", "resume_id"):
+            try:
+                await self.client.create_payload_index(
+                    collection_name=collection_name,
+                    field_name=field_name,
+                    field_schema=PayloadSchemaType.INTEGER,
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to ensure payload index on '%s' for collection '%s': %s",
+                    field_name, collection_name, e,
+                )
+
     async def add_points(self, collection_name: str, ids: List[str], vectors: List[List[float]], payloads: List[Dict[str, Any]]):
         if not vectors:
             return
@@ -115,5 +159,36 @@ class QdrantVectorStore(VectorStore):
             points_selector=qdrant_filter,
             wait=True
         )
+
+    async def get_vector(self, collection_name: str, point_id) -> Optional[List[float]]:
+        """Fetches a previously-stored point's vector, for reuse (Phase 3:
+        global file_hash reuse) instead of recomputing an embedding for
+        content that's already been embedded under this exact collection.
+        Returns None if the collection or point doesn't exist (including
+        when this job's embedding profile has never been used before -
+        that's an expected, non-error case, not a failure)."""
+        try:
+            collections = await self.client.get_collections()
+            if not any(c.name == collection_name for c in collections.collections):
+                return None
+
+            points = await self.client.retrieve(
+                collection_name=collection_name,
+                ids=[point_id],
+                with_vectors=True,
+            )
+        except Exception as e:
+            logger.warning(f"get_vector failed for {collection_name}/{point_id}: {e}")
+            return None
+
+        if not points:
+            return None
+
+        vector = points[0].vector
+        if not isinstance(vector, list):
+            # Named-vector collections aren't used by this app; guard anyway
+            # rather than reuse something we can't be sure is the plain vector.
+            return None
+        return vector
 
 vector_store = QdrantVectorStore()

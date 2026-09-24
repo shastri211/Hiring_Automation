@@ -33,9 +33,9 @@ export function getDecisionBadgeVariant(decision?: CandidateDecision | string | 
  * icon button), so border/spacing stays owned by each call site.
  */
 export const variantButtonClasses: Record<BadgeVariant, string> = {
-  success: 'bg-green-100 text-green-700',
-  warning: 'bg-amber-100 text-amber-700',
-  danger: 'bg-red-100 text-red-700',
-  neutral: 'bg-slate-100 text-slate-700',
-  primary: 'bg-indigo-100 text-indigo-700',
+  success: 'bg-[var(--color-success-subtle-bg)] text-[var(--color-success-subtle-text)]',
+  warning: 'bg-[var(--color-warning-subtle-bg)] text-[var(--color-warning-subtle-text)]',
+  danger: 'bg-[var(--color-danger-subtle-bg)] text-[var(--color-danger-subtle-text)]',
+  neutral: 'bg-[var(--color-neutral-subtle-bg)] text-[var(--color-neutral-subtle-text)]',
+  primary: 'bg-[var(--color-primary-subtle-bg)] text-[var(--color-primary-subtle-text)]',
 };

@@ -9,7 +9,7 @@ from app.db.session import get_db
 from app.api.deps import get_current_user
 from app.models.resume import Resume
 from app.models.user import User
-from app.services.interview import interview_adapter
+from app.services.interview import interview_adapter, InterviewNotRetriableError
 from app.schemas.integration import (
     InterviewTriggerRequest,
     InterviewStatusRequest,
@@ -21,6 +21,19 @@ from app.schemas.integration import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Checked once at import (settings are loaded once at process startup) so a
+# misconfigured deployment doesn't run indefinitely with these three webhook
+# routes silently accepting unauthenticated requests - verify_dograh_webhook
+# itself stays silent for auth_type == "none" since normal operation with it
+# unset shouldn't log on every single request.
+if (settings.DOGRAH_WEBHOOK_AUTH_TYPE or "none").lower() == "none":
+    logger.warning(
+        "DOGRAH_WEBHOOK_AUTH_TYPE is unset (defaults to 'none') - the /integration/interview/status, "
+        "/transcript, and /evaluation webhook endpoints accept unauthenticated requests. Anyone who finds "
+        "the URL can inject fake interview status/transcript/evaluation data. Configure "
+        "DOGRAH_WEBHOOK_AUTH_TYPE + DOGRAH_WEBHOOK_SECRET once Dograh is set up to send an auth header."
+    )
 
 
 async def verify_dograh_webhook(request: Request) -> None:
@@ -93,7 +106,10 @@ async def trigger_interview(
     current_user: User = Depends(get_current_user),
 ):
     await validate_ownership(req.job_id, req.resume_id, db)
-    success = await interview_adapter.trigger_interview(req.resume_id, req.job_id)
+    try:
+        success = await interview_adapter.trigger_interview(req.resume_id, req.job_id)
+    except InterviewNotRetriableError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if success:
         return IntegrationResponse(success=True, message="Interview triggered successfully")
     # Actually, trigger_interview currently always returns True.
@@ -146,7 +162,12 @@ async def receive_interview_evaluation(
     req: InterviewEvaluationRequest, db: AsyncSession = Depends(get_db)
 ):
     await validate_ownership(req.job_id, req.resume_id, db)
-    success = await interview_adapter.receive_evaluation(req.resume_id, req.job_id, req.evaluation_data)
+    evaluation_data = dict(req.evaluation_data)
+    if req.call_disposition is not None:
+        # Authoritative - the top-level Dograh value always wins, even over
+        # a (stale/unexpected) value already sitting under the same key.
+        evaluation_data["call_disposition"] = req.call_disposition
+    success = await interview_adapter.receive_evaluation(req.resume_id, req.job_id, evaluation_data)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

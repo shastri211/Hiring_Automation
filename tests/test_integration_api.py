@@ -120,7 +120,7 @@ async def test_receive_transcript(setup_data, client: AsyncClient):
 async def test_receive_evaluation(setup_data, client: AsyncClient):
     job, resume = setup_data
     await client.post("/integration/interview/trigger", json={"job_id": job.id, "resume_id": resume.id})
-    
+
     response = await client.post("/integration/interview/evaluation", json={
         "job_id": job.id,
         "resume_id": resume.id,
@@ -128,6 +128,49 @@ async def test_receive_evaluation(setup_data, client: AsyncClient):
     })
     assert response.status_code == 200
     assert response.json()["success"] is True
+
+
+@pytest.mark.asyncio
+async def test_receive_evaluation_top_level_call_disposition_reaches_outcome(setup_data, client: AsyncClient):
+    """Confirmed real Dograh shape: call_disposition is a top-level sibling
+    of evaluation_data, not nested inside it - without the dedicated schema
+    field it was silently dropped by Pydantic's default extra="ignore"."""
+    job, resume = setup_data
+    await client.post("/integration/interview/trigger", json={"job_id": job.id, "resume_id": resume.id})
+
+    response = await client.post("/integration/interview/evaluation", json={
+        "job_id": job.id,
+        "resume_id": resume.id,
+        "evaluation_data": {"workflow_run_id": 900},
+        "call_disposition": "pipeline_error",
+    })
+    assert response.status_code == 200
+
+    detail = await client.get(f"/jobs/{job.id}/results/{resume.id}")
+    interview = detail.json()["interview"]
+    assert interview["status"] == "RESCHEDULE_PENDING"
+    assert interview["outcome"] == "pipeline_error"
+
+
+@pytest.mark.asyncio
+async def test_receive_evaluation_top_level_call_disposition_overrides_nested(setup_data, client: AsyncClient):
+    """The top-level field is authoritative - it must win even over a value
+    already sitting under the same key inside evaluation_data."""
+    job, resume = setup_data
+    await client.post("/integration/interview/trigger", json={"job_id": job.id, "resume_id": resume.id})
+
+    response = await client.post("/integration/interview/evaluation", json={
+        "job_id": job.id,
+        "resume_id": resume.id,
+        "evaluation_data": {"workflow_run_id": 901, "call_disposition": "user_hangup"},
+        "call_disposition": "pipeline_error",
+    })
+    assert response.status_code == 200
+
+    detail = await client.get(f"/jobs/{job.id}/results/{resume.id}")
+    interview = detail.json()["interview"]
+    assert interview["outcome"] == "pipeline_error"
+    assert interview["status"] == "RESCHEDULE_PENDING"
 
 
 # -- A10: webhook auth (Dograh -> us) on status/transcript/evaluation ----------
@@ -292,7 +335,11 @@ async def test_webhook_evaluation_redelivery_is_idempotent(setup_data, client: A
     payload = {
         "job_id": job.id,
         "resume_id": resume.id,
-        "evaluation_data": {"workflow_run_id": 777, "score": 85},
+        "evaluation_data": {"workflow_run_id": 777, "score": 85, "years_relevant_experience": "5 years"},
+        # Real Dograh shape: call_disposition is a top-level sibling of
+        # evaluation_data, not nested inside it - "end_call" + a populated
+        # interview-stage field is the real, confirmed completion signal.
+        "call_disposition": "end_call",
     }
     first = await client.post("/integration/interview/evaluation", json=payload)
     assert first.status_code == 200

@@ -10,6 +10,8 @@ class GlobalInterviewResponse(BaseModel):
     status: str
     transcript: Optional[str] = None
     evaluation: Optional[Any] = None
+    outcome: Optional[str] = None
+    retry_count: int = 0
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

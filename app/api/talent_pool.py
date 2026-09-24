@@ -4,10 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.db.session import get_db
 from app.models.talent_pool import TalentPoolEntry
+from app.models.resume import Resume
 from app.models.profile import CandidateProfile
+from app.models.candidate import Candidate
 from app.schemas.talent_pool import (
     TalentPoolEntryCreate,
     TalentPoolEntryUpdate,
@@ -15,6 +18,8 @@ from app.schemas.talent_pool import (
     PaginatedTalentPoolResponse,
 )
 from app.services.candidate_directory import get_candidate_summaries
+from app.api.deps import get_current_user
+from app.models.user import User
 
 router = APIRouter()
 
@@ -35,7 +40,21 @@ def _to_response(entry: TalentPoolEntry, summary: Optional[dict] = None) -> Tale
 
 
 @router.post("/", response_model=TalentPoolEntryResponse, status_code=201)
-async def add_to_talent_pool(payload: TalentPoolEntryCreate, db: AsyncSession = Depends(get_db)):
+async def add_to_talent_pool(
+    payload: TalentPoolEntryCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    resume_result = await db.execute(select(Resume).where(Resume.id == payload.resume_id))
+    resume = resume_result.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    # Derived server-side from the resume itself, never trusted from the
+    # client - added_from_job_id must always be the job the resume actually
+    # belongs to, or delete_job's cascade (which matches entries on this
+    # column) could delete/orphan a talent-pool entry for an unrelated job.
+    added_from_job_id = resume.job_id
+
     existing_result = await db.execute(
         select(TalentPoolEntry).where(TalentPoolEntry.resume_id == payload.resume_id)
     )
@@ -47,12 +66,12 @@ async def add_to_talent_pool(payload: TalentPoolEntryCreate, db: AsyncSession = 
         entry.tags = merged_tags
         if payload.notes is not None:
             entry.notes = payload.notes
-        if payload.added_from_job_id is not None and entry.added_from_job_id is None:
-            entry.added_from_job_id = payload.added_from_job_id
+        if entry.added_from_job_id is None:
+            entry.added_from_job_id = added_from_job_id
     else:
         entry = TalentPoolEntry(
             resume_id=payload.resume_id,
-            added_from_job_id=payload.added_from_job_id,
+            added_from_job_id=added_from_job_id,
             tags=sorted(set(payload.tags or [])),
             notes=payload.notes,
         )
@@ -89,9 +108,23 @@ async def list_talent_pool(
     )
 
     if q:
+        # Phase 6: also match Candidate.canonical_name (the HR override, or
+        # the display name's top fallback rung) - resolved through a merge
+        # if the resume's stored candidate_id has since been absorbed, via
+        # the same one-hop self-join used in candidate_directory.py, so a
+        # renamed or merged candidate stays findable by their current name.
+        candidate_c1 = aliased(Candidate)
+        candidate_c2 = aliased(Candidate)
+        query = query.outerjoin(Resume, Resume.id == TalentPoolEntry.resume_id).outerjoin(
+            candidate_c1, candidate_c1.id == Resume.candidate_id
+        ).outerjoin(candidate_c2, candidate_c1.merged_into_id == candidate_c2.id)
+
         like = f"%{q}%"
         query = query.where(
-            (CandidateProfile.name.ilike(like)) | (CandidateProfile.email.ilike(like))
+            CandidateProfile.name.ilike(like)
+            | CandidateProfile.email.ilike(like)
+            | candidate_c1.canonical_name.ilike(like)
+            | candidate_c2.canonical_name.ilike(like)
         )
 
     if tag:
@@ -114,7 +147,10 @@ async def list_talent_pool(
 
 @router.patch("/{entry_id}", response_model=TalentPoolEntryResponse)
 async def update_talent_pool_entry(
-    entry_id: int, payload: TalentPoolEntryUpdate, db: AsyncSession = Depends(get_db)
+    entry_id: int,
+    payload: TalentPoolEntryUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     result = await db.execute(select(TalentPoolEntry).where(TalentPoolEntry.id == entry_id))
     entry = result.scalar_one_or_none()
@@ -133,7 +169,11 @@ async def update_talent_pool_entry(
 
 
 @router.delete("/{entry_id}", status_code=204)
-async def remove_from_talent_pool(entry_id: int, db: AsyncSession = Depends(get_db)):
+async def remove_from_talent_pool(
+    entry_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     result = await db.execute(select(TalentPoolEntry).where(TalentPoolEntry.id == entry_id))
     entry = result.scalar_one_or_none()
     if entry is None:

@@ -48,11 +48,11 @@ export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
 export const Badge = forwardRef<HTMLSpanElement, BadgeProps>(
   ({ className, variant = 'neutral', ...props }, ref) => {
     const variantClasses = {
-      neutral: 'bg-[var(--color-neutral-subtle-bg)] text-[var(--color-neutral-subtle-text)] border-slate-200',
-      success: 'bg-[var(--color-success-subtle-bg)] text-[var(--color-success-subtle-text)] border-green-200',
-      warning: 'bg-[var(--color-warning-subtle-bg)] text-[var(--color-warning-subtle-text)] border-amber-200',
-      danger: 'bg-[var(--color-danger-subtle-bg)] text-[var(--color-danger-subtle-text)] border-red-200',
-      primary: 'bg-[var(--color-primary-subtle-bg)] text-[var(--color-primary-subtle-text)] border-indigo-200',
+      neutral: 'bg-[var(--color-neutral-subtle-bg)] text-[var(--color-neutral-subtle-text)] border-transparent',
+      success: 'bg-[var(--color-success-subtle-bg)] text-[var(--color-success-subtle-text)] border-transparent',
+      warning: 'bg-[var(--color-warning-subtle-bg)] text-[var(--color-warning-subtle-text)] border-transparent',
+      danger: 'bg-[var(--color-danger-subtle-bg)] text-[var(--color-danger-subtle-text)] border-transparent',
+      primary: 'bg-[var(--color-primary-subtle-bg)] text-[var(--color-primary-subtle-text)] border-transparent',
     };
     return (
       <span ref={ref} className={cn('inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border', variantClasses[variant], className)} {...props} />
@@ -107,7 +107,7 @@ export const Skeleton = ({ className, ...props }: React.HTMLAttributes<HTMLDivEl
 );
 
 export const Spinner = ({ className, size = 24 }: { className?: string, size?: number }) => (
-  <svg className={cn('animate-spin text-slate-400', className)} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg className={cn('animate-spin text-[var(--text-tertiary)]', className)} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <line x1="12" y1="2" x2="12" y2="6"></line>
     <line x1="12" y1="18" x2="12" y2="22"></line>
     <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
@@ -121,9 +121,9 @@ export const Spinner = ({ className, size = 24 }: { className?: string, size?: n
 
 export const EmptyState = ({ icon, title, description, action }: { icon?: React.ReactNode, title: string, description?: string, action?: React.ReactNode }) => (
   <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-    {icon && <div className="mb-4 text-slate-400 bg-slate-50 p-4 rounded-full">{icon}</div>}
-    <h3 className="text-lg font-semibold text-slate-900 mb-1">{title}</h3>
-    {description && <p className="text-slate-500 mb-6 max-w-sm">{description}</p>}
+    {icon && <div className="mb-4 text-[var(--text-tertiary)] bg-[var(--bg-hover)] p-4 rounded-full">{icon}</div>}
+    <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-1">{title}</h3>
+    {description && <p className="text-[var(--text-secondary)] mb-6 max-w-sm">{description}</p>}
     {action && <div>{action}</div>}
   </div>
 );

@@ -1,3 +1,5 @@
+import secrets
+
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 
@@ -69,7 +71,7 @@ async def test_process_candidate_stops_at_embedded(db_session):
             job_id=job.id,
             batch_id=batch.id,
             filename="test.pdf",
-            file_hash="testhash",
+            file_hash=f"testhash_{secrets.token_hex(8)}",
             storage_key="testkey",
             workflow_stage="UPLOADED",
             status="PROCESSING",
@@ -117,7 +119,7 @@ async def test_screen_job_filters_by_job_id(db_session):
         job_id=job.id,
         batch_id=batch.id,
         filename="test.pdf",
-        file_hash="testhash",
+        file_hash=f"testhash_{secrets.token_hex(8)}",
         storage_key="testkey",
         status="READY",
         workflow_stage="EMBEDDED",
@@ -135,7 +137,14 @@ async def test_screen_job_filters_by_job_id(db_session):
         embedding_router,
         "generate_embedding",
         new_callable=AsyncMock,
-    ) as mock_embedding:
+    ) as mock_embedding, patch(
+        # This test uses the real db_session, and job/resume below are real
+        # committed rows - a SHORTLIST result now fires outreach automation
+        # (see ScreenerService.screen_job), which would otherwise create a
+        # real Interview row against them via an unmocked AsyncSessionLocal().
+        "app.services.outreach.outreach_service.on_decision_shortlisted",
+        new_callable=AsyncMock,
+    ):
 
         mock_profile = MagicMock()
         mock_embedding.return_value = (

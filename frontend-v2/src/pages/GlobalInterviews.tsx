@@ -8,10 +8,14 @@ import { queryKeys } from '../api/queryKeys';
 import { useGlobalInterviews } from '../hooks/useGlobalInterviews';
 import { Badge, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../components/ui';
 import { getInterviewStatusBadgeVariant } from '../utils/status';
+import { parseRecommendation } from '../utils/interviewEvaluation';
 
 const PAGE_SIZE = 20;
 
-const STATUS_OPTIONS = ['PENDING', 'SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'FAILED'];
+const STATUS_OPTIONS = [
+  'PENDING', 'SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'FAILED',
+  'RESCHEDULE_PENDING', 'NO_SHOW', 'DECLINED',
+];
 
 export const GlobalInterviews = () => {
   const navigate = useNavigate();
@@ -91,28 +95,39 @@ export const GlobalInterviews = () => {
                     <th className="px-6 py-4 font-medium">Candidate</th>
                     <th className="px-6 py-4 font-medium">Job</th>
                     <th className="px-6 py-4 font-medium">Status</th>
+                    <th className="px-6 py-4 font-medium">Recommendation</th>
                     <th className="px-6 py-4 font-medium">Updated</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--border-light)]">
-                  {data.items.map((row) => (
-                    <tr
-                      key={row.id}
-                      className="hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
-                      onClick={() => navigate(`/interview/${row.job_id}/${row.resume_id}`)}
-                    >
-                      <td className="px-6 py-4 font-medium text-[var(--text-primary)]">
-                        {row.candidate_name || row.resume_filename || `Resume #${row.resume_id}`}
-                      </td>
-                      <td className="px-6 py-4 text-[var(--text-secondary)]">{row.job_title}</td>
-                      <td className="px-6 py-4">
-                        <Badge variant={getInterviewStatusBadgeVariant(row.status)}>{row.status.replace(/_/g, ' ')}</Badge>
-                      </td>
-                      <td className="px-6 py-4 text-[var(--text-tertiary)] text-xs">
-                        {row.updated_at ? formatDistanceToNow(new Date(row.updated_at), { addSuffix: true }) : '—'}
-                      </td>
-                    </tr>
-                  ))}
+                  {data.items.map((row) => {
+                    const recommendation = parseRecommendation(row.evaluation?.interview_recommendation);
+                    return (
+                      <tr
+                        key={row.id}
+                        className="hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+                        onClick={() => navigate(`/interview/${row.job_id}/${row.resume_id}`)}
+                      >
+                        <td className="px-6 py-4 font-medium text-[var(--text-primary)]">
+                          {row.candidate_name || row.resume_filename || `Resume #${row.resume_id}`}
+                        </td>
+                        <td className="px-6 py-4 text-[var(--text-secondary)]">{row.job_title}</td>
+                        <td className="px-6 py-4">
+                          <Badge variant={getInterviewStatusBadgeVariant(row.status)}>{row.status.replace(/_/g, ' ')}</Badge>
+                        </td>
+                        <td className="px-6 py-4">
+                          {recommendation ? (
+                            <Badge variant={recommendation.variant} title={recommendation.reason || undefined}>{recommendation.label}</Badge>
+                          ) : (
+                            <span className="text-[var(--text-tertiary)] text-xs">—</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-[var(--text-tertiary)] text-xs">
+                          {row.updated_at ? formatDistanceToNow(new Date(row.updated_at), { addSuffix: true }) : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

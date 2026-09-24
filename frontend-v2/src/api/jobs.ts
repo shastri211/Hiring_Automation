@@ -64,6 +64,10 @@ export const jobsApi = {
     return apiClient.patch<any>(`/jobs/${jobId}/results/bulk-decision`, { resume_ids: resumeIds, decision }) as unknown as Promise<{ message: string; updated_count: number }>;
   },
 
+  retryEvaluation: (jobId: number, resumeId: number) => {
+    return apiClient.post<any>(`/jobs/${jobId}/results/${resumeId}/retry-evaluation`) as unknown as Promise<ScreeningResultResponse>;
+  },
+
   pauseJob: (jobId: number) => {
     return apiClient.post<any>(`/jobs/${jobId}/pause`) as unknown as Promise<Job>;
   },
@@ -82,5 +86,9 @@ export const jobsApi = {
 
   resyncInterview: (jobId: number, resumeId: number) => {
     return apiClient.post<any>(`/jobs/${jobId}/interviews/${resumeId}/resync`) as unknown as Promise<{ success: boolean; message: string }>;
+  },
+
+  declineInterview: (jobId: number, resumeId: number) => {
+    return apiClient.post<any>(`/jobs/${jobId}/interviews/${resumeId}/decline`) as unknown as Promise<{ success: boolean; message: string }>;
   }
 };

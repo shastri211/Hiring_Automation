@@ -32,7 +32,14 @@ async def test_screen_job_success():
         embedding_router,
         "generate_embedding",
         new_callable=AsyncMock,
-    ) as mock_embedding:
+    ) as mock_embedding, patch(
+        # A SHORTLIST result below now fires the same outreach automation
+        # the manual HR decision endpoints already did (see
+        # ScreenerService.screen_job) - mocked here so this unit test can't
+        # fall through to a real, unmocked AsyncSessionLocal() connection.
+        "app.services.outreach.outreach_service.on_decision_shortlisted",
+        new_callable=AsyncMock,
+    ) as mock_on_shortlisted:
 
         mock_profile = MagicMock()
         mock_profile.collection = settings.QDRANT_COLLECTION
@@ -112,6 +119,8 @@ async def test_screen_job_success():
                 "skills": ["Python"]
             },
         )
+
+        mock_on_shortlisted.assert_awaited_once_with(10, [1])
 
 
 @pytest.mark.asyncio
@@ -197,7 +206,8 @@ async def test_screen_job_one_candidates_db_failure_does_not_drop_others():
     with patch("app.services.screener.vector_store") as mock_vs, \
          patch("app.services.screener.ScreenerService.evaluate_candidate") as mock_eval, \
          patch.object(embedding_router, "generate_embedding", new_callable=AsyncMock) as mock_embedding, \
-         patch("app.services.screener._adaptive_pre_screen", side_effect=lambda cands, **kw: cands):
+         patch("app.services.screener._adaptive_pre_screen", side_effect=lambda cands, **kw: cands), \
+         patch("app.services.outreach.outreach_service.on_decision_shortlisted", new_callable=AsyncMock):
 
         mock_profile = MagicMock()
         mock_profile.collection = settings.QDRANT_COLLECTION

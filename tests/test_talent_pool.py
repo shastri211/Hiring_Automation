@@ -30,13 +30,19 @@ async def test_add_to_talent_pool_creates_new_entry(client: AsyncClient):
 
     fastapi_app.dependency_overrides[talent_pool_api.get_db] = mock_get_db
 
+    # added_from_job_id is now derived server-side from the resume's own
+    # job_id (never trusted from the request body) - one extra db.execute
+    # call up front to look the resume up.
+    resume_exec = MagicMock()
+    resume_exec.scalar_one_or_none.return_value = MagicMock(job_id=99)
+
     missing_exec = MagicMock()
     missing_exec.scalar_one_or_none.return_value = None
 
     summary_exec = MagicMock()
     summary_exec.all.return_value = []
 
-    mock_db.execute = AsyncMock(side_effect=[missing_exec, summary_exec])
+    mock_db.execute = AsyncMock(side_effect=[resume_exec, missing_exec, summary_exec])
     mock_db.add = MagicMock()
     mock_db.commit = AsyncMock()
 
@@ -73,6 +79,9 @@ async def test_add_to_talent_pool_merges_tags_on_repeat_add(client: AsyncClient)
 
     fastapi_app.dependency_overrides[talent_pool_api.get_db] = mock_get_db
 
+    resume_exec = MagicMock()
+    resume_exec.scalar_one_or_none.return_value = MagicMock(job_id=99)
+
     existing = _make_entry(id=5, resume_id=7, tags=["python"])
     existing_exec = MagicMock()
     existing_exec.scalar_one_or_none.return_value = existing
@@ -80,7 +89,7 @@ async def test_add_to_talent_pool_merges_tags_on_repeat_add(client: AsyncClient)
     summary_exec = MagicMock()
     summary_exec.all.return_value = []
 
-    mock_db.execute = AsyncMock(side_effect=[existing_exec, summary_exec])
+    mock_db.execute = AsyncMock(side_effect=[resume_exec, existing_exec, summary_exec])
     mock_db.commit = AsyncMock()
     mock_db.refresh = AsyncMock()
 

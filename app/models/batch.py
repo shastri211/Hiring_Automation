@@ -11,6 +11,13 @@ class ScreeningBatch(Base):
     job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False, index=True)
 
     status = Column(String(50), default="CREATED")
+    # UPLOAD (Resume rows point at this batch via batch_id - total_resumes
+    # is a snapshot of an actual upload and can be recomputed live from
+    # those rows) vs SCREEN (a screen-job trigger batch - see
+    # app/services/screening_trigger.py - which never has any Resume row
+    # pointing at it; total_resumes is assigned directly there and must be
+    # trusted as-is).
+    batch_type = Column(String(20), nullable=False, default="UPLOAD", server_default="UPLOAD")
     total_resumes = Column(Integer, nullable=False, default=0)
     processed = Column(Integer, nullable=False, default=0)
     failed = Column(Integer, nullable=False, default=0)

@@ -1,5 +1,6 @@
 import smtplib
 import asyncio
+import html
 import logging
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -41,7 +42,18 @@ class EmailProviderAdapter:
         self.from_email = settings.SMTP_FROM_EMAIL
 
     async def send_email(self, to_email: str, subject: str, html_body: str) -> dict:
-        """Sends an email and returns a provider-style response."""
+        """Sends an email and returns a provider-style response.
+
+        `html_body` is actually plain text (templates are authored/stored as
+        plain text with real newlines - see EmailTemplates.tsx's textarea and
+        EmailService.render_template, both of which the UI renders correctly
+        via `whitespace-pre-wrap`). It was previously handed to MIMEText as
+        literal HTML with no <br>/<p> tags, so mail clients collapsed every
+        newline into a single space - a structured template arrived as one
+        run-on line. Escaping it and converting newlines to <br> here (SMTP
+        send is the only place plain text becomes an actual HTML payload)
+        fixes that without touching how templates are authored or displayed.
+        """
         if not self.host:
             logger.warning(f"SMTP_HOST not configured. Simulating email to {to_email}")
             # Simulate a successful response for development if no SMTP server is set
@@ -51,7 +63,8 @@ class EmailProviderAdapter:
         message["Subject"] = subject
         message["From"] = self.from_email
         message["To"] = to_email
-        message.attach(MIMEText(html_body, "html"))
+        html_content = html.escape(html_body).replace("\n", "<br>\n")
+        message.attach(MIMEText(html_content, "html"))
 
         try:
             await asyncio.to_thread(self._send_sync, to_email, message)
@@ -83,7 +96,14 @@ class EmailService:
             rendered = rendered.replace(f"{{{{{key}}}}}", str(value))
         return rendered
         
-    async def queue_bulk_emails(self, job_id: int, resume_ids: List[int], template_id: int, queue_service) -> int:
+    async def queue_bulk_emails(
+        self,
+        job_id: int,
+        resume_ids: List[int],
+        template_id: int,
+        queue_service,
+        override_recipient_email: Optional[str] = None,
+    ) -> int:
         """Creates EmailMessage records and pushes tasks to Redis for sending."""
         queued_count = 0
         
@@ -122,7 +142,7 @@ class EmailService:
                 )
                 job = job_result.scalar_one_or_none()
                 
-                if not candidate or not candidate.email:
+                if not override_recipient_email and (not candidate or not candidate.email):
                     logger.warning(f"Skipping resume {resume_id}: No email address available")
                     # Could create a FAILED record here, but skipping is safer to avoid noise
                     continue
@@ -170,7 +190,7 @@ class EmailService:
                         continue
 
                 context = {
-                    "candidate_name": candidate.name or "Candidate",
+                    "candidate_name": (candidate.name if candidate else None) or "Candidate",
                     "job_title": job.title,
                     "interview_link": interview_link or "",
                 }
@@ -179,13 +199,18 @@ class EmailService:
                 subject = self.render_template(template.subject, context)
                 body = self.render_template(template.body_content, context)
                 
-                # Create message record
-                if existing_msg and existing_msg.status == "FAILED":
+                # Create message record. FAILED and BLOCKED are both
+                # resumable prior attempts for this (resume_id, template_id)
+                # pair - the unique constraint means a fresh insert for
+                # either would raise IntegrityError, so both must update the
+                # existing row in place rather than only FAILED.
+                if existing_msg and existing_msg.status in ("FAILED", "BLOCKED"):
                     # Retry flow: update existing
                     existing_msg.status = "PENDING"
                     existing_msg.subject = subject
                     existing_msg.body_content = body
                     existing_msg.error_message = None
+                    existing_msg.override_recipient_email = override_recipient_email
                     msg_id = existing_msg.id
                 else:
                     # New flow
@@ -195,7 +220,8 @@ class EmailService:
                         template_id=template_id,
                         subject=subject,
                         body_content=body,
-                        status="PENDING"
+                        status="PENDING",
+                        override_recipient_email=override_recipient_email,
                     )
                     session.add(new_msg)
                     await session.flush() # flush to get ID
@@ -228,55 +254,106 @@ class EmailService:
             if msg.status != "PENDING":
                 logger.info(f"EmailMessage {email_message_id} already processed ({msg.status})")
                 return
-                
-            # Get recipient email
-            profile_result = await session.execute(
-                select(CandidateProfile).where(CandidateProfile.resume_id == msg.resume_id)
-            )
-            profile = profile_result.scalar_one_or_none()
-            
-            if not profile or not profile.email:
+
+            if msg.send_attempt_started_at is not None:
+                # A previous attempt reached the provider call and never
+                # came back to record SENT/FAILED - most likely a crash
+                # right after a successful send but before that commit.
+                # Whether it actually delivered can't be determined from
+                # here, so this fails safe: never silently retry a send
+                # that might already have reached the candidate. Surfaced
+                # as FAILED (not silently skipped) so it's visible in
+                # Outreach History and can be manually verified/resent.
                 msg.status = "FAILED"
-                msg.error_message = "Candidate profile not found or has no email address."
+                msg.error_message = (
+                    "A previous send attempt for this message did not complete cleanly "
+                    "(process likely crashed mid-send) - it may or may not have reached the "
+                    "candidate. Verify manually before resending."
+                )
                 await session.commit()
+                logger.error(
+                    f"EmailMessage {email_message_id}: prior send attempt at "
+                    f"{msg.send_attempt_started_at} never completed - marking FAILED instead of "
+                    "risking a duplicate send."
+                )
                 return
 
-            # Test-data safety net: candidate emails are frequently extracted
-            # from non-real sample resumes. Only addresses the user has
-            # explicitly cleared in Settings > Outreach Automation are allowed
-            # to actually receive mail via the configured email provider; everything else is blocked
-            # before it ever reaches the provider (recorded as BLOCKED, not FAILED,
-            # so it doesn't look like an error and isn't retried).
-            allowlist_row = (
-                await session.execute(select(AppSettings).where(AppSettings.id == 1))
-            ).scalar_one_or_none()
-            allowlist = _parse_allowlist(allowlist_row.email_test_allowlist if allowlist_row else None)
-            if profile.email.strip().lower() not in allowlist:
-                msg.status = "BLOCKED"
-                msg.error_message = (
-                    f"Recipient {profile.email} is not in the test email allowlist "
-                    "(Settings > Outreach Automation). Add it there to allow sending."
+            msg.send_attempt_started_at = datetime.utcnow()
+            await session.commit()
+
+
+            # Get recipient email, in priority order:
+            #   1. msg.override_recipient_email - explicitly typed in at send
+            #      time for this one send (see BulkEmailRequest). Only exists
+            #      for a manual bulk-send.
+            #   2. AppSettings.email_test_override_recipient - the same idea
+            #      but persistent and global, so it also covers a fully
+            #      automated send (shortlist/interview-scheduled), which has
+            #      no per-send moment to type an override into.
+            #   3. The candidate's own profile email, gated by the test
+            #      allowlist below.
+            # Either override skips the CandidateProfile/allowlist checks
+            # entirely - it doesn't need one on file, and it's an address the
+            # sender controls right now, unlike one scraped off a resume.
+            recipient_email = msg.override_recipient_email
+            app_settings_row = None
+            if not recipient_email:
+                app_settings_row = (
+                    await session.execute(select(AppSettings).where(AppSettings.id == 1))
+                ).scalar_one_or_none()
+                global_test_override = (
+                    (app_settings_row.email_test_override_recipient or "").strip() if app_settings_row else ""
                 )
-                await session.commit()
-                logger.warning(
-                    f"Blocked email message {email_message_id}: {profile.email} not in test allowlist"
+                recipient_email = global_test_override or None
+            profile = None
+            if not recipient_email:
+                profile_result = await session.execute(
+                    select(CandidateProfile).where(CandidateProfile.resume_id == msg.resume_id)
                 )
-                return
+                profile = profile_result.scalar_one_or_none()
+
+                if not profile or not profile.email:
+                    msg.status = "FAILED"
+                    msg.error_message = "Candidate profile not found or has no email address."
+                    await session.commit()
+                    return
+                recipient_email = profile.email
+
+                # Test-data safety net: candidate emails are frequently
+                # extracted from non-real sample resumes. Only addresses the
+                # user has explicitly cleared in Settings > Outreach
+                # Automation are allowed to actually receive mail via the
+                # configured email provider; everything else is blocked
+                # before it ever reaches the provider (recorded as BLOCKED,
+                # not FAILED, so it doesn't look like an error and isn't
+                # retried).
+                allowlist = _parse_allowlist(app_settings_row.email_test_allowlist if app_settings_row else None)
+                if recipient_email.strip().lower() not in allowlist:
+                    msg.status = "BLOCKED"
+                    msg.error_message = (
+                        f"Recipient {recipient_email} is not in the test email allowlist "
+                        "(Settings > Outreach Automation). Add it there to allow sending."
+                    )
+                    await session.commit()
+                    logger.warning(
+                        f"Blocked email message {email_message_id}: {recipient_email} not in test allowlist"
+                    )
+                    return
 
             try:
                 # Call Provider
                 provider_response = await self.provider.send_email(
-                    to_email=profile.email,
+                    to_email=recipient_email,
                     subject=msg.subject,
                     html_body=msg.body_content
                 )
-                
+
                 # Update success
                 msg.status = "SENT"
                 msg.provider_message_id = provider_response.get("id")
                 msg.sent_at = datetime.utcnow()
                 await session.commit()
-                logger.info(f"Successfully sent email message {email_message_id} to {profile.email}")
+                logger.info(f"Successfully sent email message {email_message_id} to {recipient_email}")
                 
             except Exception as e:
                 # Update failure

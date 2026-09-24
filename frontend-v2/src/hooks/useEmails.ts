@@ -47,6 +47,10 @@ export const useCandidateEmails = (resumeId: number) => {
     queryKey: emailQueryKeys.candidateHistory(resumeId),
     queryFn: () => emailsApi.getCandidateEmails(resumeId),
     enabled: !!resumeId,
+    // SEND_EMAIL is processed asynchronously off a Redis queue, so a row
+    // fetched right after enqueue is still PENDING - without polling it
+    // never picks up the worker's later SENT/FAILED/BLOCKED transition.
+    refetchInterval: (query) => (query.state.data?.some((e) => e.status === 'PENDING') ? 4000 : false),
   });
 };
 
@@ -85,5 +89,8 @@ export const useEmailMessages = (params?: EmailMessagesParams) => {
     queryKey: queryKeys.emailMessages(params),
     queryFn: () => emailsApi.listMessages(params),
     placeholderData: keepPreviousData,
+    // Same reasoning as useCandidateEmails: PENDING rows won't self-update
+    // once the worker sends/fails/blocks them unless this page polls.
+    refetchInterval: (query) => (query.state.data?.items.some((e) => e.status === 'PENDING') ? 4000 : false),
   });
 };

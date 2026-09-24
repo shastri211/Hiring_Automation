@@ -3,16 +3,17 @@ import {
   LayoutDashboard, Briefcase, Star, X,
   Users, Calendar, Database, Mail,
   FileText, Brain, MessageSquare, BarChart,
-  Puzzle, Settings, ListChecks
+  Puzzle, Settings, ListChecks, Users2
 } from 'lucide-react';
 import clsx from 'clsx';
+import { useMatchSuggestions } from '../../hooks/useCandidateIdentity';
 
 type NavItem = {
   to: string;
   label: string;
   icon: any;
   exact?: boolean;
-  disabled?: boolean;
+  badge?: number;
 };
 
 type NavGroup = {
@@ -27,6 +28,14 @@ export const Sidebar = ({
   isMobileOpen: boolean;
   setMobileOpen: (open: boolean) => void;
 }) => {
+  // Small, review-queue-sized list (auto-filed off a phone-exact match) - a
+  // plain list fetch doubles as the pending count, so no dedicated count
+  // endpoint is needed. Shares its query cache with the Duplicate Candidates
+  // page itself (same query key), so this doesn't add an extra request
+  // beyond what that page already needs.
+  const { data: pendingSuggestions } = useMatchSuggestions('PENDING');
+  const pendingCount = pendingSuggestions?.length ?? 0;
+
   const navGroups: NavGroup[] = [
     {
       title: 'DASHBOARD',
@@ -40,6 +49,7 @@ export const Sidebar = ({
         { to: '/jobs', label: 'Jobs', icon: Briefcase },
         { to: '/processing', label: 'Processing', icon: ListChecks },
         { to: '/candidates', label: 'Candidates', icon: Users },
+        { to: '/candidates/duplicates', label: 'Duplicate Candidates', icon: Users2, badge: pendingCount },
         { to: '/shortlisted', label: 'Shortlisted', icon: Star },
         { to: '/interviews', label: 'Interviews', icon: Calendar },
         { to: '/talent-pool', label: 'Talent Pool', icon: Database },
@@ -101,24 +111,27 @@ export const Sidebar = ({
               {group.items.map((item) => (
                 <NavLink
                   key={item.to}
-                  to={item.disabled ? '#' : item.to}
+                  to={item.to}
                   end={item.exact}
-                  onClick={(e) => {
-                    if (item.disabled) e.preventDefault();
-                    else setMobileOpen(false);
-                  }}
+                  onClick={() => setMobileOpen(false)}
                   className={({ isActive }) => clsx(
                     'flex items-center gap-3 px-3 py-2.5 rounded-md font-medium transition-colors focus-ring',
-                    item.disabled
-                      ? 'text-[var(--text-tertiary)] cursor-not-allowed opacity-70'
-                      : isActive
-                        ? 'bg-[var(--color-primary-50)] text-[var(--color-primary-700)]'
-                        : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
+                    isActive
+                      // Theme-aware token (has a dark-mode value) - the
+                      // hardcoded --color-primary-50 this replaced stayed
+                      // near-white in dark mode, same bug fixed on
+                      // JobCandidates.tsx's row hover.
+                      ? 'bg-[var(--color-primary-subtle-bg)] text-[var(--color-primary-700)]'
+                      : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
                   )}
-                  title={item.disabled ? "Coming Soon" : ""}
                 >
                   <item.icon size={20} />
-                  <span>{item.label}</span>
+                  <span className="flex-1">{item.label}</span>
+                  {!!item.badge && (
+                    <span className="min-w-[1.25rem] px-1.5 py-0.5 rounded-full text-xs font-semibold text-center bg-[var(--color-primary-600)] text-white">
+                      {item.badge}
+                    </span>
+                  )}
                 </NavLink>
               ))}
             </div>

@@ -15,9 +15,11 @@ def _make_app_settings(**overrides):
     s.semantic_gap_threshold = None
     s.auto_email_on_shortlist = False
     s.shortlist_email_template_id = None
+    s.auto_generate_interview_on_shortlist = False
     s.auto_email_on_interview_scheduled = False
     s.interview_scheduled_email_template_id = None
     s.email_test_allowlist = None
+    s.email_test_override_recipient = None
     s.created_at = datetime.datetime.utcnow()
     s.updated_at = None
     for k, v in overrides.items():
@@ -54,9 +56,11 @@ async def test_get_settings_creates_singleton_when_missing(client: AsyncClient):
         obj.semantic_gap_threshold = None
         obj.auto_email_on_shortlist = False
         obj.shortlist_email_template_id = None
+        obj.auto_generate_interview_on_shortlist = False
         obj.auto_email_on_interview_scheduled = False
         obj.interview_scheduled_email_template_id = None
         obj.email_test_allowlist = None
+        obj.email_test_override_recipient = None
         obj.created_at = datetime.datetime.utcnow()
         obj.updated_at = None
 

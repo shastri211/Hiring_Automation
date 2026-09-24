@@ -9,12 +9,13 @@ class PDFExtractor(BaseExtractor):
 
     async def extract(self, file_path: str) -> str:
         text_content = []
+        doc = None
         try:
             doc = fitz.open(file_path)
             for page_num in range(len(doc)):
                 page = doc.load_page(page_num)
                 page_text = page.get_text("text").strip()
-                
+
                 if len(page_text) < 50:
                     pix = page.get_pixmap()
                     temp_img_path = f"{file_path}_page_{page_num}.png"
@@ -27,7 +28,13 @@ class PDFExtractor(BaseExtractor):
                             os.remove(temp_img_path)
                 else:
                     text_content.append(page_text)
-            
+
             return "\n\n".join(text_content).strip()
         except Exception as e:
             raise Exception(f"PDF extraction failed: {str(e)}")
+        finally:
+            # fitz.Document holds a live file handle + native buffers for the
+            # life of the object - never closing it leaks both, page after
+            # page, for as long as this worker process runs.
+            if doc is not None:
+                doc.close()

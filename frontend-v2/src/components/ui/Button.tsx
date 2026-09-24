@@ -19,8 +19,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 
     const variantClasses = {
       primary: "bg-[var(--color-primary-600)] text-white hover:not-disabled:bg-[var(--color-primary-700)] focus-ring",
-      secondary: "bg-white border-slate-300 text-slate-900 hover:not-disabled:bg-slate-50 focus-ring",
-      ghost: "bg-transparent text-slate-500 hover:not-disabled:bg-slate-100 hover:not-disabled:text-slate-900 focus-ring"
+      secondary: "bg-[var(--bg-surface)] border-[var(--border-strong)] text-[var(--text-primary)] hover:not-disabled:bg-[var(--bg-hover)] focus-ring",
+      ghost: "bg-transparent text-[var(--text-secondary)] hover:not-disabled:bg-[var(--bg-hover)] hover:not-disabled:text-[var(--text-primary)] focus-ring"
     };
 
     return (

@@ -40,4 +40,7 @@ export const queryKeys = {
 
   emailMessages: (params?: EmailMessagesParams) =>
     params ? (['email-messages', params] as const) : (['email-messages'] as const),
+
+  matchSuggestions: (status: string) => ['match-suggestions', status] as const,
+  candidate: (id: number) => ['candidate', id] as const,
 };

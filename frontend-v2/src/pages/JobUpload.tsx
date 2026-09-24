@@ -38,6 +38,10 @@ export const JobUpload = () => {
       setFiles([]);
       queryClient.invalidateQueries({ queryKey: queryKeys.jobProgress(jobId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.candidates(jobId) });
+      // The cross-job Processing page reads a separate query key - without
+      // this, the new UPLOAD batch is invisible there until its 5-minute
+      // staleTime lapses.
+      queryClient.invalidateQueries({ queryKey: queryKeys.batchesOverview() });
       toast.success(`${response.accepted_files} resume${response.accepted_files === 1 ? '' : 's'} added to the processing queue.`);
     },
     onError: (error: { message?: string }) => {
@@ -232,6 +236,12 @@ export const JobUpload = () => {
               <span className="text-red-600 font-semibold text-xl">{uploadMutation.data.invalid_files}</span>
               <span className="text-red-700">Invalid</span>
             </div>
+            {uploadMutation.data.failed_files > 0 && (
+              <div className="flex flex-col">
+                <span className="text-red-600 font-semibold text-xl">{uploadMutation.data.failed_files}</span>
+                <span className="text-red-700">Failed (corrupt)</span>
+              </div>
+            )}
           </div>
           
           <div className="flex gap-3">

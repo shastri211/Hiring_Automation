@@ -39,7 +39,20 @@ apiClient.interceptors.response.use(
 
     if (error.response?.data) {
       const data = error.response.data as any;
-      apiError.message = data.detail || data.message || apiError.message;
+      // FastAPI's 422 `detail` is an array of {loc, msg, type} validation
+      // errors, not a string - falling through to `data.message` (usually
+      // undefined) silently dropped every Pydantic validation message and
+      // left the generic "An unexpected error occurred" in its place.
+      if (typeof data.detail === 'string') {
+        apiError.message = data.detail;
+      } else if (Array.isArray(data.detail) && data.detail.length > 0) {
+        apiError.message = data.detail
+          .map((d: any) => (typeof d?.msg === 'string' ? d.msg.replace(/^Value error,\s*/, '') : null))
+          .filter(Boolean)
+          .join('; ') || apiError.message;
+      } else if (typeof data.message === 'string') {
+        apiError.message = data.message;
+      }
       apiError.details = data;
     } else if (error.request) {
       apiError.message = 'No response received from server. Please check your connection.';
