@@ -17,6 +17,7 @@ is safe: process_candidate short-circuits on READY, takes a NOWAIT row lock
 (a concurrent duplicate raises before touching status and is retried), and
 resumes from its workflow_stage checkpoint.
 """
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
@@ -149,14 +150,24 @@ async def requeue_unenqueued_applications(session: Optional[AsyncSession] = None
         )
     ).all()
 
+    # Each row's XADD is independent - fire them concurrently instead of one
+    # Redis round-trip at a time, so this stays fast (and these rows'
+    # FOR UPDATE locks are held for less time) even near the 100-row limit.
+    # return_exceptions=True keeps one row's failure from cancelling the rest.
+    results = await asyncio.gather(
+        *(
+            queue_service.enqueue_resume(submission.resume_id, job_id=submission.job_id, batch_id=batch_id)
+            for submission, batch_id in rows
+        ),
+        return_exceptions=True,
+    )
+
     requeued = 0
-    for submission, batch_id in rows:
-        try:
-            await queue_service.enqueue_resume(submission.resume_id, job_id=submission.job_id, batch_id=batch_id)
-        except Exception:
+    for (submission, _batch_id), result in zip(rows, results):
+        if isinstance(result, BaseException):
             logger.warning(
                 "Recovery sweep: enqueue still failing for public application resume=%s; will retry next pass.",
-                submission.resume_id, exc_info=True,
+                submission.resume_id, exc_info=result,
             )
             continue
         submission.enqueued_at = datetime.now(timezone.utc)

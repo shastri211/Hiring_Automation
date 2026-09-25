@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -53,9 +53,7 @@ async def add_to_talent_pool(
     # added_from_job_id is derived from that resume, never trusted from the
     # client - so it's in the same organization by construction.
     organization_id = current_user.organization_id
-    resume = await tenancy.get_resume_in_org(db, payload.resume_id, organization_id)
-    if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
+    resume = await tenancy.get_resume_in_org_or_404(db, payload.resume_id, organization_id)
     # Derived server-side from the resume itself, never trusted from the
     # client - added_from_job_id must always be the job the resume actually
     # belongs to, or delete_job's cascade (which matches entries on this

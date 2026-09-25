@@ -1048,17 +1048,12 @@ async def bulk_update_decision(
     found_resume_ids = {s.resume_id for s in screenings}
 
     # What if they don't have a screening result yet? We create blank ones.
+    # require_resumes_in_job (above) already proved every id in
+    # payload.resume_ids - missing_ids is a subset of that - belongs to this
+    # job, so there's no need to re-verify it here.
     missing_ids = set(payload.resume_ids) - found_resume_ids
     if missing_ids:
-        # Verify resumes actually belong to this job
-        res_resumes = await db.execute(
-            select(Resume.id).where(
-                Resume.job_id == job_id,
-                Resume.id.in_(missing_ids)
-            )
-        )
-        valid_missing_ids = res_resumes.scalars().all()
-        for rid in valid_missing_ids:
+        for rid in missing_ids:
             new_sr = ScreeningResult(
                 job_id=job_id,
                 resume_id=rid,

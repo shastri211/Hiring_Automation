@@ -93,6 +93,103 @@ async def test_queue_bulk_emails_enqueues_via_shared_queue_service(mock_session_
 
 @pytest.mark.asyncio
 @patch("app.services.email.AsyncSessionLocal", new_callable=MagicMock)
+async def test_queue_bulk_emails_skips_org_lookup_when_caller_already_resolved_it(mock_session_local):
+    """A caller that already validated the job's organization (the bulk-send
+    route, via tenancy.get_job_for_org_or_404) passes organization_id and
+    queue_bulk_emails must use it directly instead of re-deriving it via
+    tenancy.organization_id_for_job - one fewer query, and the template
+    lookup is still scoped to that same organization_id."""
+    from app.services.email import email_service
+
+    mock_session = _mock_session_local(mock_session_local)
+
+    template = MagicMock(spec=EmailTemplate)
+    template.id = 1
+    template.body_content = "Hi {{candidate_name}}, thanks for applying to {{job_title}}."
+    template_exec = MagicMock()
+    template_exec.scalar_one_or_none.return_value = template
+
+    existing_exec = MagicMock()
+    existing_exec.scalar_one_or_none.return_value = None
+
+    candidate = MagicMock(spec=CandidateProfile)
+    candidate.email = "jane@example.com"
+    candidate.name = "Jane Doe"
+    candidate_exec = MagicMock()
+    candidate_exec.scalar_one_or_none.return_value = candidate
+
+    job = MagicMock(spec=Job)
+    job.title = "Backend Engineer"
+    job_exec = MagicMock()
+    job_exec.scalar_one_or_none.return_value = job
+
+    # No _org_exec() here - with organization_id given, the first query is
+    # the template lookup, not the job -> organization_id derivation.
+    mock_session.execute = AsyncMock(
+        side_effect=[template_exec, _job_resumes_exec([7]), existing_exec, candidate_exec, job_exec]
+    )
+
+    def _add(obj):
+        obj.id = 42
+
+    mock_session.add = MagicMock(side_effect=_add)
+    mock_session.flush = AsyncMock()
+    mock_session.commit = AsyncMock()
+
+    mock_queue_service = MagicMock()
+    mock_queue_service.enqueue_task = AsyncMock()
+
+    from tenancy_fixtures import TEST_ORG_ID
+
+    queued_count = await email_service.queue_bulk_emails(
+        job_id=1, resume_ids=[7], template_id=1, queue_service=mock_queue_service,
+        organization_id=TEST_ORG_ID,
+    )
+
+    assert queued_count == 1
+    assert mock_session.execute.await_count == 5  # not 6 - no organization_id_for_job lookup
+
+
+@pytest.mark.asyncio
+@patch("app.services.email.AsyncSessionLocal", new_callable=MagicMock)
+async def test_queue_bulk_emails_never_resumes_a_historical_blocked_message(mock_session_local):
+    """BLOCKED is historical only (the allowlist gate that ever produced it
+    was removed) - a BLOCKED row must be skipped, never flipped back to
+    PENDING and resent, since nothing ever re-validated that address the way
+    the (now-gone) allowlist used to on a genuine retry."""
+    from app.services.email import email_service
+
+    mock_session = _mock_session_local(mock_session_local)
+
+    template_exec = MagicMock()
+    template_exec.scalar_one_or_none.return_value = MagicMock(spec=EmailTemplate, id=1, body_content="Hi", subject="Hi")
+
+    existing_msg = MagicMock()
+    existing_msg.status = "BLOCKED"
+    existing_exec = MagicMock()
+    existing_exec.scalar_one_or_none.return_value = existing_msg
+
+    mock_session.execute = AsyncMock(
+        side_effect=[_org_exec(), template_exec, _job_resumes_exec([7]), existing_exec]
+    )
+    mock_session.add = MagicMock()
+    mock_session.commit = AsyncMock()
+
+    mock_queue_service = MagicMock()
+    mock_queue_service.enqueue_task = AsyncMock()
+
+    queued_count = await email_service.queue_bulk_emails(
+        job_id=1, resume_ids=[7], template_id=1, queue_service=mock_queue_service,
+    )
+
+    assert queued_count == 0
+    assert existing_msg.status == "BLOCKED"  # untouched
+    mock_session.add.assert_not_called()
+    mock_queue_service.enqueue_task.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@patch("app.services.email.AsyncSessionLocal", new_callable=MagicMock)
 async def test_queue_bulk_emails_skips_candidate_without_interview_link(mock_session_local):
     """A template requiring {{interview_link}} but with no Interview/public_token
     yet for this (job_id, resume_id) must skip only that candidate (log +

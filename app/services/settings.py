@@ -23,13 +23,22 @@ class SettingsService:
         result = await db.execute(select(AppSettings).where(AppSettings.organization_id == organization_id))
         return result.scalar_one_or_none()
 
+    def new_settings_row(self, organization_id: int) -> AppSettings:
+        """A freshly-constructed row for `organization_id`, not yet added to
+        any session - the single place that defines what a brand-new
+        organization's settings look like. Used by get_settings's
+        create-branch below, and by signup (app/api/auth.py), which needs
+        the row created in the same atomic commit as the Organization/User
+        rows rather than get_settings's own separate commit."""
+        return AppSettings(organization_id=organization_id)
+
     async def get_settings(self, db: AsyncSession, organization_id: int) -> AppSettings:
         """Get-or-create the organization's row."""
         app_settings = await self.get_row(db, organization_id)
         if app_settings is not None:
             return app_settings
 
-        app_settings = AppSettings(organization_id=organization_id)
+        app_settings = self.new_settings_row(organization_id)
         db.add(app_settings)
         try:
             await db.commit()

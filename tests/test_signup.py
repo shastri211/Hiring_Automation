@@ -174,6 +174,9 @@ async def test_signup_smtp_failure_keeps_account_and_resend_recovers(client, db_
     [
         ({"password": "short"}, "weak_password"),
         ({"email": "not-an-email"}, "invalid_email"),
+        # A second "@" must be rejected - str.partition("@")-based checks
+        # only look at the first one and would wrongly accept this.
+        ({"email": "a@b@example.com"}, "invalid_email"),
         ({"company_name": "   "}, "invalid_company_name"),
         ({"name": ""}, "invalid_name"),
     ],

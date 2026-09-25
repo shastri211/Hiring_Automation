@@ -255,9 +255,10 @@ async def get_candidate(
 
     merged_into_name = None
     if candidate.merged_into_id is not None:
-        target = (
-            await db.execute(select(Candidate).where(Candidate.id == candidate.merged_into_id))
-        ).scalar_one_or_none()
+        # merged_into_id can only ever point at a same-organization candidate
+        # (merge_candidates enforces this), but this read never relies on
+        # that invariant alone - scoped the same as the primary lookup above.
+        target = await tenancy.get_candidate_for_org(db, candidate.merged_into_id, current_user.organization_id)
         merged_into_name = target.canonical_name if target else None
 
     data = CandidateResponse.model_validate(candidate).model_dump()

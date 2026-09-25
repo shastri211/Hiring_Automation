@@ -370,6 +370,31 @@ async def test_cross_tenant_identifier_inputs_are_rejected_and_write_nothing(gra
     assert await _snapshot(graph) == before, "A cross-tenant request changed data"
 
 
+async def test_get_candidate_merge_target_is_org_scoped_even_if_the_invariant_is_ever_violated(graph):
+    """merge_candidates() only ever points merged_into_id at a same-org
+    candidate, so this can't happen through the API - but GET
+    /candidates/{id} must not rely on that invariant alone to keep the
+    merge-target lookup in-org. Simulate the invariant being violated (a
+    hypothetical future bug, or direct DB manipulation) and confirm the
+    read still can't surface another organization's candidate name."""
+    a, b = graph["A"], graph["B"]
+    async with AsyncSessionLocal() as db:
+        cand = (await db.execute(select(Candidate).where(Candidate.id == b["candidate2"]))).scalar_one()
+        cand.merged_into_id = a["candidate"]  # cross-org, only reachable by direct manipulation
+        await db.commit()
+    try:
+        async with _client() as client:
+            await _login_as(client, b)
+            res = await client.get(f"/candidates/{b['candidate2']}")
+            assert res.status_code == 200
+            assert res.json()["merged_into_name"] is None
+    finally:
+        async with AsyncSessionLocal() as db:
+            cand = (await db.execute(select(Candidate).where(Candidate.id == b["candidate2"]))).scalar_one()
+            cand.merged_into_id = None
+            await db.commit()
+
+
 async def test_lists_and_aggregates_never_include_another_organization(graph):
     a, b = graph["A"], graph["B"]
 

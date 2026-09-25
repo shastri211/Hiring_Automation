@@ -80,6 +80,7 @@ class OutreachAutomationService:
                     resume_ids=resume_ids,
                     template_id=app_settings.shortlist_email_template_id,
                     queue_service=queue_service,
+                    organization_id=app_settings.organization_id,
                 )
         except Exception:
             logger.exception(
@@ -117,6 +118,7 @@ class OutreachAutomationService:
                     resume_ids=[resume_id],
                     template_id=app_settings.interview_scheduled_email_template_id,
                     queue_service=queue_service,
+                    organization_id=app_settings.organization_id,
                 )
         except Exception:
             logger.exception(

@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_authenticated_user, get_current_user, require_admin
 from app.db.session import get_db
 from app.models.organization import Organization
-from app.models.settings import AppSettings
 from app.models.user import User
 from app.schemas.auth import (
     ChangePasswordRequest,
@@ -26,6 +25,7 @@ from app.schemas.auth import (
 )
 from app.services import rate_limit
 from app.services.auth import (
+    EMAIL_FORMAT_RE,
     MIN_PASSWORD_LENGTH,
     create_access_token,
     create_verification_token,
@@ -34,6 +34,7 @@ from app.services.auth import (
     verify_password,
 )
 from app.services.email import email_service
+from app.services.settings import settings_service
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -69,9 +70,10 @@ def _require_password_strength(password: str) -> None:
 
 
 def _require_valid_email(email: str) -> None:
-    # Format sanity only (already normalized by the schema).
-    local, _, domain = (email or "").partition("@")
-    if not local or "." not in domain or " " in email or len(email) > 255:
+    # Format sanity only (already normalized by the schema). EMAIL_FORMAT_RE
+    # rejects a second "@" (e.g. "a@b@example.com"), which a naive
+    # partition("@")-based check would have let through.
+    if len(email or "") > 255 or not EMAIL_FORMAT_RE.match(email or ""):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={"reason": "invalid_email", "message": "Enter a valid email address."},
@@ -207,7 +209,11 @@ async def signup(payload: SignupRequest, request: Request, db: AsyncSession = De
         email_verified_at=None,
     )
     db.add(user)
-    db.add(AppSettings(organization_id=org.id))
+    # Uses SettingsService's constructor (not get_settings itself, which
+    # commits on its own) so this row is created exactly the same way as
+    # every other organization's, while staying part of this one atomic
+    # commit alongside the Organization/User rows.
+    db.add(settings_service.new_settings_row(org.id))
     try:
         await db.commit()
     except IntegrityError:

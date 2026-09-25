@@ -407,6 +407,62 @@ async def _age_submissions(db_session, job_id, seconds=3600):
     await db_session.commit()
 
 
+async def test_sweep_enqueues_unconfirmed_rows_concurrently(db_session):
+    """The sweep's per-row Redis enqueues must run concurrently
+    (asyncio.gather), not one at a time - with N rows and a slow
+    enqueue_resume, sequential awaits would take N times as long."""
+    job = await _make_job(db_session)
+    job_id = job.id  # captured before expire_all() below
+    resumes = []
+    for _ in range(5):
+        batch = ScreeningBatch(job_id=job_id, total_resumes=1)
+        db_session.add(batch)
+        await db_session.flush()
+        resume = Resume(
+            job_id=job_id, batch_id=batch.id, filename="r.pdf", file_hash=secrets.token_hex(16),
+            storage_key="k", status="UPLOADED",
+        )
+        db_session.add(resume)
+        await db_session.flush()
+        db_session.add(PublicApplicationSubmission(
+            resume_id=resume.id, job_id=job_id, applicant_name="A", applicant_email="a@example.com",
+            consent_at=datetime.now(timezone.utc),
+        ))
+        resumes.append(resume)
+    await db_session.commit()
+    await _age_submissions(db_session, job_id)
+
+    delay_seconds = 0.2
+
+    async def _slow_enqueue(*args, **kwargs):
+        await asyncio.sleep(delay_seconds)
+
+    with patch("app.services.public_application.queue_service.enqueue_resume", side_effect=_slow_enqueue) as mock_enqueue:
+        start = asyncio.get_event_loop().time()
+        # No session passed - opens its own, exactly like the real worker
+        # sweep loop (app/worker.py). Keeps this concurrency test's
+        # transaction independent of db_session's, which is only used here
+        # for setup/verification.
+        requeued = await requeue_unenqueued_applications()
+        elapsed = asyncio.get_event_loop().time() - start
+
+    assert requeued == 5
+    assert mock_enqueue.await_count == 5
+    # Sequential would take ~5 * delay_seconds (1.0s); concurrent stays near
+    # one delay_seconds regardless of row count. A generous margin keeps
+    # this robust to normal scheduling jitter while still catching a
+    # regression back to a plain sequential for-loop.
+    assert elapsed < delay_seconds * 3
+
+    db_session.expire_all()
+    marked = (await db_session.execute(
+        select(func.count(PublicApplicationSubmission.id)).where(
+            PublicApplicationSubmission.job_id == job_id, PublicApplicationSubmission.enqueued_at.isnot(None),
+        )
+    )).scalar_one()
+    assert marked == 5
+
+
 async def test_enqueue_failure_keeps_rows_and_returns_received(
     client, db_session, fake_limiter, mock_enqueue, tmp_storage, caplog
 ):
