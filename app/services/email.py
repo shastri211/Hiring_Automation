@@ -4,7 +4,7 @@ import html
 import logging
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from typing import List
+from typing import List, Optional
 from datetime import datetime, timezone
 from sqlalchemy import select, update
 from app.db.session import AsyncSessionLocal
@@ -98,15 +98,25 @@ class EmailService:
         resume_ids: List[int],
         template_id: int,
         queue_service,
+        organization_id: Optional[int] = None,
     ) -> int:
-        """Creates EmailMessage records and pushes tasks to Redis for sending."""
+        """Creates EmailMessage records and pushes tasks to Redis for sending.
+
+        `organization_id`: pass this when the caller already resolved and
+        validated the job's organization (e.g. the bulk-send route, via
+        tenancy.get_job_for_org_or_404) to skip re-deriving it here. Callers
+        that haven't (outreach.py's automated sends, which only have a
+        job_id) leave it None and it's looked up as before - this is still
+        the service-level guarantee against a foreign template regardless of
+        which caller invokes it.
+        """
         queued_count = 0
-        
+
         async with AsyncSessionLocal() as session:
             # 1. Fetch template - only from the job's own organization.
-            # Callers (bulk-send route, outreach automation) already pass
-            # same-organization ids; this is the service-level guarantee.
-            job_org_id = await tenancy.organization_id_for_job(session, job_id)
+            job_org_id = organization_id
+            if job_org_id is None:
+                job_org_id = await tenancy.organization_id_for_job(session, job_id)
             result = await session.execute(
                 select(EmailTemplate).where(
                     EmailTemplate.id == template_id,
@@ -138,7 +148,14 @@ class EmailService:
                 )
                 existing_msg = existing.scalar_one_or_none()
                 
-                if existing_msg and existing_msg.status in ["PENDING", "SENT"]:
+                # BLOCKED is historical only (the allowlist gate that ever
+                # produced it is gone) - never auto-resumed. Nothing revalidated
+                # that address when the allowlist existed, so silently treating
+                # it like a retryable FAILED would send, for real, to an
+                # address a human never actually approved. It stays frozen
+                # until someone reviews it and re-sends deliberately (e.g. by
+                # clearing status via direct DB access).
+                if existing_msg and existing_msg.status in ["PENDING", "SENT", "BLOCKED"]:
                     logger.info(f"Skipping resume {resume_id}: Email already {existing_msg.status}")
                     continue
                 
@@ -210,13 +227,12 @@ class EmailService:
                 subject = self.render_template(template.subject, context)
                 body = self.render_template(template.body_content, context)
                 
-                # Create message record. FAILED and the historical BLOCKED
-                # (no longer produced, but old rows may still have it) are
-                # both resumable prior attempts for this (resume_id,
-                # template_id) pair - the unique constraint means a fresh
-                # insert for either would raise IntegrityError, so both must
-                # update the existing row in place rather than only FAILED.
-                if existing_msg and existing_msg.status in ("FAILED", "BLOCKED"):
+                # Create message record. FAILED is the only resumable prior
+                # attempt for this (resume_id, template_id) pair - BLOCKED is
+                # filtered out above and never reaches here. The unique
+                # constraint means a fresh insert for FAILED would raise
+                # IntegrityError, so it must update the existing row in place.
+                if existing_msg and existing_msg.status == "FAILED":
                     # Retry flow: update existing
                     existing_msg.status = "PENDING"
                     existing_msg.subject = subject

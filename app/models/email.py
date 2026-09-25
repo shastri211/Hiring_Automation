@@ -33,7 +33,9 @@ class EmailMessage(Base):
     body_content = Column(Text, nullable=False)
     
     # PENDING, SENT, FAILED, or the historical BLOCKED (produced only by the
-    # since-removed test-allowlist gate; no new message is ever set to it).
+    # since-removed test-allowlist gate; no new message is ever set to it,
+    # and an existing BLOCKED row is never auto-resumed - see
+    # process_send_email_task/queue_bulk_emails).
     status = Column(String(50), default="PENDING", index=True)
     provider_message_id = Column(String(255), nullable=True)
     error_message = Column(Text, nullable=True)

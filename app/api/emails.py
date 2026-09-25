@@ -149,6 +149,7 @@ async def bulk_send_emails(
             resume_ids=request.resume_ids,
             template_id=request.template_id,
             queue_service=queue_service,
+            organization_id=organization_id,
         )
         return {
             "status": "success",
@@ -175,8 +176,7 @@ async def list_email_messages(
     from sqlalchemy import func
 
     organization_id = current_user.organization_id
-    if job_id is not None:
-        await tenancy.get_job_for_org_or_404(db, job_id, organization_id)
+    await tenancy.require_job_in_org_if_given(db, job_id, organization_id)
     query = select(EmailMessage).where(EmailMessage.job_id.in_(tenancy.org_job_ids(organization_id)))
     if status_filter:
         query = query.where(EmailMessage.status == status_filter.upper())

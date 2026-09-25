@@ -147,6 +147,48 @@ def test_only_me_and_change_password_skip_the_password_change_gate():
     assert jobs_list and get_current_user in _dependency_calls(jobs_list[0])
 
 
+# Every other router gets get_current_user as a router-wide default
+# (app/main.py's include_router(..., dependencies=_auth_dep)), so a new
+# route there is authenticated even if its author forgets a per-route
+# Depends. auth.router has no such default - it deliberately mixes public
+# routes (signup, login, verify-email) with gated ones declared per-route -
+# so nothing else catches a future app/api/auth.py route that forgets its
+# own auth dependency. This set is the guardrail: it must be updated
+# deliberately (after confirming the new route really is meant to be
+# public) whenever a route is added to auth.py, rather than silently
+# passing a newly-unauthenticated one.
+KNOWN_PUBLIC_AUTH_ROUTES = {
+    ("/auth/login", ("POST",)),
+    ("/auth/logout", ("POST",)),
+    ("/auth/signup", ("POST",)),
+    ("/auth/verify-email", ("POST",)),
+    ("/auth/resend-verification", ("POST",)),
+}
+
+
+def test_every_auth_router_route_is_authenticated_or_a_known_public_one():
+    from app.api.deps import require_admin, require_platform_admin
+
+    auth_dependencies = {get_authenticated_user, get_current_user, require_admin, require_platform_admin}
+    auth_routes = [
+        (path, methods, dependant) for path, methods, dependant in _effective_routes() if path.startswith("/auth/")
+    ]
+    assert len(auth_routes) >= 7  # sanity: the walk actually sees auth.py's routes
+
+    unclassified = [
+        (path, methods)
+        for path, methods, dependant in auth_routes
+        if (path, methods) not in KNOWN_PUBLIC_AUTH_ROUTES
+        and not (_dependency_calls(dependant) & auth_dependencies)
+    ]
+    assert not unclassified, (
+        f"Route(s) in app/api/auth.py with no auth dependency and not in "
+        f"KNOWN_PUBLIC_AUTH_ROUTES: {unclassified}. If a new route is genuinely public, add it to "
+        "KNOWN_PUBLIC_AUTH_ROUTES above after confirming that's intentional; otherwise give it an "
+        "explicit Depends(get_current_user) (or get_authenticated_user/require_admin/require_platform_admin)."
+    )
+
+
 async def test_admin_created_user_must_change_password_before_anything_else(db_session):
     org = await _make_org(db_session)
     admin = await _make_user(db_session, org.id)

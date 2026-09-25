@@ -27,8 +27,7 @@ async def get_global_interviews(
     current_user: User = Depends(get_current_user),
 ):
     organization_id = current_user.organization_id
-    if job_id is not None:
-        await tenancy.get_job_for_org_or_404(db, job_id, organization_id)
+    await tenancy.require_job_in_org_if_given(db, job_id, organization_id)
     query = (
         select(
             Interview,

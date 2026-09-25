@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
@@ -44,6 +45,16 @@ def normalize_user_email(email: str | None) -> str:
     invite, resend-verification, CLI). Stored and looked up only in this
     form; users.email has a unique index on lower(email) as a second guard."""
     return (email or "").strip().lower()
+
+
+# Format sanity only (exactly one "@", no whitespace, a dotted domain) - not
+# a full RFC 5322 validator. Anchored on both ends and forbids "@" inside
+# either the local or domain part, so "a@b@example.com" is rejected (unlike
+# a naive str.partition("@")-based check, which only looks at the first "@"
+# and would accept it). Used for HR account emails; the self-reported,
+# unverified email on the public apply form has its own equivalent pattern
+# (app/api/public_application.py) since that data never becomes an account.
+EMAIL_FORMAT_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 def _encode(user_id: int, purpose: str, expires_delta: timedelta) -> str:

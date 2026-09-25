@@ -22,8 +22,7 @@ async def get_interview_analysis_summary(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if job_id is not None:
-        await tenancy.get_job_for_org_or_404(db, job_id, current_user.organization_id)
+    await tenancy.require_job_in_org_if_given(db, job_id, current_user.organization_id)
     return await interview_analysis_service.summary(
         db, organization_id=current_user.organization_id, job_id=job_id
     )
@@ -38,8 +37,7 @@ async def list_interview_analysis(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if job_id is not None:
-        await tenancy.get_job_for_org_or_404(db, job_id, current_user.organization_id)
+    await tenancy.require_job_in_org_if_given(db, job_id, current_user.organization_id)
     items, total = await interview_analysis_service.list_interviews(
         db, organization_id=current_user.organization_id, job_id=job_id,
         disposition=disposition, page=page, page_size=page_size,

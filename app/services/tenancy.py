@@ -56,6 +56,16 @@ async def get_job_for_org_or_404(db: AsyncSession, job_id: int, organization_id:
     return job
 
 
+async def require_job_in_org_if_given(db: AsyncSession, job_id: Optional[int], organization_id: int) -> None:
+    """For an optional `job_id` query-param filter on a list/aggregate
+    endpoint: a no-op when job_id is None (the whole organization is in
+    scope), otherwise 404s unless job_id is one of organization_id's jobs -
+    never silently returns another organization's numbers/rows for an
+    unrecognized or foreign job_id."""
+    if job_id is not None:
+        await get_job_for_org_or_404(db, job_id, organization_id)
+
+
 async def get_resume_in_org(db: AsyncSession, resume_id: int, organization_id: int) -> Optional[Resume]:
     """The resume, only if its job belongs to `organization_id` - None for a
     missing resume and for another organization's alike."""
