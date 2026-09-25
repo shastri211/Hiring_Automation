@@ -11,7 +11,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirm } from '../hooks/useConfirm';
 import { ScreeningThresholdFields } from '../components/settings/ScreeningThresholdFields';
 import {
-  Button, Input, Label, Textarea, Badge,
+  Button, Input, Label, Badge,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../components/ui';
 import type { AppSettingsResponse, AppSettingsUpdate, ApiError, UserResponse } from '../types';
@@ -37,8 +37,6 @@ const schema = z
     auto_generate_interview_on_shortlist: z.boolean(),
     auto_email_on_interview_scheduled: z.boolean(),
     interview_scheduled_email_template_id: z.number().nullable(),
-    email_test_allowlist: z.string(),
-    email_test_override_recipient: z.string(),
   })
   .refine(
     (d) =>
@@ -54,18 +52,7 @@ const schema = z
   .refine((d) => !d.auto_email_on_interview_scheduled || d.interview_scheduled_email_template_id != null, {
     message: 'Select a template to enable this automation.',
     path: ['interview_scheduled_email_template_id'],
-  })
-  .refine(
-    (d) => {
-      const entries = d.email_test_allowlist.split(',').map((e) => e.trim()).filter(Boolean);
-      return entries.every((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
-    },
-    { message: 'Enter valid, comma-separated email addresses.', path: ['email_test_allowlist'] }
-  )
-  .refine(
-    (d) => d.email_test_override_recipient === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email_test_override_recipient),
-    { message: 'Enter a valid email address, or leave blank.', path: ['email_test_override_recipient'] }
-  );
+  });
 
 type FormValues = z.infer<typeof schema>;
 
@@ -79,8 +66,6 @@ const defaultValues: FormValues = {
   auto_generate_interview_on_shortlist: false,
   auto_email_on_interview_scheduled: false,
   interview_scheduled_email_template_id: null,
-  email_test_allowlist: '',
-  email_test_override_recipient: '',
 };
 
 function toFormValues(settings: AppSettingsResponse): FormValues {
@@ -94,8 +79,6 @@ function toFormValues(settings: AppSettingsResponse): FormValues {
     auto_generate_interview_on_shortlist: settings.auto_generate_interview_on_shortlist,
     auto_email_on_interview_scheduled: settings.auto_email_on_interview_scheduled,
     interview_scheduled_email_template_id: settings.interview_scheduled_email_template_id ?? null,
-    email_test_allowlist: settings.email_test_allowlist ?? '',
-    email_test_override_recipient: settings.email_test_override_recipient ?? '',
   };
 }
 
@@ -110,8 +93,6 @@ function toPatch(values: FormValues): AppSettingsUpdate {
     auto_generate_interview_on_shortlist: values.auto_generate_interview_on_shortlist,
     auto_email_on_interview_scheduled: values.auto_email_on_interview_scheduled,
     interview_scheduled_email_template_id: values.interview_scheduled_email_template_id,
-    email_test_allowlist: values.email_test_allowlist === '' ? null : values.email_test_allowlist,
-    email_test_override_recipient: values.email_test_override_recipient === '' ? null : values.email_test_override_recipient,
   };
 }
 
@@ -367,44 +348,10 @@ export const Settings = () => {
 
           <section className="bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-xl shadow-sm p-6 space-y-6">
             <h2 className="text-sm font-semibold text-[var(--text-primary)]">Outreach Automation</h2>
-
-            <div>
-              <Label htmlFor="email_test_allowlist">Test email allowlist</Label>
-              <p className="text-xs text-[var(--text-secondary)] mt-1 mb-2">
-                While candidate data is for testing only, outbound mail is blocked for every recipient
-                except the addresses listed here. Add a real address you control (comma-separated for
-                multiple) whenever you want to test a send; anything not listed is recorded as
-                "Blocked" in Outreach instead of actually being sent.
-              </p>
-              <Textarea
-                id="email_test_allowlist"
-                rows={2}
-                placeholder="you@example.com, teammate@example.com"
-                {...register('email_test_allowlist')}
-              />
-              {formState.errors.email_test_allowlist && (
-                <p className="text-xs text-[var(--color-danger-600)] mt-1">{formState.errors.email_test_allowlist.message}</p>
-              )}
-            </div>
-
-            <div>
-              <Label htmlFor="email_test_override_recipient">Redirect all test sends to</Label>
-              <p className="text-xs text-[var(--text-secondary)] mt-1 mb-2">
-                Optional. When set, every outbound email - including the automated ones below - goes to this
-                address instead of the candidate's own, and skips the allowlist above entirely. This is the one
-                place to redirect a fully automated send (a manual Bulk Email send has its own per-send override
-                field instead). Clear this before going to production.
-              </p>
-              <Input
-                id="email_test_override_recipient"
-                type="email"
-                placeholder="you@example.com"
-                {...register('email_test_override_recipient')}
-              />
-              {formState.errors.email_test_override_recipient && (
-                <p className="text-xs text-[var(--color-danger-600)] mt-1">{formState.errors.email_test_override_recipient.message}</p>
-              )}
-            </div>
+            <p className="text-xs text-[var(--text-secondary)] -mt-2">
+              Outbound email always goes to the candidate's own email address, as extracted from their resume.
+              There is no test recipient or redirect.
+            </p>
 
             <div>
               <label className="flex items-center gap-2 mb-2">

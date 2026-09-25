@@ -80,7 +80,6 @@ class OutreachAutomationService:
                     resume_ids=resume_ids,
                     template_id=app_settings.shortlist_email_template_id,
                     queue_service=queue_service,
-                    override_recipient_email=app_settings.email_test_override_recipient or None,
                 )
         except Exception:
             logger.exception(
@@ -118,7 +117,6 @@ class OutreachAutomationService:
                     resume_ids=[resume_id],
                     template_id=app_settings.interview_scheduled_email_template_id,
                     queue_service=queue_service,
-                    override_recipient_email=app_settings.email_test_override_recipient or None,
                 )
         except Exception:
             logger.exception(

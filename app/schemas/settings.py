@@ -16,8 +16,6 @@ class AppSettingsResponse(BaseModel):
     auto_generate_interview_on_shortlist: bool = False
     auto_email_on_interview_scheduled: bool = False
     interview_scheduled_email_template_id: Optional[int] = None
-    email_test_allowlist: Optional[str] = None
-    email_test_override_recipient: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -34,5 +32,3 @@ class AppSettingsUpdate(BaseModel):
     auto_generate_interview_on_shortlist: Optional[bool] = None
     auto_email_on_interview_scheduled: Optional[bool] = None
     interview_scheduled_email_template_id: Optional[int] = None
-    email_test_allowlist: Optional[str] = None
-    email_test_override_recipient: Optional[str] = None

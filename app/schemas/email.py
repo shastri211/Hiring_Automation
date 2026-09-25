@@ -63,7 +63,6 @@ class EmailMessageResponse(BaseModel):
     status: str
     provider_message_id: Optional[str] = None
     error_message: Optional[str] = None
-    override_recipient_email: Optional[str] = None
     created_at: datetime
     sent_at: Optional[datetime] = None
 
@@ -72,11 +71,6 @@ class EmailMessageResponse(BaseModel):
 class BulkEmailRequest(BaseModel):
     resume_ids: List[int]
     template_id: int
-    # Explicit, per-send test override typed in by whoever clicked Send -
-    # when set, every message in this batch is delivered here instead of
-    # each candidate's own (often fake/sample-resume) email, and bypasses
-    # the Settings > Outreach Automation allowlist check.
-    override_recipient_email: Optional[str] = None
 
 
 class EmailMessageGlobalResponse(EmailMessageResponse):
