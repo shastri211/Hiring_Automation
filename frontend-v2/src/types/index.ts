@@ -450,7 +450,6 @@ export interface EmailMessage {
   status: 'PENDING' | 'SENT' | 'FAILED' | 'BLOCKED';
   provider_message_id?: string;
   error_message?: string;
-  override_recipient_email?: string;
   created_at: string;
   sent_at?: string;
 }
@@ -458,7 +457,6 @@ export interface EmailMessage {
 export interface BulkEmailRequest {
   resume_ids: number[];
   template_id: number;
-  override_recipient_email?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -476,8 +474,6 @@ export interface AppSettingsResponse {
   auto_generate_interview_on_shortlist: boolean;
   auto_email_on_interview_scheduled: boolean;
   interview_scheduled_email_template_id?: number | null;
-  email_test_allowlist?: string | null;
-  email_test_override_recipient?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 }

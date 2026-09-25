@@ -4,7 +4,7 @@ import html
 import logging
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from typing import List, Optional
+from typing import List
 from datetime import datetime, timezone
 from sqlalchemy import select, update
 from app.db.session import AsyncSessionLocal
@@ -14,16 +14,10 @@ from app.models.job import Job
 from app.models.resume import Resume
 from app.models.interview import Interview
 from app.services import tenancy
-from app.services.settings import settings_service
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-
-def _parse_allowlist(raw: Optional[str]) -> set[str]:
-    if not raw:
-        return set()
-    return {addr.strip().lower() for addr in raw.split(",") if addr.strip()}
 
 class EmailProviderAdapter:
     """Adapter for sending emails via standard SMTP.
@@ -104,7 +98,6 @@ class EmailService:
         resume_ids: List[int],
         template_id: int,
         queue_service,
-        override_recipient_email: Optional[str] = None,
     ) -> int:
         """Creates EmailMessage records and pushes tasks to Redis for sending."""
         queued_count = 0
@@ -160,7 +153,7 @@ class EmailService:
                 )
                 job = job_result.scalar_one_or_none()
                 
-                if not override_recipient_email and (not candidate or not candidate.email):
+                if not candidate or not candidate.email:
                     logger.warning(f"Skipping resume {resume_id}: No email address available")
                     # Could create a FAILED record here, but skipping is safer to avoid noise
                     continue
@@ -217,18 +210,18 @@ class EmailService:
                 subject = self.render_template(template.subject, context)
                 body = self.render_template(template.body_content, context)
                 
-                # Create message record. FAILED and BLOCKED are both
-                # resumable prior attempts for this (resume_id, template_id)
-                # pair - the unique constraint means a fresh insert for
-                # either would raise IntegrityError, so both must update the
-                # existing row in place rather than only FAILED.
+                # Create message record. FAILED and the historical BLOCKED
+                # (no longer produced, but old rows may still have it) are
+                # both resumable prior attempts for this (resume_id,
+                # template_id) pair - the unique constraint means a fresh
+                # insert for either would raise IntegrityError, so both must
+                # update the existing row in place rather than only FAILED.
                 if existing_msg and existing_msg.status in ("FAILED", "BLOCKED"):
                     # Retry flow: update existing
                     existing_msg.status = "PENDING"
                     existing_msg.subject = subject
                     existing_msg.body_content = body
                     existing_msg.error_message = None
-                    existing_msg.override_recipient_email = override_recipient_email
                     msg_id = existing_msg.id
                 else:
                     # New flow
@@ -239,7 +232,6 @@ class EmailService:
                         subject=subject,
                         body_content=body,
                         status="PENDING",
-                        override_recipient_email=override_recipient_email,
                     )
                     session.add(new_msg)
                     await session.flush() # flush to get ID
@@ -300,66 +292,20 @@ class EmailService:
             await session.commit()
 
 
-            # Get recipient email, in priority order:
-            #   1. msg.override_recipient_email - explicitly typed in at send
-            #      time for this one send (see BulkEmailRequest). Only exists
-            #      for a manual bulk-send.
-            #   2. AppSettings.email_test_override_recipient - the same idea
-            #      but persistent and global, so it also covers a fully
-            #      automated send (shortlist/interview-scheduled), which has
-            #      no per-send moment to type an override into.
-            #   3. The candidate's own profile email, gated by the test
-            #      allowlist below.
-            # Either override skips the CandidateProfile/allowlist checks
-            # entirely - it doesn't need one on file, and it's an address the
-            # sender controls right now, unlike one scraped off a resume.
-            recipient_email = msg.override_recipient_email
-            app_settings_row = None
-            if not recipient_email:
-                # The organization that owns this message's job - never
-                # another organization's override/allowlist.
-                msg_org_id = await tenancy.organization_id_for_job(session, msg.job_id)
-                app_settings_row = (
-                    await settings_service.get_row(session, msg_org_id) if msg_org_id is not None else None
-                )
-                global_test_override = (
-                    (app_settings_row.email_test_override_recipient or "").strip() if app_settings_row else ""
-                )
-                recipient_email = global_test_override or None
-            profile = None
-            if not recipient_email:
-                profile_result = await session.execute(
-                    select(CandidateProfile).where(CandidateProfile.resume_id == msg.resume_id)
-                )
-                profile = profile_result.scalar_one_or_none()
+            # Recipient is always the candidate's own email as extracted
+            # from their resume (CandidateProfile.email) - there is no
+            # explicit-override or test-allowlist redirect/gate here.
+            profile_result = await session.execute(
+                select(CandidateProfile).where(CandidateProfile.resume_id == msg.resume_id)
+            )
+            profile = profile_result.scalar_one_or_none()
 
-                if not profile or not profile.email:
-                    msg.status = "FAILED"
-                    msg.error_message = "Candidate profile not found or has no email address."
-                    await session.commit()
-                    return
-                recipient_email = profile.email
-
-                # Test-data safety net: candidate emails are frequently
-                # extracted from non-real sample resumes. Only addresses the
-                # user has explicitly cleared in Settings > Outreach
-                # Automation are allowed to actually receive mail via the
-                # configured email provider; everything else is blocked
-                # before it ever reaches the provider (recorded as BLOCKED,
-                # not FAILED, so it doesn't look like an error and isn't
-                # retried).
-                allowlist = _parse_allowlist(app_settings_row.email_test_allowlist if app_settings_row else None)
-                if recipient_email.strip().lower() not in allowlist:
-                    msg.status = "BLOCKED"
-                    msg.error_message = (
-                        f"Recipient {recipient_email} is not in the test email allowlist "
-                        "(Settings > Outreach Automation). Add it there to allow sending."
-                    )
-                    await session.commit()
-                    logger.warning(
-                        f"Blocked email message {email_message_id}: {recipient_email} not in test allowlist"
-                    )
-                    return
+            if not profile or not profile.email:
+                msg.status = "FAILED"
+                msg.error_message = "Candidate profile not found or has no email address."
+                await session.commit()
+                return
+            recipient_email = profile.email
 
             try:
                 # Call Provider

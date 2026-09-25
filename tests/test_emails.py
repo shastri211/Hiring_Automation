@@ -5,7 +5,6 @@ from httpx import AsyncClient
 from app.models.email import EmailTemplate
 from app.models.profile import CandidateProfile
 from app.models.job import Job
-from app.models.settings import AppSettings
 
 
 def _mock_session_local(mock_session_local):
@@ -441,7 +440,6 @@ async def test_list_email_messages_paginated(client: AsyncClient):
     msg.status = "SENT"
     msg.provider_message_id = "abc"
     msg.error_message = None
-    msg.override_recipient_email = None
     msg.created_at = datetime.datetime.utcnow()
     msg.sent_at = datetime.datetime.utcnow()
 
@@ -478,7 +476,6 @@ def _make_pending_message():
     msg.body_content = "Body"
     msg.error_message = None
     msg.provider_message_id = None
-    msg.override_recipient_email = None
     msg.sent_at = None
     msg.send_attempt_started_at = None
     return msg
@@ -495,11 +492,10 @@ def _make_candidate_profile(email):
 
 @pytest.mark.asyncio
 @patch("app.services.email.AsyncSessionLocal", new_callable=MagicMock)
-async def test_process_send_email_task_blocks_recipient_not_in_allowlist(mock_session_local):
-    """A candidate email extracted from test/sample resume data must never
-    reach the email provider unless the user has explicitly cleared it in
-    Settings -> Outreach Automation. The message should be marked BLOCKED,
-    not SENT/FAILED, and the provider must never be called."""
+async def test_process_send_email_task_sends_to_candidates_own_email(mock_session_local):
+    """The recipient is always the candidate's own email as extracted from
+    their resume (CandidateProfile.email) - no override, no redirect, no
+    allowlist gate. The provider is called with that address directly."""
     from app.services.email import email_service
 
     mock_session = _mock_session_local(mock_session_local)
@@ -508,64 +504,19 @@ async def test_process_send_email_task_blocks_recipient_not_in_allowlist(mock_se
     msg_exec = MagicMock()
     msg_exec.scalar_one_or_none.return_value = msg
 
-    profile = _make_candidate_profile("candidate@fake-resume.test")
+    profile = _make_candidate_profile("Real.Candidate@Example.com")
     profile_exec = MagicMock()
     profile_exec.scalar_one_or_none.return_value = profile
 
-    allowlist_row = MagicMock(spec=AppSettings)
-    allowlist_row.email_test_allowlist = "someone-else@example.com"
-    allowlist_row.email_test_override_recipient = None
-    settings_exec = MagicMock()
-    settings_exec.scalar_one_or_none.return_value = allowlist_row
-
-    # process_send_email_task resolves the message job's organization, then
-    # that organization's AppSettings (for a possible global test-override
-    # recipient), before the profile.
-    mock_session.execute = AsyncMock(side_effect=[msg_exec, _org_exec(), settings_exec, profile_exec])
-    mock_session.commit = AsyncMock()
-
-    with patch.object(email_service.provider, "send_email", new_callable=AsyncMock) as mock_send:
-        await email_service.process_send_email_task(1)
-        mock_send.assert_not_called()
-
-    assert msg.status == "BLOCKED"
-    assert "not in the test email allowlist" in msg.error_message
-
-
-@pytest.mark.asyncio
-@patch("app.services.email.AsyncSessionLocal", new_callable=MagicMock)
-async def test_process_send_email_task_sends_when_recipient_in_allowlist(mock_session_local):
-    """An address the user has explicitly cleared in the allowlist (any case/
-    whitespace) still goes through to the provider as before."""
-    from app.services.email import email_service
-
-    mock_session = _mock_session_local(mock_session_local)
-
-    msg = _make_pending_message()
-    msg_exec = MagicMock()
-    msg_exec.scalar_one_or_none.return_value = msg
-
-    profile = _make_candidate_profile("Real.Tester@Example.com")
-    profile_exec = MagicMock()
-    profile_exec.scalar_one_or_none.return_value = profile
-
-    allowlist_row = MagicMock(spec=AppSettings)
-    allowlist_row.email_test_allowlist = " real.tester@example.com , other@example.com "
-    allowlist_row.email_test_override_recipient = None
-    settings_exec = MagicMock()
-    settings_exec.scalar_one_or_none.return_value = allowlist_row
-
-    # process_send_email_task resolves the message job's organization, then
-    # that organization's AppSettings (for a possible global test-override
-    # recipient), before the profile.
-    mock_session.execute = AsyncMock(side_effect=[msg_exec, _org_exec(), settings_exec, profile_exec])
+    # Only two execute calls: message lookup, then the candidate's own profile.
+    mock_session.execute = AsyncMock(side_effect=[msg_exec, profile_exec])
     mock_session.commit = AsyncMock()
 
     with patch.object(email_service.provider, "send_email", new_callable=AsyncMock) as mock_send:
         mock_send.return_value = {"id": "smtp_123"}
         await email_service.process_send_email_task(1)
         mock_send.assert_called_once_with(
-            to_email="Real.Tester@Example.com", subject="Hi", html_body="Body"
+            to_email="Real.Candidate@Example.com", subject="Hi", html_body="Body"
         )
 
     assert msg.status == "SENT"
@@ -600,69 +551,3 @@ async def test_process_send_email_task_fails_safe_on_crashed_prior_attempt(mock_
     assert "crashed mid-send" in msg.error_message or "did not complete cleanly" in msg.error_message
 
 
-@pytest.mark.asyncio
-@patch("app.services.email.AsyncSessionLocal", new_callable=MagicMock)
-async def test_process_send_email_task_uses_global_test_override_and_skips_allowlist(mock_session_local):
-    """AppSettings.email_test_override_recipient (set in Settings > Outreach
-    Automation) must redirect a send there instead of the candidate's real
-    address, and must skip the allowlist check entirely - this is what makes
-    a fully automated send (shortlist/interview-scheduled, which has no
-    per-send override field) testable without an allowlist edit."""
-    from app.services.email import email_service
-
-    mock_session = _mock_session_local(mock_session_local)
-
-    msg = _make_pending_message()
-    msg_exec = MagicMock()
-    msg_exec.scalar_one_or_none.return_value = msg
-
-    settings_row = MagicMock(spec=AppSettings)
-    settings_row.email_test_override_recipient = "tester@example.com"
-    settings_row.email_test_allowlist = None  # deliberately empty - must not matter
-    settings_exec = MagicMock()
-    settings_exec.scalar_one_or_none.return_value = settings_row
-
-    # Only two execute calls expected: message lookup, then settings lookup -
-    # no CandidateProfile lookup should happen at all when the global
-    # override is set.
-    mock_session.execute = AsyncMock(side_effect=[msg_exec, _org_exec(), settings_exec])
-    mock_session.commit = AsyncMock()
-
-    with patch.object(email_service.provider, "send_email", new_callable=AsyncMock) as mock_send:
-        mock_send.return_value = {"id": "smtp_123"}
-        await email_service.process_send_email_task(1)
-        mock_send.assert_called_once_with(
-            to_email="tester@example.com", subject="Hi", html_body="Body"
-        )
-
-    assert msg.status == "SENT"
-
-
-@pytest.mark.asyncio
-@patch("app.services.email.AsyncSessionLocal", new_callable=MagicMock)
-async def test_process_send_email_task_per_send_override_wins_over_global(mock_session_local):
-    """A per-message override_recipient_email (set by the Bulk Email modal's
-    test-recipient field) takes priority over the persistent global
-    AppSettings.email_test_override_recipient - AppSettings is never even
-    queried in this case."""
-    from app.services.email import email_service
-
-    mock_session = _mock_session_local(mock_session_local)
-
-    msg = _make_pending_message()
-    msg.override_recipient_email = "per-send@example.com"
-    msg_exec = MagicMock()
-    msg_exec.scalar_one_or_none.return_value = msg
-
-    mock_session.execute = AsyncMock(side_effect=[msg_exec])
-    mock_session.commit = AsyncMock()
-
-    with patch.object(email_service.provider, "send_email", new_callable=AsyncMock) as mock_send:
-        mock_send.return_value = {"id": "smtp_123"}
-        await email_service.process_send_email_task(1)
-        mock_send.assert_called_once_with(
-            to_email="per-send@example.com", subject="Hi", html_body="Body"
-        )
-
-    assert msg.status == "SENT"
-    assert msg.provider_message_id == "smtp_123"

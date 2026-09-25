@@ -149,7 +149,6 @@ async def bulk_send_emails(
             resume_ids=request.resume_ids,
             template_id=request.template_id,
             queue_service=queue_service,
-            override_recipient_email=request.override_recipient_email,
         )
         return {
             "status": "success",

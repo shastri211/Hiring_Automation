@@ -179,8 +179,7 @@ async def _snapshot(g: dict) -> dict:
                 "entry": (entry.tags, entry.notes) if entry else None,
                 "batches": batches,
                 "resumes": resumes,
-                "settings": (settings_row.min_candidates_to_screen, settings_row.shortlist_email_template_id,
-                             settings_row.email_test_override_recipient),
+                "settings": (settings_row.min_candidates_to_screen, settings_row.shortlist_email_template_id),
             }
         return snap
 
@@ -556,15 +555,19 @@ async def test_outreach_uses_only_the_jobs_organization_settings(graph):
             await db.commit()
 
 
-async def test_send_time_overrides_and_allowlist_are_the_messages_organization(graph):
+async def test_send_time_recipient_is_always_the_messages_own_candidate(graph):
+    """process_send_email_task has no override/redirect and no allowlist
+    gate (removed) - the recipient is always CandidateProfile.email for the
+    message's own resume_id. With both organizations' candidates present in
+    the same database, B's send must resolve to B's candidate's email, never
+    A's, and needs no organization/settings lookup to get there right."""
     from app.services.email import email_service
 
     a, b = graph["A"], graph["B"]
     async with AsyncSessionLocal() as db:
+        a_email = (await db.execute(select(CandidateProfile.email).where(CandidateProfile.resume_id == a["resume"]))).scalar_one()
         b_email = (await db.execute(select(CandidateProfile.email).where(CandidateProfile.resume_id == b["resume"]))).scalar_one()
-        sa = (await db.execute(select(AppSettings).where(AppSettings.organization_id == a["org"]))).scalar_one()
-        sa.email_test_override_recipient = "a-override@example.com"
-        sa.email_test_allowlist = b_email  # would let B's candidate through if (wrongly) applied to B
+        assert a_email != b_email
         tpl2 = EmailTemplate(organization_id=b["org"], name=f"B send {uuid.uuid4().hex[:4]}", subject="s", body_content="b")
         db.add(tpl2)
         await db.flush()
@@ -573,19 +576,15 @@ async def test_send_time_overrides_and_allowlist_are_the_messages_organization(g
         db.add(msg)
         await db.commit()
         msg_id = msg.id
-    try:
-        with patch.object(email_service.provider, "send_email", new_callable=AsyncMock) as send:
-            await email_service.process_send_email_task(msg_id)
-            send.assert_not_awaited()  # B has no allowlist entry -> blocked; A's override not used
-        async with AsyncSessionLocal() as db:
-            status = (await db.execute(select(EmailMessage.status).where(EmailMessage.id == msg_id))).scalar_one()
-            assert status == "BLOCKED"
-    finally:
-        async with AsyncSessionLocal() as db:
-            sa = (await db.execute(select(AppSettings).where(AppSettings.organization_id == a["org"]))).scalar_one()
-            sa.email_test_override_recipient = None
-            sa.email_test_allowlist = None
-            await db.commit()
+
+    with patch.object(email_service.provider, "send_email", new_callable=AsyncMock) as send:
+        send.return_value = {"id": "smtp_test"}
+        await email_service.process_send_email_task(msg_id)
+        send.assert_awaited_once_with(to_email=b_email, subject="s", html_body="b")
+
+    async with AsyncSessionLocal() as db:
+        status = (await db.execute(select(EmailMessage.status).where(EmailMessage.id == msg_id))).scalar_one()
+        assert status == "SENT"
 
 
 async def test_queue_bulk_emails_refuses_another_organizations_template_and_resumes(graph):
