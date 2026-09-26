@@ -47,9 +47,9 @@ alembic.zip
 
 # Node/Frontend
 node_modules/
-frontend-v2/dist/
-frontend-v2/build/
-frontend-v2/.npm/
+frontend/dist/
+frontend/build/
+frontend/.npm/
 
 # IDE/Editor
 .vscode/
