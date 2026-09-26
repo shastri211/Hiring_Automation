@@ -1,5 +1,12 @@
 from pydantic_settings import BaseSettings
 
+
+def _url_host(host: str) -> str:
+    """An IPv6 literal must be bracketed inside a URL's authority, or its
+    colons are read as the port separator."""
+    return f"[{host}]" if ":" in host and not host.startswith("[") else host
+
+
 class Settings(BaseSettings):
     # Database
     POSTGRES_USER: str = "screener"
@@ -19,7 +26,7 @@ class Settings(BaseSettings):
     def SQLALCHEMY_DATABASE_URI(self) -> str:
         import urllib.parse
         encoded_password = urllib.parse.quote_plus(self.POSTGRES_PASSWORD)
-        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{encoded_password}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{encoded_password}@{_url_host(self.POSTGRES_SERVER)}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
     
     # Redis
     REDIS_HOST: str = "127.0.0.1"
@@ -32,7 +39,7 @@ class Settings(BaseSettings):
 
     @property
     def REDIS_URL(self) -> str:
-        return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
+        return f"redis://{_url_host(self.REDIS_HOST)}:{self.REDIS_PORT}/{self.REDIS_DB}"
         
     # Qdrant
     QDRANT_URL: str = "http://localhost:6333"
