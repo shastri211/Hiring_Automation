@@ -31,6 +31,8 @@ async def _get_interview_or_typed_error(token: str, db: AsyncSession) -> Intervi
         raise HTTPException(status_code=404, detail={"reason": "not_found"})
     if interview.status == "COMPLETED":
         raise HTTPException(status_code=410, detail={"reason": "already_completed"})
+    if interview.status in ("DECLINED", "NO_SHOW"):
+        raise HTTPException(status_code=410, detail={"reason": "closed"})
     if interview.link_expires_at is not None:
         expires_at = interview.link_expires_at
         if expires_at.tzinfo is None:

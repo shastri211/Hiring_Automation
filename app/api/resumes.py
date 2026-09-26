@@ -1,12 +1,15 @@
 import os
 import logging
 import zipfile
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status, BackgroundTasks
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.batch import ScreeningBatch
+from app.models.resume import Resume
 from app.schemas.resume import UploadResponse
 from app.services.storage import storage_service
 from app.services.queue import queue_service
@@ -150,11 +153,36 @@ async def bulk_upload_resumes(
         accepted_files += 1
 
     batch.total_resumes = accepted_files
+    if accepted_files == 0:
+        # Nothing to process (all duplicates/invalid) - otherwise the batch
+        # would stay "live" forever, since no resume ever completes it.
+        batch.status = "COMPLETED"
     await db.commit()
 
-    # Enqueue to Redis
+    # A failed enqueue must not fail the request - the resumes are already
+    # committed. Only confirmed enqueues get enqueued_at; the worker's
+    # recovery sweep (resume_intake.requeue_unenqueued_uploads) re-enqueues
+    # the rest.
+    enqueued_ids = []
     for r_id in added_resumes:
-        await queue_service.enqueue_resume(r_id, job_id=job_id, batch_id=batch.id)
+        try:
+            await queue_service.enqueue_resume(r_id, job_id=job_id, batch_id=batch.id)
+            enqueued_ids.append(r_id)
+        except Exception:
+            logger.warning(
+                "Enqueue not confirmed for uploaded resume=%s (job=%s); the recovery sweep will re-enqueue it.",
+                r_id, job_id, exc_info=True,
+            )
+    if enqueued_ids:
+        try:
+            await db.execute(
+                update(Resume).where(Resume.id.in_(enqueued_ids)).values(enqueued_at=datetime.now(timezone.utc))
+            )
+            await db.commit()
+        except Exception:
+            # The messages ARE queued; the sweep may enqueue harmless duplicates.
+            logger.warning("Could not record enqueued_at for batch %s.", batch.id, exc_info=True)
+            await db.rollback()
 
     return UploadResponse(
         message="Upload received and batch created",

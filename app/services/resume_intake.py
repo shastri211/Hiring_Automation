@@ -5,22 +5,33 @@ non-ZIP - file) and the public candidate apply endpoint
 (app/api/public_application.py), so both paths enforce the exact same
 type/size rules and the same per-job (job_id, file_hash) dedup.
 
-Does not commit and does not enqueue - the caller owns the transaction and
-the queue message, since the two callers differ there (one batch commit for
-many files vs. one application per request).
+ingest_uploaded_file does not commit and does not enqueue - the caller owns
+the transaction and the queue message, since the two callers differ there
+(one batch commit for many files vs. one application per request).
+requeue_unenqueued_uploads is the recovery sweep for recruiter uploads whose
+enqueue was never confirmed (Resume.enqueued_at).
 """
+import asyncio
+import logging
 import os
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
 from fastapi import UploadFile
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.db.session import AsyncSessionLocal
+from app.models.job import Job
+from app.models.public_application import PublicApplicationSubmission
 from app.models.resume import Resume
+from app.services.queue import queue_service
 from app.services.storage import storage_service, make_unique_basename, sanitize_filename
+
+logger = logging.getLogger(__name__)
 
 ALLOWED_CONTENT_TYPES = ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]
 ALLOWED_EXTENSIONS = {".pdf", ".docx"}
@@ -100,3 +111,57 @@ async def ingest_uploaded_file(
         # Lost the race with a concurrent upload of the same file.
         return IntakeResult("duplicate", orphaned_storage_key=storage_key)
     return IntakeResult("accepted", resume=resume)
+
+
+async def requeue_unenqueued_uploads(session: Optional[AsyncSession] = None) -> int:
+    """Re-enqueue recruiter-uploaded resumes whose enqueue was never
+    confirmed (Resume.enqueued_at is NULL) - e.g. Redis was unreachable
+    during the upload request. Mirrors
+    public_application.requeue_unenqueued_applications: only rows older than
+    UPLOAD_REQUEUE_MIN_AGE_SECONDS, still UPLOADED, on an ACTIVE job, claimed
+    FOR UPDATE SKIP LOCKED. Public applications are left to their own sweep.
+    A duplicate message is safe (see public_application's module docstring).
+    Returns how many were re-enqueued.
+    """
+    if session is None:
+        async with AsyncSessionLocal() as own_session:
+            return await requeue_unenqueued_uploads(own_session)
+
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=settings.UPLOAD_REQUEUE_MIN_AGE_SECONDS)
+    resumes = (
+        await session.execute(
+            select(Resume)
+            .join(Job, Job.id == Resume.job_id)
+            .where(
+                Resume.enqueued_at.is_(None),
+                Resume.created_at < cutoff,
+                Resume.status == "UPLOADED",
+                Job.status == "ACTIVE",
+                ~exists().where(PublicApplicationSubmission.resume_id == Resume.id),
+            )
+            .order_by(Resume.created_at)
+            .limit(100)
+            .with_for_update(skip_locked=True, of=Resume)
+        )
+    ).scalars().all()
+
+    results = await asyncio.gather(
+        *(queue_service.enqueue_resume(r.id, job_id=r.job_id, batch_id=r.batch_id) for r in resumes),
+        return_exceptions=True,
+    )
+
+    requeued = 0
+    for resume, result in zip(resumes, results):
+        if isinstance(result, BaseException):
+            logger.warning(
+                "Recovery sweep: enqueue still failing for uploaded resume=%s; will retry next pass.",
+                resume.id, exc_info=result,
+            )
+            continue
+        resume.enqueued_at = datetime.now(timezone.utc)
+        requeued += 1
+
+    await session.commit()
+    if requeued:
+        logger.info("Recovery sweep: re-enqueued %d uploaded resume(s).", requeued)
+    return requeued

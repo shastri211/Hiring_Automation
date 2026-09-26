@@ -144,3 +144,21 @@ async def test_no_link_expiry_is_left_alone(make_interview, db_session):
     await InterviewIntegrationAdapter().mark_expired_interviews_as_no_show()
 
     assert await _status_of(db_session, interview.id) == "SCHEDULED"
+
+
+@pytest.mark.asyncio
+async def test_abandoned_in_progress_interview_becomes_failed(make_interview, db_session):
+    """The candidate opened the room but no result ever arrived: past the
+    grace period after link expiry it is FAILED (retriable), not left
+    IN_PROGRESS forever."""
+    abandoned = await make_interview(status="IN_PROGRESS", link_expires_at=_hours_ago(2), provider_run_id=None)
+    within_grace = await make_interview(status="IN_PROGRESS", link_expires_at=_hours_ago(0.5), provider_run_id=None)
+    reported = await make_interview(
+        status="IN_PROGRESS", link_expires_at=_hours_ago(2), provider_run_id="42", provider_run_attempt=0, retry_count=0,
+    )
+
+    await InterviewIntegrationAdapter().fail_abandoned_in_progress_interviews()
+
+    assert await _status_of(db_session, abandoned.id) == "FAILED"
+    assert await _status_of(db_session, within_grace.id) == "IN_PROGRESS"
+    assert await _status_of(db_session, reported.id) == "IN_PROGRESS"

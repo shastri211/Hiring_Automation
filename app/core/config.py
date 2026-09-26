@@ -127,6 +127,9 @@ class Settings(BaseSettings):
     # confirmed (see PublicApplicationSubmission.enqueued_at).
     PUBLIC_APPLY_REQUEUE_SWEEP_INTERVAL_SECONDS: int = 60
     PUBLIC_APPLY_REQUEUE_MIN_AGE_SECONDS: int = 120
+    # Same recovery for recruiter uploads (Resume.enqueued_at), run in the
+    # same worker sweep loop.
+    UPLOAD_REQUEUE_MIN_AGE_SECONDS: int = 120
 
     # Self-service company signup / email verification (app/api/auth.py).
     # Fixed one-hour windows in Redis; the per-email key is a hash.

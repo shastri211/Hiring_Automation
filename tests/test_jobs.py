@@ -451,3 +451,59 @@ async def test_batch_progress_counts_are_per_batch_and_unscreened_is_exact(clien
     assert (by_id[upload_1.id]["shortlisted"], by_id[upload_1.id]["pre_screened_out"]) == (1, 1)
     assert by_id[upload_2.id]["shortlisted"] == 0
     assert (by_id[upload_2.id]["total"], by_id[upload_2.id]["completed"], by_id[upload_2.id]["failed"]) == (3, 2, 1)
+
+
+def _delete_job_mocks():
+    from app.models.job import Job
+    from app.services.model_registry import EmbeddingProfileConfig
+
+    mock_db = AsyncMock()
+    job = MagicMock(spec=Job)
+    job.id = 1
+    job.embedding_profile = "sentence-transformers/all-MiniLM-L6-v2"
+    job_exec = MagicMock()
+    job_exec.scalar_one_or_none.return_value = job
+    mock_db.execute = AsyncMock(side_effect=[job_exec] + [MagicMock()] * 13)
+    mock_db.delete = AsyncMock()
+    profile = EmbeddingProfileConfig(
+        provider="local", model=job.embedding_profile, dimensions=384, metric="Cosine",
+        collection="resume_candidates_local_384", task_profile="resume_screening",
+    )
+    return mock_db, profile
+
+
+@pytest.mark.asyncio
+async def test_delete_job_removes_vectors_and_files_only_after_commit(client: AsyncClient, tmp_path):
+    """If the DB commit fails, the job's rows survive - so its vectors and
+    stored resume files must survive too. Cleanup runs after the commit."""
+    from app.api import jobs
+    from app.main import app as fastapi_app
+
+    (tmp_path / "job_1").mkdir()
+    order = []
+    mock_db, profile = _delete_job_mocks()
+
+    async def mock_get_db():
+        yield mock_db
+
+    fastapi_app.dependency_overrides[jobs.get_db] = mock_get_db
+    try:
+        with patch("app.api.jobs.model_registry.get_profile_by_model", return_value=profile), \
+             patch("app.api.jobs.settings.STORAGE_LOCAL_DIR", str(tmp_path)), \
+             patch("app.api.jobs.vector_store.delete_points_by_filter", new_callable=AsyncMock) as mock_delete_points:
+            mock_db.commit = AsyncMock(side_effect=RuntimeError("commit failed"))
+            with pytest.raises(RuntimeError):
+                await client.delete("/jobs/1")
+            mock_delete_points.assert_not_awaited()
+            assert (tmp_path / "job_1").exists()
+
+            mock_db.execute = _delete_job_mocks()[0].execute
+            mock_db.commit = AsyncMock(side_effect=lambda: order.append("commit"))
+            mock_delete_points.side_effect = lambda *a, **k: order.append("vectors")
+            response = await client.delete("/jobs/1")
+
+        assert response.status_code == 204
+        assert order == ["commit", "vectors"]
+        assert not (tmp_path / "job_1").exists()
+    finally:
+        fastapi_app.dependency_overrides.clear()
