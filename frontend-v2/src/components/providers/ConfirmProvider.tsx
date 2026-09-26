@@ -1,19 +1,6 @@
-import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
-import { Dialog, DialogContent, DialogTitle, DialogDescription, Button } from '../components/ui';
-
-export interface ConfirmOptions {
-  title: string;
-  description?: string;
-  confirmLabel?: string;
-  cancelLabel?: string;
-  danger?: boolean;
-}
-
-interface ConfirmContextValue {
-  confirm: (opts: ConfirmOptions) => Promise<boolean>;
-}
-
-const ConfirmContext = createContext<ConfirmContextValue | null>(null);
+import { useCallback, useRef, useState, type ReactNode } from 'react';
+import { Dialog, DialogContent, DialogTitle, DialogDescription, Button } from '../ui';
+import { ConfirmContext, type ConfirmOptions } from '../../hooks/useConfirm';
 
 export const ConfirmProvider = ({ children }: { children: ReactNode }) => {
   const [opts, setOpts] = useState<ConfirmOptions | null>(null);
@@ -57,9 +44,3 @@ export const ConfirmProvider = ({ children }: { children: ReactNode }) => {
     </ConfirmContext.Provider>
   );
 };
-
-export function useConfirm() {
-  const ctx = useContext(ConfirmContext);
-  if (!ctx) throw new Error('useConfirm must be used within a ConfirmProvider');
-  return ctx.confirm;
-}
