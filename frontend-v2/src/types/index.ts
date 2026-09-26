@@ -290,6 +290,8 @@ export interface BatchProgressDetail {
 export interface BatchProgressResponse {
   job_id: number;
   batches: BatchProgressDetail[];
+  // READY resumes of this job with no screening result yet.
+  unscreened: number;
 }
 
 export interface JobBatchOverviewItem {

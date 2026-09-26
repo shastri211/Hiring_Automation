@@ -346,3 +346,108 @@ async def test_trigger_embedding_migration_returns_502_on_enqueue_failure(client
         response = await client.post(f"/jobs/{job.id}/migrate-embedding-profile")
 
     assert response.status_code == 502
+
+
+@pytest.mark.asyncio
+async def test_upload_job_extracts_from_private_temp_file_and_deletes_it(client: AsyncClient):
+    """Two same-named JD uploads must never share a path (another
+    organization's upload could otherwise be read mid-extraction), and the
+    file must not outlive extraction - only its text is kept."""
+    import os
+    seen_paths = []
+
+    class _RecordingExtractor:
+        async def extract(self, file_path):
+            with open(file_path, "rb") as f:
+                assert f.read() == b"%PDF-fake"
+            seen_paths.append(file_path)
+            return "Senior backend engineer building Python services."
+
+    with patch("app.api.jobs.get_extractor", return_value=_RecordingExtractor()), \
+         patch("app.api.jobs._bootstrap_job_profile_and_embedding", new_callable=AsyncMock):
+        for _ in range(2):
+            response = await client.post(
+                "/jobs/upload",
+                data={"title": "Backend"},
+                files={"file": ("jd.pdf", b"%PDF-fake", "application/pdf")},
+            )
+            assert response.status_code == 201
+            assert "Python services" in response.json()["description"]
+
+    assert len(set(seen_paths)) == 2
+    for path in seen_paths:
+        assert path.endswith(".pdf")
+        assert not os.path.exists(path)
+
+
+@pytest.mark.asyncio
+async def test_upload_job_deletes_temp_file_when_extraction_fails(client: AsyncClient):
+    import os
+    seen_paths = []
+
+    class _FailingExtractor:
+        async def extract(self, file_path):
+            seen_paths.append(file_path)
+            raise ValueError("corrupt")
+
+    with patch("app.api.jobs.get_extractor", return_value=_FailingExtractor()):
+        response = await client.post(
+            "/jobs/upload",
+            data={"title": "Backend"},
+            files={"file": ("jd.pdf", b"%PDF-fake", "application/pdf")},
+        )
+    assert response.status_code == 400
+    assert seen_paths and not os.path.exists(seen_paths[0])
+
+
+@pytest.mark.asyncio
+async def test_batch_progress_counts_are_per_batch_and_unscreened_is_exact(client: AsyncClient, db_session):
+    """Each batch reports only its own decisions (a screening run: the
+    results it created; an upload batch: its own resumes), and `unscreened`
+    counts READY resumes with no result - previously every batch repeated
+    the job-wide totals and the page derived "unscreened" by summing them,
+    which hid unscreened resumes once a job had several batches."""
+    from app.models.job import Job
+    from app.models.resume import Resume
+    from app.models.batch import ScreeningBatch
+    from app.models.screening import ScreeningResult
+    import secrets as _secrets
+
+    job = Job(organization_id=TEST_ORG_ID, title="Progress", description="Progress counts", job_profile={"title": "P"})
+    db_session.add(job)
+    await db_session.flush()
+    upload_1 = ScreeningBatch(job_id=job.id, batch_type="UPLOAD", status="COMPLETED", total_resumes=2)
+    screen_1 = ScreeningBatch(job_id=job.id, batch_type="SCREEN", status="COMPLETED", total_resumes=2, processed=2)
+    upload_2 = ScreeningBatch(job_id=job.id, batch_type="UPLOAD", status="COMPLETED", total_resumes=3)
+    screen_2 = ScreeningBatch(job_id=job.id, batch_type="SCREEN", status="PROCESSING", total_resumes=2)
+    db_session.add_all([upload_1, screen_1, upload_2, screen_2])
+    await db_session.flush()
+
+    def _resume(batch, status):
+        return Resume(
+            job_id=job.id, batch_id=batch.id, filename="r.pdf", file_hash=_secrets.token_hex(16),
+            storage_key="k", status=status,
+        )
+    r1, r2 = _resume(upload_1, "READY"), _resume(upload_1, "READY")
+    r3, r4, r5 = _resume(upload_2, "READY"), _resume(upload_2, "READY"), _resume(upload_2, "FAILED")
+    db_session.add_all([r1, r2, r3, r4, r5])
+    await db_session.flush()
+    db_session.add_all([
+        ScreeningResult(job_id=job.id, resume_id=r1.id, screening_batch_id=screen_1.id, score=90, decision="SHORTLIST"),
+        ScreeningResult(job_id=job.id, resume_id=r2.id, screening_batch_id=screen_1.id, decision="PRE_SCREENED_OUT"),
+    ])
+    await db_session.commit()
+
+    response = await client.get(f"/jobs/{job.id}/progress")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["unscreened"] == 2
+    by_id = {b["batch_id"]: b for b in data["batches"]}
+
+    assert (by_id[screen_1.id]["shortlisted"], by_id[screen_1.id]["pre_screened_out"]) == (1, 1)
+    assert (by_id[screen_2.id]["shortlisted"], by_id[screen_2.id]["pre_screened_out"]) == (0, 0)
+    assert by_id[screen_1.id]["total"] == 2 and by_id[screen_1.id]["completed"] == 2
+
+    assert (by_id[upload_1.id]["shortlisted"], by_id[upload_1.id]["pre_screened_out"]) == (1, 1)
+    assert by_id[upload_2.id]["shortlisted"] == 0
+    assert (by_id[upload_2.id]["total"], by_id[upload_2.id]["completed"], by_id[upload_2.id]["failed"]) == (3, 2, 1)

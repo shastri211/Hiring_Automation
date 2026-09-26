@@ -1,6 +1,7 @@
 import os
 import logging
 import secrets
+import tempfile
 import aiofiles
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from sqlalchemy import select, func
@@ -44,7 +45,6 @@ from app.services.model_registry import model_registry
 from app.services.outreach import outreach_service
 from app.services.interview import interview_adapter
 from app.services.dograh import dograh_client
-from app.services.storage import sanitize_filename
 from app.services import screening_trigger
 from app.services import tenancy
 from app.services import screening_audit
@@ -280,20 +280,24 @@ async def upload_job(
                 detail=f"Job description file must be non-empty and under {settings.MAX_RESUME_FILE_SIZE_MB}MB.",
             )
 
-        os.makedirs("uploads/jobs", exist_ok=True)
-        file_path = os.path.join("uploads/jobs", sanitize_filename(file.filename))
-        async with aiofiles.open(file_path, 'wb') as out_file:
-            await out_file.write(content)
-
+        # Only the extracted text is kept (as job.description), so the file
+        # goes to a unique private temp path - never a shared, filename-keyed
+        # one another organization's upload could overwrite mid-extraction -
+        # and is always deleted afterwards.
+        fd, file_path = tempfile.mkstemp(suffix=ext)
+        os.close(fd)
         try:
+            async with aiofiles.open(file_path, 'wb') as out_file:
+                await out_file.write(content)
             extractor = get_extractor(file_path, file.content_type)
             extracted_text = await extractor.extract(file_path)
         except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to parse JD file: {str(e)}")
+        finally:
             try:
                 os.remove(file_path)
             except OSError:
                 pass
-            raise HTTPException(status_code=400, detail=f"Failed to parse JD file: {str(e)}")
             
     # Converge paths
     final_description = ""
@@ -1095,97 +1099,70 @@ async def bulk_update_decision(
 
 # -- batch progress ------------------------------------------------------------
 
+
 @router.get("/{job_id}/progress", response_model=BatchProgressResponse)
 async def get_batch_progress(
     job_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     await _get_job_or_404(job_id, db, current_user.organization_id)
 
-    batches_res = await db.execute(
-        select(ScreeningBatch).where(ScreeningBatch.job_id == job_id)
-    )
-    batches = batches_res.scalars().all()
+    batches = (
+        await db.execute(select(ScreeningBatch).where(ScreeningBatch.job_id == job_id))
+    ).scalars().all()
+    screen_batch_ids = [b.id for b in batches if b.batch_type == "SCREEN"]
+    resume_batch_ids = [b.id for b in batches if b.batch_type != "SCREEN"]
+
+    # Resume status counts per UPLOAD/APPLICATION batch, counted live rather
+    # than from the batch's snapshot columns so a deleted resume doesn't keep
+    # showing up. A SCREEN batch has no Resume rows (see
+    # screening_trigger.enqueue_screen_job), so it uses its own snapshot.
+    status_counts: dict[int, dict[str, int]] = {}
+    # Decision counts per batch: a SCREEN batch counts the results its run
+    # created (ScreeningResult.screening_batch_id); an UPLOAD/APPLICATION
+    # batch counts the current decisions of its own resumes.
+    decision_counts: dict[int, dict[str, int]] = {}
+    if resume_batch_ids:
+        for batch_id, status_value, count in (
+            await db.execute(
+                select(Resume.batch_id, Resume.status, func.count(Resume.id))
+                .where(Resume.batch_id.in_(resume_batch_ids))
+                .group_by(Resume.batch_id, Resume.status)
+            )
+        ).all():
+            status_counts.setdefault(batch_id, {})[status_value] = count
+        for batch_id, decision, count in (
+            await db.execute(
+                select(Resume.batch_id, ScreeningResult.decision, func.count(ScreeningResult.id))
+                .join(Resume, Resume.id == ScreeningResult.resume_id)
+                .where(ScreeningResult.job_id == job_id, Resume.batch_id.in_(resume_batch_ids))
+                .group_by(Resume.batch_id, ScreeningResult.decision)
+            )
+        ).all():
+            decision_counts.setdefault(batch_id, {})[decision] = count
+    if screen_batch_ids:
+        for batch_id, decision, count in (
+            await db.execute(
+                select(ScreeningResult.screening_batch_id, ScreeningResult.decision, func.count(ScreeningResult.id))
+                .where(ScreeningResult.screening_batch_id.in_(screen_batch_ids))
+                .group_by(ScreeningResult.screening_batch_id, ScreeningResult.decision)
+            )
+        ).all():
+            decision_counts.setdefault(batch_id, {})[decision] = count
 
     batch_details = []
     for batch in batches:
-        # A SCREEN batch (see screening_trigger.enqueue_screen_job) never has
-        # Resume rows pointing at its batch_id, so total_resumes (assigned
-        # directly there) is the only meaningful total. An UPLOAD batch's
-        # total_resumes is a snapshot taken at upload time and goes stale if
-        # a resume is later deleted from it - live-count it instead so a
-        # deleted resume doesn't keep showing up here.
         if batch.batch_type == "SCREEN":
-            # Same reasoning as total above: a SCREEN batch has no Resume
-            # rows at all under its batch_id, so completed/failed have to
-            # come from the batch's own snapshot columns (kept correct by
-            # the worker's screen_job handling) rather than a Resume count
-            # that would always read 0 - and there's no per-resume
-            # "processing" state during screening to count either.
             total = batch.total_resumes
             completed = batch.processed
             failed_count = batch.failed
             processing = 0
         else:
-            total_res = await db.execute(
-                select(func.count(Resume.id)).where(Resume.batch_id == batch.id)
-            )
-            total = total_res.scalar_one()
-
-            # Count READY resumes as completed
-            completed_res = await db.execute(
-                select(func.count(Resume.id)).where(
-                    Resume.batch_id == batch.id, Resume.status == "READY"
-                )
-            )
-            completed = completed_res.scalar_one()
-
-            failed_res = await db.execute(
-                select(func.count(Resume.id)).where(
-                    Resume.batch_id == batch.id, Resume.status == "FAILED"
-                )
-            )
-            failed_count = failed_res.scalar_one()
-
-            processing_res = await db.execute(
-                select(func.count(Resume.id)).where(
-                    Resume.batch_id == batch.id, Resume.status == "PROCESSING"
-                )
-            )
-            processing = processing_res.scalar_one()
-
-        # Screening decision counts (only for this job - ownership already enforced via batch.job_id)
-        shortlisted_res = await db.execute(
-            select(func.count(ScreeningResult.id)).where(
-                ScreeningResult.job_id == job_id,
-                ScreeningResult.decision == "SHORTLIST",
-            )
-        )
-        shortlisted = shortlisted_res.scalar_one()
-
-        review_res = await db.execute(
-            select(func.count(ScreeningResult.id)).where(
-                ScreeningResult.job_id == job_id,
-                ScreeningResult.decision == "REVIEW",
-            )
-        )
-        review = review_res.scalar_one()
-
-        rejected_res = await db.execute(
-            select(func.count(ScreeningResult.id)).where(
-                ScreeningResult.job_id == job_id,
-                ScreeningResult.decision == "REJECT",
-            )
-        )
-        rejected = rejected_res.scalar_one()
-        
-        pre_screened_out_res = await db.execute(
-            select(func.count(ScreeningResult.id)).where(
-                ScreeningResult.job_id == job_id,
-                ScreeningResult.decision == "PRE_SCREENED_OUT",
-            )
-        )
-        pre_screened_out = pre_screened_out_res.scalar_one()
-
+            counts = status_counts.get(batch.id, {})
+            total = sum(counts.values())
+            completed = counts.get("READY", 0)
+            failed_count = counts.get("FAILED", 0)
+            processing = counts.get("PROCESSING", 0)
+        decisions = decision_counts.get(batch.id, {})
         batch_details.append(
             BatchProgressDetail(
                 batch_id=batch.id,
@@ -1194,14 +1171,26 @@ async def get_batch_progress(
                 processing=processing,
                 completed=completed,
                 failed=failed_count,
-                shortlisted=shortlisted,
-                review=review,
-                rejected=rejected,
-                pre_screened_out=pre_screened_out,
+                shortlisted=decisions.get("SHORTLIST", 0),
+                review=decisions.get("REVIEW", 0),
+                rejected=decisions.get("REJECT", 0),
+                pre_screened_out=decisions.get("PRE_SCREENED_OUT", 0),
                 batch_type=batch.batch_type,
             )
         )
 
-    return BatchProgressResponse(job_id=job_id, batches=batch_details)
+    # READY resumes with no screening result yet - what "Start Screening"
+    # would pick up. Computed here rather than derived from per-batch counts
+    # on the client.
+    unscreened = (
+        await db.execute(
+            select(func.count(Resume.id))
+            .outerjoin(
+                ScreeningResult,
+                (ScreeningResult.resume_id == Resume.id) & (ScreeningResult.job_id == job_id),
+            )
+            .where(Resume.job_id == job_id, Resume.status == "READY", ScreeningResult.id.is_(None))
+        )
+    ).scalar_one()
 
-
+    return BatchProgressResponse(job_id=job_id, batches=batch_details, unscreened=unscreened)

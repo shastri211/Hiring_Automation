@@ -155,7 +155,9 @@ async def worker_loop(consumer_id: str):
                             job_res = await session.execute(select(Job).where(Job.id == job_id))
                             job = job_res.scalar_one_or_none()
                             if job and job.status == "ACTIVE":
-                                screening_results = await screener_service.screen_job(session, job)
+                                screening_results = await screener_service.screen_job(
+                                    session, job, screening_batch_id=item_id or None
+                                )
                                 if item_id:
                                     batch_res = await session.execute(select(ScreeningBatch).where(ScreeningBatch.id == item_id))
                                     batch = batch_res.scalar_one_or_none()

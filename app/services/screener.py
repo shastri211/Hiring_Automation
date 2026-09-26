@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import List
+from typing import List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -84,8 +84,14 @@ class ScreenerService:
         db: AsyncSession,
         job: Job,
         limit: int = 50,
+        screening_batch_id: Optional[int] = None,
     ) -> List[ScreeningResult]:
-        """Screen candidates for a given job using semantic retrieval and LLM evaluation."""
+        """Screen candidates for a given job using semantic retrieval and LLM evaluation.
+
+        `screening_batch_id` is the SCREEN batch driving this run; every
+        result created here is linked to it so the run's own decision counts
+        can be reported (see GET /jobs/{id}/progress).
+        """
 
         # Snapshot all required ORM values before any awaited operation.
         # This prevents SQLAlchemy from attempting implicit async lazy/expired
@@ -212,6 +218,7 @@ class ScreenerService:
                 screening_result = ScreeningResult(
                     job_id=job_id,
                     resume_id=resume_id,
+                    screening_batch_id=screening_batch_id,
                     score=None,  # Null LLM score
                     semantic_score=semantic_score,
                     strengths=None,
@@ -277,8 +284,10 @@ class ScreenerService:
                             db_profile.languages = enriched.get("languages", db_profile.languages)
                             db_profile.achievements = enriched.get("achievements", db_profile.achievements)
                             db_profile.extraction_method = "LLM_ENRICHED"
-                            # Use enriched profile for evaluation
-                            candidate_profile = enriched
+                            # Use enriched profile for evaluation - sanitized
+                            # like the payload profile above, so PII (name,
+                            # contact) never reaches the evaluation prompt.
+                            candidate_profile = self._sanitize_context(enriched, job_profile)
                             logger.info("Resume %s successfully enriched by LLM.", resume_id)
                     except Exception as enrich_err:
                         logger.warning(
@@ -296,6 +305,7 @@ class ScreenerService:
                 screening_result = ScreeningResult(
                     job_id=job_id,
                     resume_id=resume_id,
+                    screening_batch_id=screening_batch_id,
                     score=eval_result_dict.get("score", 0.0),
                     semantic_score=semantic_score,
                     strengths=eval_result_dict.get("strengths", []),
@@ -337,6 +347,7 @@ class ScreenerService:
                 screening_result = ScreeningResult(
                     job_id=job_id,
                     resume_id=resume_id,
+                    screening_batch_id=screening_batch_id,
                     score=None,
                     semantic_score=semantic_score,
                     decision="REVIEW",
