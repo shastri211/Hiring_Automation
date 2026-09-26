@@ -1,6 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import type { ApiError } from '../types';
-import { notifyUnauthorized } from './authEvents';
+import { notifyPasswordChangeRequired, notifyUnauthorized } from './authEvents';
 
 export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
@@ -16,9 +16,9 @@ export const apiClient = axios.create({
 // Paths that are never subject to HR-session auth: the auth endpoints
 // themselves (a 401 from /auth/me or /auth/login is expected, normal
 // "not logged in" signal, not a session-expiry event) and the public,
-// candidate-facing interview room (which never has an HR session cookie at
-// all and must never be redirected to the HR login).
-const AUTH_EXEMPT_PREFIXES = ['/auth/', '/public/interview/'];
+// candidate-facing interview room and apply page (which never have an HR
+// session cookie at all and must never be redirected to the HR login).
+const AUTH_EXEMPT_PREFIXES = ['/auth/', '/public/interview/', '/public/jobs/'];
 
 const isAuthExempt = (url?: string): boolean => {
   if (!url) return false;
@@ -50,6 +50,9 @@ apiClient.interceptors.response.use(
           .map((d: any) => (typeof d?.msg === 'string' ? d.msg.replace(/^Value error,\s*/, '') : null))
           .filter(Boolean)
           .join('; ') || apiError.message;
+      } else if (data.detail && typeof data.detail === 'object' && typeof data.detail.message === 'string') {
+        // Structured {reason, message} details (auth/signup/tenancy errors).
+        apiError.message = data.detail.message;
       } else if (typeof data.message === 'string') {
         apiError.message = data.message;
       }
@@ -66,6 +69,15 @@ apiClient.interceptors.response.use(
     // let RequireAuth redirect to /login.
     if (error.response?.status === 401 && !isAuthExempt(error.config?.url)) {
       notifyUnauthorized();
+    }
+    // The account is still on an admin-issued temporary password: every
+    // route but /auth/me and /auth/change-password refuses it. Re-read the
+    // session so RequireAuth routes to the change-password screen.
+    if (
+      error.response?.status === 403 &&
+      (error.response?.data as any)?.detail?.reason === 'password_change_required'
+    ) {
+      notifyPasswordChangeRequired();
     }
 
     return Promise.reject(apiError);

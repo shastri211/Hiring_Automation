@@ -4,15 +4,15 @@ import pytest
 from httpx import AsyncClient
 from unittest.mock import patch
 
-from app.main import app
 from app.models.resume import Resume
 from app.models.job import Job
 from app.models.interview import Interview
 from app.models.batch import ScreeningBatch
+from tenancy_fixtures import TEST_ORG_ID
 
 @pytest.fixture
 async def setup_data(db_session):
-    job = Job(title="Test Job", description="A test job description")
+    job = Job(organization_id=TEST_ORG_ID, title="Test Job", description="A test job description")
     db_session.add(job)
     await db_session.commit()
     await db_session.refresh(job)
@@ -49,9 +49,20 @@ async def test_trigger_interview(setup_data, client: AsyncClient):
 @pytest.mark.asyncio
 async def test_trigger_interview_invalid_ownership(setup_data, client: AsyncClient):
     job, resume = setup_data
+    # A job that doesn't exist (in the caller's organization) now 404s at the
+    # job lookup, before the resume/job ownership check.
     response = await client.post("/integration/interview/trigger", json={
         "job_id": job.id + 100,  # Invalid job id
         "resume_id": resume.id
+    })
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Job not found"
+
+    # A real job with a resume that isn't one of its own still hits the
+    # ownership check.
+    response = await client.post("/integration/interview/trigger", json={
+        "job_id": job.id,
+        "resume_id": resume.id + 100,
     })
     assert response.status_code == 404
     assert "Resume not found for this job" in response.json()["detail"]
@@ -355,3 +366,49 @@ async def test_webhook_evaluation_redelivery_is_idempotent(setup_data, client: A
     completed_at_second = detail_second.json()["interview"]["completed_at"]
     assert completed_at_second == completed_at_first
     assert detail_second.json()["interview"]["provider_run_id"] == "777"
+
+
+async def _declined_interview(db_session, job, resume):
+    interview = Interview(job_id=job.id, resume_id=resume.id, status="DECLINED", outcome="manual_decline")
+    db_session.add(interview)
+    await db_session.commit()
+    return interview
+
+
+async def _reload(db_session, interview):
+    from sqlalchemy import select
+    return (await db_session.execute(
+        select(Interview).where(Interview.id == interview.id).execution_options(populate_existing=True)
+    )).scalar_one()
+
+
+@pytest.mark.asyncio
+async def test_webhooks_never_reopen_a_declined_interview(setup_data, db_session, client: AsyncClient):
+    job, resume = setup_data
+    interview = await _declined_interview(db_session, job, resume)
+
+    status_res = await client.post("/integration/interview/status", json={
+        "job_id": job.id, "resume_id": resume.id, "status": "IN_PROGRESS",
+    })
+    eval_res = await client.post("/integration/interview/evaluation", json={
+        "job_id": job.id, "resume_id": resume.id, "call_disposition": "completed",
+        "evaluation_data": {"workflow_run_id": 7, "transcript_url": "https://dograh.test/t/7"},
+    })
+    assert status_res.status_code == 200 and eval_res.status_code == 200
+
+    reloaded = await _reload(db_session, interview)
+    assert reloaded.status == "DECLINED"
+    assert reloaded.outcome == "manual_decline"
+    assert reloaded.completed_at is None
+    # The late call's data is still kept as evidence.
+    assert reloaded.transcript_url == "https://dograh.test/t/7"
+
+
+@pytest.mark.asyncio
+async def test_status_webhook_rejects_unknown_status(setup_data, client: AsyncClient):
+    job, resume = setup_data
+    await client.post("/integration/interview/trigger", json={"job_id": job.id, "resume_id": resume.id})
+    response = await client.post("/integration/interview/status", json={
+        "job_id": job.id, "resume_id": resume.id, "status": "banana",
+    })
+    assert response.status_code == 422

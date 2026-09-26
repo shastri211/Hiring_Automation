@@ -9,10 +9,11 @@ from app.models.batch import ScreeningBatch
 from app.models.resume import Resume
 from app.models.profile import CandidateProfile
 from app.models.interview import Interview
+from tenancy_fixtures import TEST_ORG_ID
 
 
 async def _make_job_resume(db_session, job_title="Backend Engineer", candidate_name="Jane Doe"):
-    job = Job(title=job_title, description="A test job description")
+    job = Job(organization_id=TEST_ORG_ID, title=job_title, description="A test job description")
     db_session.add(job)
     await db_session.commit()
     await db_session.refresh(job)
@@ -159,3 +160,18 @@ async def test_token_never_leaks_another_candidates_data(db_session, client: Asy
     assert body_a["job_title"] != "Job B"
     assert body_a["initial_context"]["resume_id"] != resume_b.id
     assert body_a["initial_context"]["job_id"] != job_b.id
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["DECLINED", "NO_SHOW"])
+async def test_closed_interview_link_returns_410_closed(db_session, client: AsyncClient, status):
+    """A declined (or no-show) interview's link must not open the room -
+    otherwise the candidate could still take the call after the decline."""
+    job, resume = await _make_job_resume(db_session)
+    interview = await _make_interview(db_session, job, resume, status=status)
+
+    for method, path in (("GET", f"/public/interview/{interview.public_token}"),
+                         ("POST", f"/public/interview/{interview.public_token}/started")):
+        response = await client.request(method, path)
+        assert response.status_code == 410
+        assert response.json()["detail"] == {"reason": "closed"}

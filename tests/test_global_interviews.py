@@ -84,7 +84,12 @@ async def test_get_global_interviews_filters_by_job_id(client: AsyncClient):
     rows_exec = MagicMock()
     rows_exec.all.return_value = []
 
-    mock_db.execute = AsyncMock(side_effect=[count_exec, rows_exec])
+    # Tenancy: a job_id filter must first resolve to one of the caller's
+    # jobs (a foreign/missing one 404s - covered in test_tenant_isolation.py).
+    job_exec = MagicMock()
+    job_exec.scalar_one_or_none.return_value = MagicMock()
+
+    mock_db.execute = AsyncMock(side_effect=[job_exec, count_exec, rows_exec])
 
     try:
         response = await client.get("/interviews/?job_id=999")

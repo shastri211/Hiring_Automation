@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tansta
 import { toast } from 'sonner';
 import { emailsApi, type EmailMessagesParams } from '../api/emails';
 import { queryKeys } from '../api/queryKeys';
-import type { EmailTemplateCreate, EmailTemplateUpdate, BulkEmailRequest } from '../types';
+import type { EmailTemplateCreate, EmailTemplateUpdate } from '../types';
 
 export const emailQueryKeys = {
   all: ['emails'] as const,
@@ -24,20 +24,6 @@ export const useCreateTemplate = () => {
     mutationFn: (template: EmailTemplateCreate) => emailsApi.createTemplate(template),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: emailQueryKeys.templates() });
-    },
-  });
-};
-
-export const useBulkSendEmails = (jobId: number) => {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: (request: BulkEmailRequest) => emailsApi.bulkSend(jobId, request),
-    onSuccess: (_, variables) => {
-      // Invalidate history for all involved resumes
-      variables.resume_ids.forEach(resumeId => {
-        queryClient.invalidateQueries({ queryKey: emailQueryKeys.candidateHistory(resumeId) });
-      });
     },
   });
 };

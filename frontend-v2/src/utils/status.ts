@@ -35,6 +35,7 @@ export function getEmailStatusBadgeVariant(status?: string | null): BadgeVariant
     case 'SENT':
       return 'success';
     case 'PENDING':
+    case 'SIMULATED':
       return 'warning';
     case 'FAILED':
       return 'danger';

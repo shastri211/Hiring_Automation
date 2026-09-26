@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from app.services.embeddings import embedding_router, EmbeddingRouter, EmbeddingError
+from app.services.embeddings import EmbeddingRouter
 from app.services.model_registry import model_registry, EmbeddingProfileConfig
 
 @pytest.fixture(autouse=True)
@@ -63,3 +63,12 @@ async def test_generate_embedding_success():
                 assert len(vec) == 768
                 assert profile.provider == "gemini"
                 mock_client.models.embed_content.assert_called_once()
+
+
+def test_embedding_profiles_are_uniquely_identified_by_model():
+    """Job.embedding_profile stores only the model name and
+    get_profile_by_model returns the first match - a second profile for the
+    same model could never be selected, only retried as a duplicate."""
+    from app.services.model_registry import model_registry
+    models = [p.model for p in model_registry.embedding_profiles]
+    assert len(models) == len(set(models))

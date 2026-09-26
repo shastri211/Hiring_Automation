@@ -7,11 +7,12 @@ from app.models.job import Job
 from app.models.batch import ScreeningBatch
 from app.models.resume import Resume
 from app.models.interview import Interview
+from tenancy_fixtures import TEST_ORG_ID
 
 
 @pytest.fixture
 async def setup_data(db_session):
-    job = Job(title="Test Job", description="A test job description")
+    job = Job(organization_id=TEST_ORG_ID, title="Test Job", description="A test job description")
     db_session.add(job)
     await db_session.commit()
     await db_session.refresh(job)

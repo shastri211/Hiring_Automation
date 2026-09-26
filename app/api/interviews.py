@@ -5,6 +5,9 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
+from app.services import tenancy
+from app.api.deps import get_current_user
+from app.models.user import User
 from app.models.interview import Interview
 from app.models.resume import Resume
 from app.models.job import Job
@@ -21,7 +24,10 @@ async def get_global_interviews(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    organization_id = current_user.organization_id
+    await tenancy.require_job_in_org_if_given(db, job_id, organization_id)
     query = (
         select(
             Interview,
@@ -33,6 +39,7 @@ async def get_global_interviews(
         .join(Resume, Resume.id == Interview.resume_id)
         .join(Job, Job.id == Interview.job_id)
         .outerjoin(CandidateProfile, CandidateProfile.resume_id == Interview.resume_id)
+        .where(Job.organization_id == organization_id)
     )
 
     if status:

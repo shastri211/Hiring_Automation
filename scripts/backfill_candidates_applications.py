@@ -49,6 +49,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import AsyncSessionLocal
+from app.models.job import Job
 from app.models.resume import Resume
 from app.models.profile import CandidateProfile
 from app.models.screening import ScreeningResult
@@ -71,7 +72,8 @@ async def resolve_candidates(db: AsyncSession) -> int:
     """Step 1: assign resume.candidate_id for every resume that doesn't have one yet."""
     rows = (
         await db.execute(
-            select(Resume, CandidateProfile)
+            select(Resume, CandidateProfile, Job.organization_id)
+            .join(Job, Job.id == Resume.job_id)
             .outerjoin(CandidateProfile, CandidateProfile.resume_id == Resume.id)
             .where(Resume.candidate_id.is_(None))
             .order_by(Resume.id)
@@ -85,18 +87,23 @@ async def resolve_candidates(db: AsyncSession) -> int:
     # Seed the email->candidate map from candidates that already exist (from
     # a prior partial run, or from live traffic since Phase 1 shipped), so
     # re-running never creates a duplicate Candidate for the same email.
+    # Keyed by (organization_id, email): candidate identity never crosses
+    # organizations.
     existing = await db.execute(select(Candidate).where(Candidate.primary_email.isnot(None)))
-    email_to_candidate_id: dict[str, int] = {c.primary_email: c.id for c in existing.scalars().all()}
+    email_to_candidate_id: dict[tuple[int, str], int] = {
+        (c.organization_id, c.primary_email): c.id for c in existing.scalars().all()
+    }
 
     new_candidates = 0
-    for resume, profile in rows:
+    for resume, profile, organization_id in rows:
         email = normalize_email(profile.email if profile else None)
 
-        if email and email in email_to_candidate_id:
-            resume.candidate_id = email_to_candidate_id[email]
+        if email and (organization_id, email) in email_to_candidate_id:
+            resume.candidate_id = email_to_candidate_id[(organization_id, email)]
             continue
 
         candidate = Candidate(
+            organization_id=organization_id,
             canonical_name=(profile.name if profile else None),
             primary_email=email,
             primary_phone=(profile.phone if profile else None),
@@ -105,7 +112,7 @@ async def resolve_candidates(db: AsyncSession) -> int:
         await db.flush()  # need candidate.id to assign it to the resume
         resume.candidate_id = candidate.id
         if email:
-            email_to_candidate_id[email] = candidate.id
+            email_to_candidate_id[(organization_id, email)] = candidate.id
         new_candidates += 1
 
     await db.commit()

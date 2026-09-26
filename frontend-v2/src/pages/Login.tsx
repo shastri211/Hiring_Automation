@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { AlertCircle, Loader2 } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { AlertCircle, Loader2, MailWarning } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { PublicPageShell } from '../components/layout/PublicPageShell';
 import { Button, Input, Label } from '../components/ui';
+import { ResendVerificationForm } from '../components/auth/ResendVerificationForm';
 import type { ApiError } from '../types';
 
 export const Login = () => {
@@ -15,24 +16,40 @@ export const Login = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Correct password, but the signup email was never confirmed.
+  const [unverified, setUnverified] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+    setUnverified(false);
     setIsSubmitting(true);
     try {
       await login(email, password);
       const from = (location.state as { from?: Location })?.from?.pathname || '/';
       navigate(from, { replace: true });
     } catch (err) {
-      setError((err as ApiError).message || 'Incorrect email or password');
+      const apiError = err as ApiError;
+      if (apiError.details?.detail?.reason === 'email_not_verified') {
+        setUnverified(true);
+      } else {
+        setError(apiError.message || 'Incorrect email or password');
+      }
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <PublicPageShell footer="Internal tool — accounts are created by an existing teammate in Settings.">
+    <PublicPageShell
+      footer={
+        <>
+          New company?{' '}
+          <Link to="/signup" className="text-[var(--color-primary-600)] hover:underline">Create a company account</Link>
+          . Joining an existing team? Ask your admin to add you.
+        </>
+      }
+    >
       <div className="flex flex-col gap-1 mb-6 text-center">
         <h1 className="text-lg font-semibold text-[var(--text-primary)]">Sign in</h1>
         <p className="text-sm text-[var(--text-secondary)]">Use your HR account to access RecruitPro.</p>
@@ -42,6 +59,18 @@ export const Login = () => {
         <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 text-red-800 px-3 py-2.5 text-sm mb-4">
           <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
           <span>{error}</span>
+        </div>
+      )}
+
+      {unverified && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 text-amber-900 px-3 py-3 text-sm mb-4 flex flex-col gap-3">
+          <div className="flex items-start gap-2">
+            <MailWarning className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>
+              Please confirm your email address first - open the link we sent when you signed up. Need a new one?
+            </span>
+          </div>
+          <ResendVerificationForm initialEmail={email} />
         </div>
       )}
 
@@ -60,7 +89,12 @@ export const Login = () => {
           />
         </div>
         <div>
-          <Label htmlFor="password">Password</Label>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="password">Password</Label>
+            <Link to="/forgot-password" className="text-xs text-[var(--color-primary-600)] hover:underline">
+              Forgot password?
+            </Link>
+          </div>
           <Input
             id="password"
             type="password"

@@ -1,8 +1,28 @@
-version: '3.8'
+# `docker compose up -d` starts only the infrastructure (Postgres, Redis) for
+# running the API/worker/frontend from source. `docker compose --profile app
+# up -d --build` also runs the whole app in containers, served on
+# http://localhost:8080. Vectors live in Qdrant Cloud (QDRANT_URL /
+# QDRANT_API_KEY in .env) - there is no local Qdrant service.
+
+x-backend: &backend
+  profiles: ["app"]
+  build: .
+  image: resume-screener-backend
+  env_file: .env
+  environment:
+    # Inside the compose network, not the host's localhost.
+    POSTGRES_SERVER: postgres
+    POSTGRES_PORT: "5432"
+    REDIS_HOST: redis
+    REDIS_PORT: "6379"
+  volumes:
+    # The API stores uploads here and the worker reads them - one shared volume.
+    - uploads_data:/app/uploads
 
 services:
   postgres:
-    image: postgres:15-alpine
+    # Same major version as the data it was migrated from (PostgreSQL 16).
+    image: postgres:16-alpine
     environment:
       # Password is sourced from the project-root .env (see .env.example);
       # Docker Compose auto-loads it for ${VAR} interpolation.
@@ -13,6 +33,11 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U screener -d resume_screener"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   redis:
     image: redis:7-alpine
@@ -21,15 +46,40 @@ services:
     volumes:
       - redis_data:/data
 
-  qdrant:
-    image: qdrant/qdrant:latest
+  migrate:
+    <<: *backend
+    command: ["alembic", "upgrade", "head"]
+    volumes: []
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    <<: *backend
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+
+  worker:
+    <<: *backend
+    command: ["python", "-m", "app.worker"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+
+  web:
+    profiles: ["app"]
+    build: ./frontend-v2
     ports:
-      - "6333:6333"
-      - "6334:6334"
-    volumes:
-      - qdrant_data:/qdrant/storage
+      - "8080:80"
+    depends_on:
+      - api
 
 volumes:
   postgres_data:
   redis_data:
-  qdrant_data:
+  uploads_data:

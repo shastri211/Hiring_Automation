@@ -63,8 +63,12 @@ class ModelRegistry:
         return models
 
     def _load_embedding_profiles(self) -> List[EmbeddingProfileConfig]:
-        """Loads embedding profiles. 
-        Currently supports Gemini (primary) and Local SentenceTransformers (fallback)."""
+        """Loads embedding profiles: Gemini (primary) and local
+        SentenceTransformers (fallback).
+
+        A profile is identified by its model name (Job.embedding_profile), so
+        each model may appear at most once here. A new representation of the
+        same model needs a distinct identifier and its own collection."""
         profiles = []
         
         # Primary Gemini Embedding
@@ -77,15 +81,6 @@ class ModelRegistry:
                 collection=settings.QDRANT_COLLECTION,
                 task_profile="resume_screening"
             ))
-            # V2 Profile
-            profiles.append(EmbeddingProfileConfig(
-                provider="gemini",
-                model=settings.EMBEDDING_MODEL,
-                dimensions=settings.EMBEDDING_DIMENSION,
-                metric="Cosine",
-                collection=settings.QDRANT_COLLECTION_V2,
-                task_profile="resume_screening_v2"
-            ))
             
         # Fallback Local Embedding
         profiles.append(EmbeddingProfileConfig(
@@ -95,15 +90,6 @@ class ModelRegistry:
             metric="Cosine",
             collection="resume_candidates_local_384",
             task_profile="resume_screening"
-        ))
-        # V2 Local Profile
-        profiles.append(EmbeddingProfileConfig(
-            provider="local",
-            model=settings.SENTENCE_TRANSFORMERS_MODEL,
-            dimensions=384,
-            metric="Cosine",
-            collection=settings.QDRANT_COLLECTION_LOCAL_V2,
-            task_profile="resume_screening_v2"
         ))
         
         return profiles

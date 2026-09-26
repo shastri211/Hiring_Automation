@@ -7,6 +7,11 @@ processed anywhere in the system - any job, any candidate - this module
 finds that prior work so the orchestrator can copy it instead of redoing
 extraction, an LLM profiling call, or an embedding API call.
 
+Scoped to one organization (strict tenant isolation): only another resume
+of the same organization is ever a reuse source, so no processing result
+(including an LLM-enriched profile) crosses tenants - at the cost of
+re-processing the rare file that reaches two organizations.
+
 Deliberately forward-looking only: resumes processed before this shipped
 are not retroactively consolidated. Deliberately does not deduplicate the
 physical file on disk - only the content-derived computation. And it never
@@ -19,6 +24,7 @@ from typing import List, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.job import Job
 from app.models.resume import Resume
 from app.services.vector_store import vector_store
 from app.services.model_registry import EmbeddingProfileConfig
@@ -30,7 +36,9 @@ logger = logging.getLogger(__name__)
 _STAGE_RANK = {"EMBEDDED": 3, "PROFILED": 2, "EXTRACTED": 1}
 
 
-async def find_reusable_source(db: AsyncSession, *, file_hash: str, exclude_resume_id: int) -> Optional[Resume]:
+async def find_reusable_source(
+    db: AsyncSession, *, file_hash: str, exclude_resume_id: int, organization_id: int
+) -> Optional[Resume]:
     """Best candidate to copy content-derived work from: the most-advanced
     workflow_stage among other non-failed resumes sharing this file_hash,
     tie-broken by lowest id for determinism. Byte-identical content extracts
@@ -38,7 +46,10 @@ async def find_reusable_source(db: AsyncSession, *, file_hash: str, exclude_resu
     here is for predictability/debuggability, not correctness."""
     candidates = (
         await db.execute(
-            select(Resume).where(
+            select(Resume)
+            .join(Job, Job.id == Resume.job_id)
+            .where(
+                Job.organization_id == organization_id,
                 Resume.file_hash == file_hash,
                 Resume.id != exclude_resume_id,
                 Resume.status != "FAILED",

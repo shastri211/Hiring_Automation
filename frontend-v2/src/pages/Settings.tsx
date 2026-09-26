@@ -3,18 +3,20 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import { Loader2, Settings as SettingsIcon, Users, UserPlus } from 'lucide-react';
+import { Loader2, Settings as SettingsIcon, Users, UserPlus, Lock } from 'lucide-react';
 import { useSettings, useUpdateSettings } from '../hooks/useSettings';
 import { useEmailTemplates } from '../hooks/useEmails';
-import { useAuthUsers, useCreateAuthUser } from '../hooks/useAuthUsers';
+import { useAuthUsers, useCreateAuthUser, useUpdateAuthUser } from '../hooks/useAuthUsers';
+import { useAuth } from '../hooks/useAuth';
+import { useConfirm } from '../hooks/useConfirm';
 import { ScreeningThresholdFields } from '../components/settings/ScreeningThresholdFields';
 import {
-  Button, Input, Label, Textarea,
+  Button, Input, Label, Badge,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../components/ui';
-import type { AppSettingsResponse, AppSettingsUpdate, ApiError } from '../types';
+import type { AppSettingsResponse, AppSettingsUpdate, ApiError, UserResponse } from '../types';
 
-// Threshold + org_name fields are modeled as plain strings (see
+// Threshold fields are modeled as plain strings (see
 // ScreeningThresholdFields.tsx for why) — an empty string means "use the
 // backend default" and is converted to number|null only in toPatch(), right
 // before building the API request.
@@ -26,7 +28,7 @@ const numericString = (min: number, max: number) =>
 
 const schema = z
   .object({
-    org_name: z.string(),
+    organization_name: z.string().trim().min(1, 'Organization name is required.').max(255),
     min_candidates_to_screen: numericString(1, 10000),
     max_candidates_to_screen: numericString(1, 10000),
     semantic_gap_threshold: numericString(0, 1),
@@ -35,8 +37,6 @@ const schema = z
     auto_generate_interview_on_shortlist: z.boolean(),
     auto_email_on_interview_scheduled: z.boolean(),
     interview_scheduled_email_template_id: z.number().nullable(),
-    email_test_allowlist: z.string(),
-    email_test_override_recipient: z.string(),
   })
   .refine(
     (d) =>
@@ -52,23 +52,12 @@ const schema = z
   .refine((d) => !d.auto_email_on_interview_scheduled || d.interview_scheduled_email_template_id != null, {
     message: 'Select a template to enable this automation.',
     path: ['interview_scheduled_email_template_id'],
-  })
-  .refine(
-    (d) => {
-      const entries = d.email_test_allowlist.split(',').map((e) => e.trim()).filter(Boolean);
-      return entries.every((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
-    },
-    { message: 'Enter valid, comma-separated email addresses.', path: ['email_test_allowlist'] }
-  )
-  .refine(
-    (d) => d.email_test_override_recipient === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email_test_override_recipient),
-    { message: 'Enter a valid email address, or leave blank.', path: ['email_test_override_recipient'] }
-  );
+  });
 
 type FormValues = z.infer<typeof schema>;
 
 const defaultValues: FormValues = {
-  org_name: '',
+  organization_name: '',
   min_candidates_to_screen: '',
   max_candidates_to_screen: '',
   semantic_gap_threshold: '',
@@ -77,13 +66,11 @@ const defaultValues: FormValues = {
   auto_generate_interview_on_shortlist: false,
   auto_email_on_interview_scheduled: false,
   interview_scheduled_email_template_id: null,
-  email_test_allowlist: '',
-  email_test_override_recipient: '',
 };
 
 function toFormValues(settings: AppSettingsResponse): FormValues {
   return {
-    org_name: settings.org_name ?? '',
+    organization_name: settings.organization_name ?? '',
     min_candidates_to_screen: settings.min_candidates_to_screen != null ? String(settings.min_candidates_to_screen) : '',
     max_candidates_to_screen: settings.max_candidates_to_screen != null ? String(settings.max_candidates_to_screen) : '',
     semantic_gap_threshold: settings.semantic_gap_threshold != null ? String(settings.semantic_gap_threshold) : '',
@@ -92,14 +79,12 @@ function toFormValues(settings: AppSettingsResponse): FormValues {
     auto_generate_interview_on_shortlist: settings.auto_generate_interview_on_shortlist,
     auto_email_on_interview_scheduled: settings.auto_email_on_interview_scheduled,
     interview_scheduled_email_template_id: settings.interview_scheduled_email_template_id ?? null,
-    email_test_allowlist: settings.email_test_allowlist ?? '',
-    email_test_override_recipient: settings.email_test_override_recipient ?? '',
   };
 }
 
 function toPatch(values: FormValues): AppSettingsUpdate {
   return {
-    org_name: values.org_name === '' ? null : values.org_name,
+    organization_name: values.organization_name.trim(),
     min_candidates_to_screen: values.min_candidates_to_screen === '' ? null : Number(values.min_candidates_to_screen),
     max_candidates_to_screen: values.max_candidates_to_screen === '' ? null : Number(values.max_candidates_to_screen),
     semantic_gap_threshold: values.semantic_gap_threshold === '' ? null : Number(values.semantic_gap_threshold),
@@ -108,8 +93,6 @@ function toPatch(values: FormValues): AppSettingsUpdate {
     auto_generate_interview_on_shortlist: values.auto_generate_interview_on_shortlist,
     auto_email_on_interview_scheduled: values.auto_email_on_interview_scheduled,
     interview_scheduled_email_template_id: values.interview_scheduled_email_template_id,
-    email_test_allowlist: values.email_test_allowlist === '' ? null : values.email_test_allowlist,
-    email_test_override_recipient: values.email_test_override_recipient === '' ? null : values.email_test_override_recipient,
   };
 }
 
@@ -127,7 +110,79 @@ const formatJoinedDate = (value: string | null) => {
   return Number.isNaN(date.getTime()) ? 'Unknown' : date.toLocaleDateString();
 };
 
+const TeamMemberRow = ({ member, isAdmin, isSelf }: { member: UserResponse; isAdmin: boolean; isSelf: boolean }) => {
+  const updateMutation = useUpdateAuthUser();
+  const confirm = useConfirm();
+
+  const update = (patch: { role?: 'admin' | 'member'; is_active?: boolean }, success: string) => {
+    updateMutation.mutate(
+      { userId: member.id, patch },
+      {
+        onSuccess: () => toast.success(success),
+        // e.g. 409 last_admin: "An organization must keep at least one active admin."
+        onError: (e: ApiError) => toast.error(e.message || 'Failed to update this teammate.'),
+      }
+    );
+  };
+
+  const toggleActive = async () => {
+    if (member.is_active) {
+      const ok = await confirm({
+        title: `Deactivate ${member.name}?`,
+        description: isSelf
+          ? 'You will lose access immediately.'
+          : 'They will no longer be able to sign in. You can reactivate them later.',
+        confirmLabel: 'Deactivate',
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    update(
+      { is_active: !member.is_active },
+      member.is_active ? `${member.name} deactivated.` : `${member.name} reactivated.`
+    );
+  };
+
+  return (
+    <li className="flex flex-wrap items-center justify-between gap-3 py-3">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-[var(--text-primary)] flex items-center gap-2">
+          <span className="truncate">{member.name}</span>
+          {isSelf && <span className="text-xs text-[var(--text-tertiary)]">(you)</span>}
+          <Badge variant={member.role === 'admin' ? 'primary' : 'neutral'}>{member.role === 'admin' ? 'Admin' : 'Member'}</Badge>
+          {!member.is_active && <Badge variant="warning">Deactivated</Badge>}
+        </p>
+        <p className="text-xs text-[var(--text-secondary)] truncate">{member.email}</p>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-[var(--text-tertiary)]">Joined {formatJoinedDate(member.created_at)}</span>
+        {isAdmin && (
+          <>
+            <Select
+              value={member.role}
+              onValueChange={(v) =>
+                update({ role: v as 'admin' | 'member' }, `${member.name} is now ${v === 'admin' ? 'an admin' : 'a member'}.`)
+              }
+              disabled={updateMutation.isPending}
+            >
+              <SelectTrigger className="h-8 w-28 text-xs" aria-label={`Role for ${member.name}`}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="admin">Admin</SelectItem>
+                <SelectItem value="member">Member</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button variant="ghost" size="sm" onClick={toggleActive} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : member.is_active ? 'Deactivate' : 'Reactivate'}
+            </Button>
+          </>
+        )}
+      </div>
+    </li>
+  );
+};
+
 const TeamSection = () => {
+  const { user, isAdmin } = useAuth();
   const { data: users, isLoading, isError, refetch } = useAuthUsers();
   const createUserMutation = useCreateAuthUser();
 
@@ -136,7 +191,7 @@ const TeamSection = () => {
   const onInvite = (values: InviteFormValues) => {
     createUserMutation.mutate(values, {
       onSuccess: () => {
-        toast.success(`Invited ${values.name}.`);
+        toast.success(`Account created for ${values.name}. Share the temporary password with them directly.`);
         inviteForm.reset(inviteDefaults);
       },
       onError: (e: ApiError) => toast.error(e.message || 'Failed to create the account.'),
@@ -162,58 +217,63 @@ const TeamSection = () => {
       ) : (
         <ul className="divide-y divide-[var(--border-light)]">
           {users.map((u) => (
-            <li key={u.id} className="flex items-center justify-between py-3">
-              <div>
-                <p className="text-sm font-medium text-[var(--text-primary)]">{u.name}</p>
-                <p className="text-xs text-[var(--text-secondary)]">{u.email}</p>
-              </div>
-              <span className="text-xs text-[var(--text-tertiary)]">Joined {formatJoinedDate(u.created_at)}</span>
-            </li>
+            <TeamMemberRow key={u.id} member={u} isAdmin={isAdmin} isSelf={u.id === user?.id} />
           ))}
         </ul>
       )}
 
-      <div className="border-t border-[var(--border-light)] pt-5">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)] mb-3 flex items-center gap-1.5">
-          <UserPlus className="w-3.5 h-3.5" /> Invite teammate
-        </h3>
-        <form
-          onSubmit={inviteForm.handleSubmit(onInvite)}
-          className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start"
-        >
-          <div>
-            <Label htmlFor="invite-name">Name</Label>
-            <Input id="invite-name" className="mt-1.5" placeholder="Jane Doe" {...inviteForm.register('name')} />
-            {inviteForm.formState.errors.name && (
-              <p className="text-xs text-[var(--color-danger-600)] mt-1">{inviteForm.formState.errors.name.message}</p>
-            )}
-          </div>
-          <div>
-            <Label htmlFor="invite-email">Email</Label>
-            <Input id="invite-email" type="email" className="mt-1.5" placeholder="jane@company.com" {...inviteForm.register('email')} />
-            {inviteForm.formState.errors.email && (
-              <p className="text-xs text-[var(--color-danger-600)] mt-1">{inviteForm.formState.errors.email.message}</p>
-            )}
-          </div>
-          <div>
-            <Label htmlFor="invite-password">Temporary password</Label>
-            <Input id="invite-password" type="password" className="mt-1.5" placeholder="••••••••" {...inviteForm.register('password')} />
-            {inviteForm.formState.errors.password && (
-              <p className="text-xs text-[var(--color-danger-600)] mt-1">{inviteForm.formState.errors.password.message}</p>
-            )}
-          </div>
-          <div className="sm:col-span-3 flex justify-end">
-            <Button type="submit" size="sm" disabled={createUserMutation.isPending}>
-              {createUserMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Send invite'}
-            </Button>
-          </div>
-        </form>
-      </div>
+      {isAdmin ? (
+        <div className="border-t border-[var(--border-light)] pt-5">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)] mb-1 flex items-center gap-1.5">
+            <UserPlus className="w-3.5 h-3.5" /> Add teammate
+          </h3>
+          <p className="text-xs text-[var(--text-secondary)] mb-3">
+            Creates a member account with a temporary password. Nothing is emailed - share the password with them
+            yourself. They&apos;ll be asked to choose their own password the first time they sign in.
+          </p>
+          <form
+            onSubmit={inviteForm.handleSubmit(onInvite)}
+            className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start"
+          >
+            <div>
+              <Label htmlFor="invite-name">Name</Label>
+              <Input id="invite-name" className="mt-1.5" placeholder="Jane Doe" {...inviteForm.register('name')} />
+              {inviteForm.formState.errors.name && (
+                <p className="text-xs text-[var(--color-danger-600)] mt-1">{inviteForm.formState.errors.name.message}</p>
+              )}
+            </div>
+            <div>
+              <Label htmlFor="invite-email">Email</Label>
+              <Input id="invite-email" type="email" className="mt-1.5" placeholder="jane@company.com" {...inviteForm.register('email')} />
+              {inviteForm.formState.errors.email && (
+                <p className="text-xs text-[var(--color-danger-600)] mt-1">{inviteForm.formState.errors.email.message}</p>
+              )}
+            </div>
+            <div>
+              <Label htmlFor="invite-password">Temporary password</Label>
+              <Input id="invite-password" type="password" className="mt-1.5" placeholder="••••••••" {...inviteForm.register('password')} />
+              {inviteForm.formState.errors.password && (
+                <p className="text-xs text-[var(--color-danger-600)] mt-1">{inviteForm.formState.errors.password.message}</p>
+              )}
+            </div>
+            <div className="sm:col-span-3 flex justify-end">
+              <Button type="submit" size="sm" disabled={createUserMutation.isPending}>
+                {createUserMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create account'}
+              </Button>
+            </div>
+          </form>
+        </div>
+      ) : (
+        <p className="text-xs text-[var(--text-tertiary)] border-t border-[var(--border-light)] pt-4">
+          Only admins can add or manage teammates.
+        </p>
+      )}
     </section>
   );
 };
 
 export const Settings = () => {
+  const { isAdmin, refreshMe } = useAuth();
   const { data: settings, isLoading, isError, refetch } = useSettings();
   const { data: templates } = useEmailTemplates();
   const updateMutation = useUpdateSettings();
@@ -236,6 +296,8 @@ export const Settings = () => {
       onSuccess: () => {
         toast.success('Settings saved.');
         form.reset(values);
+        // The organization name is shown in the header/sidebar from /auth/me.
+        void refreshMe();
       },
       onError: (e: { message?: string }) => toast.error(e.message || 'Failed to save settings.'),
     });
@@ -262,10 +324,21 @@ export const Settings = () => {
         </div>
       ) : (
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+          {!isAdmin && (
+            <div className="flex items-start gap-2 rounded-lg border border-[var(--border-light)] bg-[var(--bg-surface)] px-4 py-3 text-sm text-[var(--text-secondary)]">
+              <Lock className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>Company settings are managed by your organization&apos;s admins. You can view them here.</span>
+            </div>
+          )}
+          {/* Members get the same view, read-only (the server rejects their changes too). */}
+          <fieldset disabled={!isAdmin} className="space-y-8 disabled:opacity-80">
           <section className="bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-xl shadow-sm p-6">
             <h2 className="text-sm font-semibold text-[var(--text-primary)] mb-4">Organization</h2>
-            <Label htmlFor="org_name">Organization Name</Label>
-            <Input id="org_name" placeholder="Acme Inc." className="mt-1.5" {...register('org_name')} />
+            <Label htmlFor="organization_name">Organization Name</Label>
+            <Input id="organization_name" placeholder="Acme Inc." className="mt-1.5" {...register('organization_name')} />
+            {formState.errors.organization_name && (
+              <p className="text-xs text-[var(--color-danger-600)] mt-1">{formState.errors.organization_name.message}</p>
+            )}
           </section>
 
           <section className="bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-xl shadow-sm p-6">
@@ -275,44 +348,10 @@ export const Settings = () => {
 
           <section className="bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-xl shadow-sm p-6 space-y-6">
             <h2 className="text-sm font-semibold text-[var(--text-primary)]">Outreach Automation</h2>
-
-            <div>
-              <Label htmlFor="email_test_allowlist">Test email allowlist</Label>
-              <p className="text-xs text-[var(--text-secondary)] mt-1 mb-2">
-                While candidate data is for testing only, outbound mail is blocked for every recipient
-                except the addresses listed here. Add a real address you control (comma-separated for
-                multiple) whenever you want to test a send; anything not listed is recorded as
-                "Blocked" in Outreach instead of actually being sent.
-              </p>
-              <Textarea
-                id="email_test_allowlist"
-                rows={2}
-                placeholder="you@example.com, teammate@example.com"
-                {...register('email_test_allowlist')}
-              />
-              {formState.errors.email_test_allowlist && (
-                <p className="text-xs text-[var(--color-danger-600)] mt-1">{formState.errors.email_test_allowlist.message}</p>
-              )}
-            </div>
-
-            <div>
-              <Label htmlFor="email_test_override_recipient">Redirect all test sends to</Label>
-              <p className="text-xs text-[var(--text-secondary)] mt-1 mb-2">
-                Optional. When set, every outbound email - including the automated ones below - goes to this
-                address instead of the candidate's own, and skips the allowlist above entirely. This is the one
-                place to redirect a fully automated send (a manual Bulk Email send has its own per-send override
-                field instead). Clear this before going to production.
-              </p>
-              <Input
-                id="email_test_override_recipient"
-                type="email"
-                placeholder="you@example.com"
-                {...register('email_test_override_recipient')}
-              />
-              {formState.errors.email_test_override_recipient && (
-                <p className="text-xs text-[var(--color-danger-600)] mt-1">{formState.errors.email_test_override_recipient.message}</p>
-              )}
-            </div>
+            <p className="text-xs text-[var(--text-secondary)] -mt-2">
+              Outbound email always goes to the candidate's own email address, as extracted from their resume.
+              There is no test recipient or redirect.
+            </p>
 
             <div>
               <label className="flex items-center gap-2 mb-2">
@@ -391,11 +430,15 @@ export const Settings = () => {
             </div>
           </section>
 
-          <div className="flex justify-end gap-3">
-            <Button type="submit" disabled={!formState.isDirty || updateMutation.isPending}>
-              {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Settings'}
-            </Button>
-          </div>
+          </fieldset>
+
+          {isAdmin && (
+            <div className="flex justify-end gap-3">
+              <Button type="submit" disabled={!formState.isDirty || updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Settings'}
+              </Button>
+            </div>
+          )}
         </form>
       )}
 

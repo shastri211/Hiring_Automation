@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +18,7 @@ from app.schemas.talent_pool import (
     PaginatedTalentPoolResponse,
 )
 from app.services.candidate_directory import get_candidate_summaries
+from app.services import tenancy
 from app.api.deps import get_current_user
 from app.models.user import User
 
@@ -45,10 +46,14 @@ async def add_to_talent_pool(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    resume_result = await db.execute(select(Resume).where(Resume.id == payload.resume_id))
-    resume = resume_result.scalar_one_or_none()
-    if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
+    # Organization invariant: the entry, its resume's job, and
+    # added_from_job_id all belong to the caller's organization. The resume
+    # is resolved only within that organization (another organization's
+    # resume is indistinguishable from a missing one), and
+    # added_from_job_id is derived from that resume, never trusted from the
+    # client - so it's in the same organization by construction.
+    organization_id = current_user.organization_id
+    resume = await tenancy.get_resume_in_org_or_404(db, payload.resume_id, organization_id)
     # Derived server-side from the resume itself, never trusted from the
     # client - added_from_job_id must always be the job the resume actually
     # belongs to, or delete_job's cascade (which matches entries on this
@@ -70,6 +75,7 @@ async def add_to_talent_pool(
             entry.added_from_job_id = added_from_job_id
     else:
         entry = TalentPoolEntry(
+            organization_id=organization_id,
             resume_id=payload.resume_id,
             added_from_job_id=added_from_job_id,
             tags=sorted(set(payload.tags or [])),
@@ -102,9 +108,12 @@ async def list_talent_pool(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    query = select(TalentPoolEntry).outerjoin(
-        CandidateProfile, CandidateProfile.resume_id == TalentPoolEntry.resume_id
+    query = (
+        select(TalentPoolEntry)
+        .outerjoin(CandidateProfile, CandidateProfile.resume_id == TalentPoolEntry.resume_id)
+        .where(TalentPoolEntry.organization_id == current_user.organization_id)
     )
 
     if q:
@@ -152,10 +161,7 @@ async def update_talent_pool_entry(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(TalentPoolEntry).where(TalentPoolEntry.id == entry_id))
-    entry = result.scalar_one_or_none()
-    if entry is None:
-        raise HTTPException(status_code=404, detail="Talent pool entry not found")
+    entry = await tenancy.get_talent_entry_for_org_or_404(db, entry_id, current_user.organization_id)
 
     update_data = payload.model_dump(exclude_unset=True)
     for key, value in update_data.items():
@@ -174,10 +180,7 @@ async def remove_from_talent_pool(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(TalentPoolEntry).where(TalentPoolEntry.id == entry_id))
-    entry = result.scalar_one_or_none()
-    if entry is None:
-        raise HTTPException(status_code=404, detail="Talent pool entry not found")
+    entry = await tenancy.get_talent_entry_for_org_or_404(db, entry_id, current_user.organization_id)
 
     await db.delete(entry)
     await db.commit()

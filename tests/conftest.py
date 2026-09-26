@@ -70,6 +70,31 @@ async def _reset_test_schema():
             quoted = ", ".join(f'"{t}"' for t in tables)
             await conn.execute(text(f"TRUNCATE TABLE {quoted} RESTART IDENTITY CASCADE"))
 
+        # Every root row needs an organization (multi-tenancy). The suite's
+        # default one - owner of the auth override user below and of any
+        # root row a test builds with organization_id=TEST_ORG_ID.
+        from tenancy_fixtures import TEST_ORG_ID
+        await conn.execute(
+            text("INSERT INTO organizations (id, name) VALUES (:id, 'Test Organization')"),
+            {"id": TEST_ORG_ID},
+        )
+        await conn.execute(
+            text("SELECT setval(pg_get_serial_sequence('organizations', 'id'), :id)"), {"id": TEST_ORG_ID}
+        )
+
+    # Same idea for Redis: the suite uses its own database (pytest.ini's
+    # REDIS_DB), cleared of leftover queue and rate-limit keys once per
+    # session. Never runs against the dev database (0).
+    if settings.REDIS_DB != 0:
+        from app.services.queue import queue_service
+        client = queue_service.redis_client
+        try:
+            stale = [queue_service.stream_name, queue_service.retry_hash]
+            stale += [key async for key in client.scan_iter("ratelimit:*")]
+            await client.delete(*stale)
+        except Exception:
+            pass  # Redis down - tests that need it mock or fail on their own.
+
     yield
 
 @pytest.fixture(autouse=True)
@@ -120,18 +145,30 @@ async def client():
 # its tests (see tests/test_auth.py).
 @pytest.fixture(autouse=True)
 def _override_get_current_user():
+    from datetime import datetime, timezone
     from app.main import app
-    from app.api.deps import get_current_user
+    from app.api.deps import get_authenticated_user, get_current_user
     from app.models.user import User
+    from tenancy_fixtures import TEST_ORG_ID
 
+    # A verified admin (and platform admin) of the suite's test
+    # organization, so pre-tenancy tests keep full access. Role/tenant
+    # tests (test_signup.py, test_tenancy_phase1.py) install their own users.
     test_user = User(
         id=1,
+        organization_id=TEST_ORG_ID,
         email="test-user@example.com",
         hashed_password="unused-in-tests",
         name="Test User",
         is_active=True,
+        role="admin",
+        email_verified_at=datetime.now(timezone.utc),
+        must_change_password=False,
+        is_platform_admin=True,
     )
 
     app.dependency_overrides[get_current_user] = lambda: test_user
+    app.dependency_overrides[get_authenticated_user] = lambda: test_user
     yield
     app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_authenticated_user, None)

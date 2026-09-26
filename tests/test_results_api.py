@@ -3,7 +3,6 @@ candidate detail, and idempotent screening results."""
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock, ANY
 from httpx import AsyncClient
-from sqlalchemy import select
 
 # -- Helpers --------------------------------------------------------------------
 
@@ -247,8 +246,12 @@ async def test_candidate_detail_includes_summary_and_experience(client: AsyncCli
     interview_exec = MagicMock()
     interview_exec.scalar_one_or_none.return_value = None
 
+    # No public-application submission for this resume.
+    submission_exec = MagicMock()
+    submission_exec.scalar_one_or_none.return_value = None
+
     mock_db.execute = AsyncMock(
-        side_effect=[job_exec, resume_exec, profile_exec, screening_exec, interview_exec]
+        side_effect=[job_exec, resume_exec, profile_exec, screening_exec, interview_exec, submission_exec]
     )
 
     try:
@@ -258,6 +261,7 @@ async def test_candidate_detail_includes_summary_and_experience(client: AsyncCli
         body = response.json()
         assert body["profile"]["summary"] == "Senior backend engineer with distributed systems experience."
         assert body["profile"]["total_experience_years"] == 6.5
+        assert body["self_reported_contact"] is None
     finally:
         fastapi_app.dependency_overrides.clear()
 

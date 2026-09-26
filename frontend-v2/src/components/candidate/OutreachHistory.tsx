@@ -1,5 +1,5 @@
 import { useCandidateEmails } from '../../hooks/useEmails';
-import { Loader2, Mail, CheckCircle2, Clock, XCircle, ShieldOff } from 'lucide-react';
+import { Loader2, Mail, MailX, CheckCircle2, Clock, XCircle, ShieldOff } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 export const OutreachHistory = ({ resumeId }: { resumeId: number }) => {
@@ -30,6 +30,7 @@ export const OutreachHistory = ({ resumeId }: { resumeId: number }) => {
               {email.status === 'SENT' ? <CheckCircle2 className="w-5 h-5 text-[var(--color-success-500)]" /> :
                email.status === 'PENDING' ? <Clock className="w-5 h-5 text-[var(--color-warning-500)]" /> :
                email.status === 'BLOCKED' ? <ShieldOff className="w-5 h-5 text-[var(--text-tertiary)]" /> :
+               email.status === 'SIMULATED' ? <MailX className="w-5 h-5 text-[var(--color-warning-500)]" /> :
                <XCircle className="w-5 h-5 text-[var(--color-danger-500)]" />}
             </div>
 
@@ -44,8 +45,8 @@ export const OutreachHistory = ({ resumeId }: { resumeId: number }) => {
                 {email.body_content}
               </div>
               {email.error_message && (
-                <div className={`text-xs mt-2 p-2 rounded ${email.status === 'BLOCKED' ? 'text-[var(--text-secondary)] bg-[var(--bg-hover)]' : 'text-[var(--color-danger-subtle-text)] bg-[var(--color-danger-subtle-bg)]'}`}>
-                  {email.status === 'BLOCKED' ? 'Blocked: ' : 'Failed: '}{email.error_message}
+                <div className={`text-xs mt-2 p-2 rounded ${email.status === 'BLOCKED' || email.status === 'SIMULATED' ? 'text-[var(--text-secondary)] bg-[var(--bg-hover)]' : 'text-[var(--color-danger-subtle-text)] bg-[var(--color-danger-subtle-bg)]'}`}>
+                  {email.status === 'BLOCKED' ? 'Blocked: ' : email.status === 'SIMULATED' ? '' : 'Failed: '}{email.error_message}
                 </div>
               )}
             </div>

@@ -1,5 +1,7 @@
 import os
 import logging
+import secrets
+import tempfile
 import aiofiles
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from sqlalchemy import select, func
@@ -17,7 +19,9 @@ from app.models.decision_audit import DecisionAudit
 from app.models.email import EmailMessage
 from app.models.talent_pool import TalentPoolEntry
 from app.models.candidate import CandidateMatchSuggestion
+from app.models.public_application import PublicApplicationSubmission
 from app.schemas.job import JobCreate, JobResponse
+from app.schemas.public_application import SelfReportedContact
 from app.schemas.screening import (
     ScreeningResultResponse,
     PaginatedScreeningResultResponse,
@@ -41,8 +45,8 @@ from app.services.model_registry import model_registry
 from app.services.outreach import outreach_service
 from app.services.interview import interview_adapter
 from app.services.dograh import dograh_client
-from app.services.storage import sanitize_filename
 from app.services import screening_trigger
+from app.services import tenancy
 from app.services import screening_audit
 from app.services.candidate_directory import get_candidate_summaries
 from app.api.deps import get_current_user
@@ -54,8 +58,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 @router.get("/", response_model=List[JobResponse])
-async def list_jobs(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Job).order_by(Job.id.desc()))
+async def list_jobs(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    result = await db.execute(
+        select(Job).where(Job.organization_id == current_user.organization_id).order_by(Job.id.desc())
+    )
     return result.scalars().all()
 
 
@@ -64,10 +70,11 @@ async def list_jobs(db: AsyncSession = Depends(get_db)):
 # swallowed by the int path-converter on job_id.
 
 @router.get("/batches/overview", response_model=List[JobBatchOverviewItem])
-async def get_batches_overview(db: AsyncSession = Depends(get_db)):
+async def get_batches_overview(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     result = await db.execute(
         select(ScreeningBatch, Job.title, Job.status)
         .join(Job, Job.id == ScreeningBatch.job_id)
+        .where(Job.organization_id == current_user.organization_id)
         .order_by(ScreeningBatch.created_at.desc())
         .limit(100)
     )
@@ -96,16 +103,10 @@ async def get_batches_overview(db: AsyncSession = Depends(get_db)):
     for batch, job_title, job_status in rows:
         status_counts = counts_by_batch.get(batch.id, {})
         # A SCREEN batch never has Resume rows pointing at its batch_id (see
-        # screening_trigger.enqueue_screen_job) - its total_resumes is
-        # assigned directly there and stays meaningful. Only an UPLOAD batch
-        # gets its total recomputed live, since it's the one whose
-        # total_resumes can go stale (a resume deleted after upload leaves
-        # the snapshot pointing at candidates that no longer exist).
-        # A SCREEN batch has no Resume rows pointing at its batch_id (see
-        # screening_trigger.enqueue_screen_job), so status_counts is always
-        # empty for one - processed/failed have to come from the batch's own
-        # snapshot columns (kept correct by the worker's screen_job handling)
-        # instead, the same way total already does below.
+        # screening_trigger.enqueue_screen_job), so its total/processed/failed
+        # come from its own snapshot columns (kept correct by the worker's
+        # screen_job handling). Only an UPLOAD batch is recounted live, since
+        # its snapshot goes stale if a resume is deleted after upload.
         if batch.batch_type == "SCREEN":
             total = batch.total_resumes
             processed = batch.processed
@@ -134,12 +135,12 @@ async def get_batches_overview(db: AsyncSession = Depends(get_db)):
 
 # -- helpers -------------------------------------------------------------------
 
-async def _get_job_or_404(job_id: int, db: AsyncSession) -> Job:
-    result = await db.execute(select(Job).where(Job.id == job_id))
-    job = result.scalar_one_or_none()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    return job
+async def _get_job_or_404(job_id: int, db: AsyncSession, organization_id: int) -> Job:
+    """The job, only within the caller's organization - another
+    organization's job 404s exactly like a missing one. Every /{job_id}/...
+    route resolves its job here first and anchors all child queries
+    (resumes, results, interviews, batches) on that job_id."""
+    return await tenancy.get_job_for_org_or_404(db, job_id, organization_id)
 
 
 def _safe_error_message(resume: Resume) -> Optional[str]:
@@ -236,7 +237,7 @@ async def create_job(
     current_user: User = Depends(get_current_user),
 ):
     _require_meaningful_description(job_in.description)
-    job = Job(title=job_in.title, description=job_in.description)
+    job = Job(title=job_in.title, description=job_in.description, organization_id=current_user.organization_id)
     db.add(job)
     await db.flush()
 
@@ -273,20 +274,24 @@ async def upload_job(
                 detail=f"Job description file must be non-empty and under {settings.MAX_RESUME_FILE_SIZE_MB}MB.",
             )
 
-        os.makedirs("uploads/jobs", exist_ok=True)
-        file_path = os.path.join("uploads/jobs", sanitize_filename(file.filename))
-        async with aiofiles.open(file_path, 'wb') as out_file:
-            await out_file.write(content)
-
+        # Only the extracted text is kept (as job.description), so the file
+        # goes to a unique private temp path - never a shared, filename-keyed
+        # one another organization's upload could overwrite mid-extraction -
+        # and is always deleted afterwards.
+        fd, file_path = tempfile.mkstemp(suffix=ext)
+        os.close(fd)
         try:
+            async with aiofiles.open(file_path, 'wb') as out_file:
+                await out_file.write(content)
             extractor = get_extractor(file_path, file.content_type)
             extracted_text = await extractor.extract(file_path)
         except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to parse JD file: {str(e)}")
+        finally:
             try:
                 os.remove(file_path)
             except OSError:
                 pass
-            raise HTTPException(status_code=400, detail=f"Failed to parse JD file: {str(e)}")
             
     # Converge paths
     final_description = ""
@@ -298,7 +303,7 @@ async def upload_job(
     _require_meaningful_description(final_description)
 
     # Re-use existing Job Create logic pipeline
-    job = Job(title=title, description=final_description)
+    job = Job(title=title, description=final_description, organization_id=current_user.organization_id)
     db.add(job)
     await db.flush()
 
@@ -311,8 +316,8 @@ async def upload_job(
 # -- get job -------------------------------------------------------------------
 
 @router.get("/{job_id}", response_model=JobResponse)
-async def get_job(job_id: int, db: AsyncSession = Depends(get_db)):
-    return await _get_job_or_404(job_id, db)
+async def get_job(job_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return await _get_job_or_404(job_id, db, current_user.organization_id)
 
 
 @router.post("/{job_id}/pause", response_model=JobResponse)
@@ -321,7 +326,7 @@ async def pause_job(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    job = await _get_job_or_404(job_id, db)
+    job = await _get_job_or_404(job_id, db, current_user.organization_id)
     if job.status == "ACTIVE":
         job.status = "PAUSED"
         await db.commit()
@@ -335,7 +340,7 @@ async def resume_job(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    job = await _get_job_or_404(job_id, db)
+    job = await _get_job_or_404(job_id, db, current_user.organization_id)
     if job.status == "PAUSED":
         job.status = "ACTIVE"
         await db.commit()
@@ -370,9 +375,54 @@ async def archive_job(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    job = await _get_job_or_404(job_id, db)
+    job = await _get_job_or_404(job_id, db, current_user.organization_id)
     if job.status != "ARCHIVED":
         job.status = "ARCHIVED"
+        await db.commit()
+        await db.refresh(job)
+    return job
+
+
+# -- public application link (candidate-initiated applications) ----------------
+# The token is the link's only credential (see app/api/public_application.py).
+# Closing clears it and rotating replaces it, so an old link stops resolving.
+
+@router.post("/{job_id}/application-link", response_model=JobResponse)
+async def open_application_link(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    job = await _get_job_or_404(job_id, db, current_user.organization_id)
+    if not job.application_token:
+        job.application_token = secrets.token_urlsafe(32)
+        await db.commit()
+        await db.refresh(job)
+    return job
+
+
+@router.post("/{job_id}/application-link/rotate", response_model=JobResponse)
+async def rotate_application_link(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    job = await _get_job_or_404(job_id, db, current_user.organization_id)
+    job.application_token = secrets.token_urlsafe(32)
+    await db.commit()
+    await db.refresh(job)
+    return job
+
+
+@router.delete("/{job_id}/application-link", response_model=JobResponse)
+async def close_application_link(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    job = await _get_job_or_404(job_id, db, current_user.organization_id)
+    if job.application_token:
+        job.application_token = None
         await db.commit()
         await db.refresh(job)
     return job
@@ -384,27 +434,8 @@ async def delete_job(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    job = await _get_job_or_404(job_id, db)
-    
-    # Clean up Qdrant vectors
-    if job.embedding_profile:
-        profile = model_registry.get_profile_by_model(job.embedding_profile)
-        if profile:
-            try:
-                await vector_store.delete_points_by_filter(profile.collection, {"job_id": job.id})
-            except Exception as e:
-                logger.error(f"Failed to delete Qdrant vectors for job {job.id} in collection {profile.collection}: {e}")
-        else:
-            logger.warning(f"No embedding profile registered for '{job.embedding_profile}'; skipping Qdrant cleanup for job {job.id}")
-
-    # Delete files associated with this job. Resumes are stored by
-    # storage_service under "{STORAGE_LOCAL_DIR}/job_{job_id}/batch_.../..."
-    # (see app/api/resumes.py + app/services/storage.py) - must match that
-    # layout exactly or the on-disk files are silently orphaned.
-    import shutil
-    job_dir = os.path.join(settings.STORAGE_LOCAL_DIR, f"job_{job_id}")
-    if os.path.exists(job_dir):
-        shutil.rmtree(job_dir, ignore_errors=True)
+    job = await _get_job_or_404(job_id, db, current_user.organization_id)
+    embedding_profile = job.embedding_profile
 
     # Delete from DB (manual cascade to avoid FK constraint errors). Order
     # matters: every table below is deleted before the row(s) it references,
@@ -441,13 +472,36 @@ async def delete_job(
     ))
     await db.execute(delete(Application).where(Application.job_id == job_id))
     await db.execute(delete(CandidateProfile).where(CandidateProfile.resume_id.in_(resume_ids_subq)))
+    await db.execute(delete(PublicApplicationSubmission).where(PublicApplicationSubmission.job_id == job_id))
     await db.execute(delete(Interview).where(Interview.job_id == job_id))
     await db.execute(delete(Resume).where(Resume.job_id == job_id))
     await db.execute(delete(ScreeningBatch).where(ScreeningBatch.job_id == job_id))
 
     await db.delete(job)
     await db.commit()
-    
+
+    # Vectors and files go only after the rows are gone: if the commit above
+    # fails, nothing is left pointing at deleted data. A failure here only
+    # leaves unreferenced leftovers, which is logged.
+    if embedding_profile:
+        profile = model_registry.get_profile_by_model(embedding_profile)
+        if profile:
+            try:
+                await vector_store.delete_points_by_filter(profile.collection, {"job_id": job_id})
+            except Exception as e:
+                logger.error(f"Failed to delete Qdrant vectors for job {job_id} in collection {profile.collection}: {e}")
+        else:
+            logger.warning(f"No embedding profile registered for '{embedding_profile}'; skipping Qdrant cleanup for job {job_id}")
+
+    # Resumes are stored by storage_service under
+    # "{STORAGE_LOCAL_DIR}/job_{job_id}/batch_.../..." (see app/api/resumes.py +
+    # app/services/storage.py) - must match that layout exactly or the
+    # on-disk files are silently orphaned.
+    import shutil
+    job_dir = os.path.join(settings.STORAGE_LOCAL_DIR, f"job_{job_id}")
+    if os.path.exists(job_dir):
+        shutil.rmtree(job_dir, ignore_errors=True)
+
     return None
 
 
@@ -459,7 +513,7 @@ async def trigger_screening(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await _get_job_or_404(job_id, db)
+    await _get_job_or_404(job_id, db, current_user.organization_id)
 
     # total_resumes = candidates this run will actually attempt to screen, so
     # the cross-job Processing overview (/jobs/batches/overview) shows real
@@ -482,7 +536,7 @@ async def trigger_embedding_migration(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    job = await _get_job_or_404(job_id, db)
+    job = await _get_job_or_404(job_id, db, current_user.organization_id)
 
     if job.embedding_status == "MIGRATING":
         raise HTTPException(status_code=409, detail="This job's embedding profile is already migrating.")
@@ -512,8 +566,9 @@ async def get_screening_results(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    await _get_job_or_404(job_id, db)
+    await _get_job_or_404(job_id, db, current_user.organization_id)
 
     query = (
         select(
@@ -611,9 +666,10 @@ async def get_screening_results(
 
 @router.get("/{job_id}/results/{resume_id}", response_model=CandidateDetailResponse)
 async def get_candidate_detail(
-    job_id: int, resume_id: int, db: AsyncSession = Depends(get_db)
+    job_id: int, resume_id: int, db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    await _get_job_or_404(job_id, db)
+    await _get_job_or_404(job_id, db, current_user.organization_id)
 
     # Ownership check: resume must belong to this job
     resume_res = await db.execute(
@@ -691,6 +747,22 @@ async def get_candidate_detail(
             evaluation_failed=is_evaluation_failed(screening.notes),
         )
 
+    submission = (
+        await db.execute(
+            select(PublicApplicationSubmission).where(PublicApplicationSubmission.resume_id == resume_id)
+        )
+    ).scalar_one_or_none()
+    self_reported_contact = (
+        SelfReportedContact(
+            name=submission.applicant_name,
+            email=submission.applicant_email,
+            phone=submission.applicant_phone,
+            submitted_at=submission.created_at,
+        )
+        if submission
+        else None
+    )
+
     return CandidateDetailResponse(
         resume_id=resume.id,
         filename=resume.filename,
@@ -699,6 +771,7 @@ async def get_candidate_detail(
         profile=profile_detail,
         screening=screening_response,
         interview=InterviewResponse.model_validate(interview) if interview else None,
+        self_reported_contact=self_reported_contact,
     )
 
 
@@ -712,7 +785,7 @@ async def resync_interview(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await _get_job_or_404(job_id, db)
+    await _get_job_or_404(job_id, db, current_user.organization_id)
 
     result = await db.execute(
         select(Interview).where(
@@ -773,7 +846,7 @@ async def decline_interview(
 ):
     """Manual recruiter action - purely a recorded decision, never inferred
     from transcript/session data. DECLINED is manual-only by design."""
-    await _get_job_or_404(job_id, db)
+    await _get_job_or_404(job_id, db, current_user.organization_id)
 
     result = await db.execute(
         select(Interview).where(
@@ -808,7 +881,7 @@ async def update_screening_decision(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await _get_job_or_404(job_id, db)
+    await _get_job_or_404(job_id, db, current_user.organization_id)
 
     # Ownership check
     resume_res = await db.execute(
@@ -908,7 +981,7 @@ async def retry_candidate_evaluation(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    job = await _get_job_or_404(job_id, db)
+    job = await _get_job_or_404(job_id, db, current_user.organization_id)
 
     resume_res = await db.execute(
         select(Resume).where(Resume.id == resume_id, Resume.job_id == job_id)
@@ -958,7 +1031,11 @@ async def bulk_update_decision(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await _get_job_or_404(job_id, db)
+    await _get_job_or_404(job_id, db, current_user.organization_id)
+    # Every id must be one of this job's resumes - the whole request is
+    # refused otherwise (never a silent partial write, never another
+    # organization's resume).
+    await tenancy.require_resumes_in_job(db, job_id, payload.resume_ids)
 
     # Fetch all matching screening results
     res = await db.execute(
@@ -972,17 +1049,12 @@ async def bulk_update_decision(
     found_resume_ids = {s.resume_id for s in screenings}
 
     # What if they don't have a screening result yet? We create blank ones.
+    # require_resumes_in_job (above) already proved every id in
+    # payload.resume_ids - missing_ids is a subset of that - belongs to this
+    # job, so there's no need to re-verify it here.
     missing_ids = set(payload.resume_ids) - found_resume_ids
     if missing_ids:
-        # Verify resumes actually belong to this job
-        res_resumes = await db.execute(
-            select(Resume.id).where(
-                Resume.job_id == job_id,
-                Resume.id.in_(missing_ids)
-            )
-        )
-        valid_missing_ids = res_resumes.scalars().all()
-        for rid in valid_missing_ids:
+        for rid in missing_ids:
             new_sr = ScreeningResult(
                 job_id=job_id,
                 resume_id=rid,
@@ -1024,95 +1096,70 @@ async def bulk_update_decision(
 
 # -- batch progress ------------------------------------------------------------
 
-@router.get("/{job_id}/progress", response_model=BatchProgressResponse)
-async def get_batch_progress(job_id: int, db: AsyncSession = Depends(get_db)):
-    await _get_job_or_404(job_id, db)
 
-    batches_res = await db.execute(
-        select(ScreeningBatch).where(ScreeningBatch.job_id == job_id)
-    )
-    batches = batches_res.scalars().all()
+@router.get("/{job_id}/progress", response_model=BatchProgressResponse)
+async def get_batch_progress(
+    job_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)
+):
+    await _get_job_or_404(job_id, db, current_user.organization_id)
+
+    batches = (
+        await db.execute(select(ScreeningBatch).where(ScreeningBatch.job_id == job_id))
+    ).scalars().all()
+    screen_batch_ids = [b.id for b in batches if b.batch_type == "SCREEN"]
+    resume_batch_ids = [b.id for b in batches if b.batch_type != "SCREEN"]
+
+    # Resume status counts per UPLOAD/APPLICATION batch, counted live rather
+    # than from the batch's snapshot columns so a deleted resume doesn't keep
+    # showing up. A SCREEN batch has no Resume rows (see
+    # screening_trigger.enqueue_screen_job), so it uses its own snapshot.
+    status_counts: dict[int, dict[str, int]] = {}
+    # Decision counts per batch: a SCREEN batch counts the results its run
+    # created (ScreeningResult.screening_batch_id); an UPLOAD/APPLICATION
+    # batch counts the current decisions of its own resumes.
+    decision_counts: dict[int, dict[str, int]] = {}
+    if resume_batch_ids:
+        for batch_id, status_value, count in (
+            await db.execute(
+                select(Resume.batch_id, Resume.status, func.count(Resume.id))
+                .where(Resume.batch_id.in_(resume_batch_ids))
+                .group_by(Resume.batch_id, Resume.status)
+            )
+        ).all():
+            status_counts.setdefault(batch_id, {})[status_value] = count
+        for batch_id, decision, count in (
+            await db.execute(
+                select(Resume.batch_id, ScreeningResult.decision, func.count(ScreeningResult.id))
+                .join(Resume, Resume.id == ScreeningResult.resume_id)
+                .where(ScreeningResult.job_id == job_id, Resume.batch_id.in_(resume_batch_ids))
+                .group_by(Resume.batch_id, ScreeningResult.decision)
+            )
+        ).all():
+            decision_counts.setdefault(batch_id, {})[decision] = count
+    if screen_batch_ids:
+        for batch_id, decision, count in (
+            await db.execute(
+                select(ScreeningResult.screening_batch_id, ScreeningResult.decision, func.count(ScreeningResult.id))
+                .where(ScreeningResult.screening_batch_id.in_(screen_batch_ids))
+                .group_by(ScreeningResult.screening_batch_id, ScreeningResult.decision)
+            )
+        ).all():
+            decision_counts.setdefault(batch_id, {})[decision] = count
 
     batch_details = []
     for batch in batches:
-        # A SCREEN batch (see screening_trigger.enqueue_screen_job) never has
-        # Resume rows pointing at its batch_id, so total_resumes (assigned
-        # directly there) is the only meaningful total. An UPLOAD batch's
-        # total_resumes is a snapshot taken at upload time and goes stale if
-        # a resume is later deleted from it - live-count it instead so a
-        # deleted resume doesn't keep showing up here.
         if batch.batch_type == "SCREEN":
-            # Same reasoning as total above: a SCREEN batch has no Resume
-            # rows at all under its batch_id, so completed/failed have to
-            # come from the batch's own snapshot columns (kept correct by
-            # the worker's screen_job handling) rather than a Resume count
-            # that would always read 0 - and there's no per-resume
-            # "processing" state during screening to count either.
             total = batch.total_resumes
             completed = batch.processed
             failed_count = batch.failed
             processing = 0
         else:
-            total_res = await db.execute(
-                select(func.count(Resume.id)).where(Resume.batch_id == batch.id)
-            )
-            total = total_res.scalar_one()
-
-            # Count READY resumes as completed
-            completed_res = await db.execute(
-                select(func.count(Resume.id)).where(
-                    Resume.batch_id == batch.id, Resume.status == "READY"
-                )
-            )
-            completed = completed_res.scalar_one()
-
-            failed_res = await db.execute(
-                select(func.count(Resume.id)).where(
-                    Resume.batch_id == batch.id, Resume.status == "FAILED"
-                )
-            )
-            failed_count = failed_res.scalar_one()
-
-            processing_res = await db.execute(
-                select(func.count(Resume.id)).where(
-                    Resume.batch_id == batch.id, Resume.status == "PROCESSING"
-                )
-            )
-            processing = processing_res.scalar_one()
-
-        # Screening decision counts (only for this job - ownership already enforced via batch.job_id)
-        shortlisted_res = await db.execute(
-            select(func.count(ScreeningResult.id)).where(
-                ScreeningResult.job_id == job_id,
-                ScreeningResult.decision == "SHORTLIST",
-            )
-        )
-        shortlisted = shortlisted_res.scalar_one()
-
-        review_res = await db.execute(
-            select(func.count(ScreeningResult.id)).where(
-                ScreeningResult.job_id == job_id,
-                ScreeningResult.decision == "REVIEW",
-            )
-        )
-        review = review_res.scalar_one()
-
-        rejected_res = await db.execute(
-            select(func.count(ScreeningResult.id)).where(
-                ScreeningResult.job_id == job_id,
-                ScreeningResult.decision == "REJECT",
-            )
-        )
-        rejected = rejected_res.scalar_one()
-        
-        pre_screened_out_res = await db.execute(
-            select(func.count(ScreeningResult.id)).where(
-                ScreeningResult.job_id == job_id,
-                ScreeningResult.decision == "PRE_SCREENED_OUT",
-            )
-        )
-        pre_screened_out = pre_screened_out_res.scalar_one()
-
+            counts = status_counts.get(batch.id, {})
+            total = sum(counts.values())
+            completed = counts.get("READY", 0)
+            failed_count = counts.get("FAILED", 0)
+            processing = counts.get("PROCESSING", 0)
+        decisions = decision_counts.get(batch.id, {})
         batch_details.append(
             BatchProgressDetail(
                 batch_id=batch.id,
@@ -1121,14 +1168,26 @@ async def get_batch_progress(job_id: int, db: AsyncSession = Depends(get_db)):
                 processing=processing,
                 completed=completed,
                 failed=failed_count,
-                shortlisted=shortlisted,
-                review=review,
-                rejected=rejected,
-                pre_screened_out=pre_screened_out,
+                shortlisted=decisions.get("SHORTLIST", 0),
+                review=decisions.get("REVIEW", 0),
+                rejected=decisions.get("REJECT", 0),
+                pre_screened_out=decisions.get("PRE_SCREENED_OUT", 0),
                 batch_type=batch.batch_type,
             )
         )
 
-    return BatchProgressResponse(job_id=job_id, batches=batch_details)
+    # READY resumes with no screening result yet - what "Start Screening"
+    # would pick up. Computed here rather than derived from per-batch counts
+    # on the client.
+    unscreened = (
+        await db.execute(
+            select(func.count(Resume.id))
+            .outerjoin(
+                ScreeningResult,
+                (ScreeningResult.resume_id == Resume.id) & (ScreeningResult.job_id == job_id),
+            )
+            .where(Resume.job_id == job_id, Resume.status == "READY", ScreeningResult.id.is_(None))
+        )
+    ).scalar_one()
 
-
+    return BatchProgressResponse(job_id=job_id, batches=batch_details, unscreened=unscreened)

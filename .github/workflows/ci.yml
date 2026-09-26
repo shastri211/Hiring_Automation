@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: screener
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: resume_screener
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U screener -d resume_screener"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+    env:
+      POSTGRES_SERVER: 127.0.0.1
+      POSTGRES_PASSWORD: ci_password
+      REDIS_HOST: 127.0.0.1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - name: Install dependencies
+        run: pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements-dev.txt
+      - name: Migrate the app schema and the isolated test schema
+        run: |
+          alembic upgrade head
+          PGPASSWORD=ci_password psql -h 127.0.0.1 -U screener -d resume_screener -c "CREATE SCHEMA IF NOT EXISTS test_isolation"
+          DB_SCHEMA=test_isolation alembic upgrade head
+      - name: Check models match migrations
+        run: alembic check
+      - name: Tests
+        # No LLM/embedding provider or Qdrant is reached: pytest.ini sets dummy
+        # keys and pins Qdrant to an unused local address, and tests mock
+        # provider calls.
+        run: pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend-v2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend-v2/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build

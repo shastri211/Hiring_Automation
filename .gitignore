@@ -68,7 +68,7 @@ dump.rdb
 *.sqlite
 *.sqlite3
 
-# AI coding-agent artifacts (local configuration/instructions, not part of the app)
+# Local editor and tool configuration (not part of the app)
 .claude/
 .agents/
 .cursor/

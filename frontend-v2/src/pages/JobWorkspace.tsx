@@ -6,6 +6,7 @@ import { api } from '../api';
 import { queryKeys } from '../api/queryKeys';
 import { Button, Card, EmptyState, Spinner, Badge, PageHeader } from '../components/ui';
 import { useConfirm } from '../hooks/useConfirm';
+import { ApplicationLinkCard } from '../components/job/ApplicationLinkCard';
 
 export const JobWorkspace = () => {
   const { id } = useParams<{ id: string }>();
@@ -58,6 +59,9 @@ export const JobWorkspace = () => {
     queryFn: () => api.jobs.getJobProgress(jobId),
     enabled: jobId > 0
   });
+  // Screening runs re-count already-uploaded resumes; only upload and
+  // application batches contribute to the resume totals.
+  const resumeBatches = progress?.batches?.filter((b) => b.batch_type !== 'SCREEN');
 
   if (jobLoading) {
     return (
@@ -165,7 +169,7 @@ export const JobWorkspace = () => {
           title="View all resumes for this job"
         >
           <div className="text-sm font-medium text-[var(--text-secondary)] mb-2">Total Resumes</div>
-          <div className="text-3xl font-bold text-[var(--text-primary)]">{progress?.batches?.reduce((sum, b) => sum + (b.total || 0), 0) ?? '-'}</div>
+          <div className="text-3xl font-bold text-[var(--text-primary)]">{resumeBatches?.reduce((sum, b) => sum + (b.total || 0), 0) ?? '-'}</div>
         </Card>
         <Card
           role="button"
@@ -176,7 +180,7 @@ export const JobWorkspace = () => {
           title="View processed candidates"
         >
           <div className="text-sm font-medium text-[var(--text-secondary)] mb-2">Processed</div>
-          <div className="text-3xl font-bold text-[var(--text-primary)]">{progress?.batches?.reduce((sum, b) => sum + (b.completed || 0), 0) ?? '-'}</div>
+          <div className="text-3xl font-bold text-[var(--text-primary)]">{resumeBatches?.reduce((sum, b) => sum + (b.completed || 0), 0) ?? '-'}</div>
         </Card>
         <Card
           role="button"
@@ -187,7 +191,7 @@ export const JobWorkspace = () => {
           title="View resumes that failed processing"
         >
           <div className="text-sm font-medium text-[var(--color-danger-subtle-text)] mb-2">Failed</div>
-          <div className="text-3xl font-bold text-[var(--color-danger-subtle-text)]">{progress?.batches?.reduce((sum, b) => sum + (b.failed || 0), 0) ?? '-'}</div>
+          <div className="text-3xl font-bold text-[var(--color-danger-subtle-text)]">{resumeBatches?.reduce((sum, b) => sum + (b.failed || 0), 0) ?? '-'}</div>
         </Card>
       </div>
 
@@ -226,6 +230,8 @@ export const JobWorkspace = () => {
         </div>
 
         <div className="flex flex-col gap-8">
+          {job.status !== 'ARCHIVED' && <ApplicationLinkCard job={job} />}
+
           <section>
             <h3 className="text-card-title mb-4 pb-2 border-b border-[var(--border-light)]">Required Skills</h3>
             {job.required_skills && job.required_skills.length > 0 ? (

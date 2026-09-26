@@ -3,7 +3,7 @@ import re
 import uuid
 import aiofiles
 import hashlib
-from typing import BinaryIO, Callable, Tuple
+from typing import Callable, Tuple
 from fastapi import UploadFile
 from app.core.config import settings
 
@@ -134,5 +134,19 @@ class StorageService:
         if not full_path.startswith(os.path.abspath(self.base_dir)):
             return None
         return full_path
+
+    def delete_file(self, storage_key: str) -> bool:
+        """Best-effort removal of a stored file, confined to base_dir via
+        get_secure_path. Returns True if a file was removed. Only for files
+        no DB row references (e.g. the loser of a concurrent duplicate
+        insert race) - never for a live Resume's file."""
+        full_path = self.get_secure_path(storage_key)
+        if not full_path:
+            return False
+        try:
+            os.remove(full_path)
+            return True
+        except OSError:
+            return False
 
 storage_service = StorageService()

@@ -1,8 +1,13 @@
 from pydantic_settings import BaseSettings
 
+
+def _url_host(host: str) -> str:
+    """An IPv6 literal must be bracketed inside a URL's authority, or its
+    colons are read as the port separator."""
+    return f"[{host}]" if ":" in host and not host.startswith("[") else host
+
+
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "Resume Screener"
-    
     # Database
     POSTGRES_USER: str = "screener"
     POSTGRES_PASSWORD: str = "screener_password"
@@ -21,15 +26,20 @@ class Settings(BaseSettings):
     def SQLALCHEMY_DATABASE_URI(self) -> str:
         import urllib.parse
         encoded_password = urllib.parse.quote_plus(self.POSTGRES_PASSWORD)
-        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{encoded_password}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{encoded_password}@{_url_host(self.POSTGRES_SERVER)}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
     
     # Redis
     REDIS_HOST: str = "127.0.0.1"
     REDIS_PORT: int = 6379
-    
+    # Logical Redis database. The test suite (pytest.ini) uses its own so
+    # queue messages it enqueues - carrying ids from the isolated test
+    # schema - never reach the dev worker's stream, the same reason
+    # DB_SCHEMA exists for Postgres.
+    REDIS_DB: int = 0
+
     @property
     def REDIS_URL(self) -> str:
-        return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0"
+        return f"redis://{_url_host(self.REDIS_HOST)}:{self.REDIS_PORT}/{self.REDIS_DB}"
         
     # Qdrant
     QDRANT_URL: str = "http://localhost:6333"
@@ -41,8 +51,6 @@ class Settings(BaseSettings):
     EMBEDDING_DIMENSION: int = 768
     SENTENCE_TRANSFORMERS_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
     QDRANT_COLLECTION: str = "resume_candidates_768"
-    QDRANT_COLLECTION_V2: str = "resume_candidates_v2_768"
-    QDRANT_COLLECTION_LOCAL_V2: str = "resume_candidates_local_v2_384"
     
     # LLM Providers (API Keys)
     GROQ_API_KEY: str | None = None
@@ -114,6 +122,34 @@ class Settings(BaseSettings):
     INTERVIEW_MAX_RETRY_ATTEMPTS: int = 2
     INTERVIEW_NO_SHOW_SWEEP_INTERVAL_SECONDS: int = 900
 
+    # Public candidate apply link (app/api/public_application.py).
+    # Fixed one-hour windows, counted in Redis.
+    PUBLIC_APPLY_MAX_PER_IP_PER_HOUR: int = 5
+    PUBLIC_APPLY_MAX_PER_JOB_PER_HOUR: int = 100
+    # Recovery sweep for applications whose queue enqueue was never
+    # confirmed (see PublicApplicationSubmission.enqueued_at).
+    PUBLIC_APPLY_REQUEUE_SWEEP_INTERVAL_SECONDS: int = 60
+    PUBLIC_APPLY_REQUEUE_MIN_AGE_SECONDS: int = 120
+    # Same recovery for recruiter uploads (Resume.enqueued_at), run in the
+    # same worker sweep loop.
+    UPLOAD_REQUEUE_MIN_AGE_SECONDS: int = 120
+
+    # Self-service company signup / email verification (app/api/auth.py).
+    # Fixed one-hour windows in Redis; the per-email key is a hash.
+    SIGNUP_MAX_PER_IP_PER_HOUR: int = 5
+    VERIFY_RESEND_MAX_PER_IP_PER_HOUR: int = 10
+    VERIFY_RESEND_MAX_PER_EMAIL_PER_HOUR: int = 3
+    FORGOT_PASSWORD_MAX_PER_IP_PER_HOUR: int = 10
+    FORGOT_PASSWORD_MAX_PER_EMAIL_PER_HOUR: int = 3
+    # Failed-login lockout (app/api/auth.py): once an email or a client IP
+    # reaches its limit of failed attempts inside the window, further
+    # attempts - even with the right password - are refused until it ends.
+    LOGIN_FAILURE_WINDOW_SECONDS: int = 900
+    LOGIN_MAX_FAILURES_PER_EMAIL: int = 5
+    LOGIN_MAX_FAILURES_PER_IP: int = 50
+    # Platform-admin provider connectivity tests (real provider calls).
+    PLATFORM_PROVIDER_TEST_MAX_PER_IP_PER_HOUR: int = 20
+
 
     @property
     def gemini_ocr_model(self) -> str:
@@ -151,7 +187,6 @@ class Settings(BaseSettings):
     
     # Storage & Screening Config
     STORAGE_LOCAL_DIR: str = "uploads"
-    RETRIEVAL_TOP_K: int = 50
 
     # Resume upload limits (defense against disk-fill DoS / accidental huge batches).
     MAX_RESUME_FILE_SIZE_MB: int = 15

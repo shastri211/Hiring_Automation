@@ -1,7 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from app.services.vector_store import QdrantVectorStore
-from qdrant_client.models import PointStruct
 from app.core.config import settings
 
 
