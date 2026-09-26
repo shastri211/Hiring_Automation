@@ -70,3 +70,12 @@ class MeResponse(UserResponse):
     organization: OrganizationSummary
     is_platform_admin: bool = False
     must_change_password: bool = False
+
+
+class ForgotPasswordRequest(_NormalizedEmail):
+    pass
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str

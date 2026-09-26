@@ -300,6 +300,7 @@ NO_IDENTIFIER_INPUT = {
 NOT_HR_AUTHENTICATED = {
     ("GET", "/health"), ("POST", "/auth/login"), ("POST", "/auth/logout"), ("POST", "/auth/signup"),
     ("POST", "/auth/verify-email"), ("POST", "/auth/resend-verification"),
+    ("POST", "/auth/forgot-password"), ("POST", "/auth/reset-password"),
     ("POST", "/integration/interview/status"), ("POST", "/integration/interview/transcript"),
     ("POST", "/integration/interview/evaluation"),
     ("GET", "/public/interview/{token}"), ("POST", "/public/interview/{token}/started"),

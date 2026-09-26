@@ -13,10 +13,12 @@ from app.models.organization import Organization
 from app.models.user import User
 from app.schemas.auth import (
     ChangePasswordRequest,
+    ForgotPasswordRequest,
     LoginRequest,
     MeResponse,
     OrganizationSummary,
     ResendVerificationRequest,
+    ResetPasswordRequest,
     SignupRequest,
     UserCreate,
     UserResponse,
@@ -27,10 +29,14 @@ from app.services import rate_limit
 from app.services.auth import (
     EMAIL_FORMAT_RE,
     MIN_PASSWORD_LENGTH,
+    RESET_PASSWORD_TOKEN_TTL_MINUTES,
     create_access_token,
+    create_password_reset_token,
     create_verification_token,
+    decode_password_reset_token,
     decode_verification_token,
     hash_password,
+    password_fingerprint_matches,
     verify_password,
 )
 from app.services.email import email_service
@@ -111,10 +117,100 @@ async def _send_verification_email(user_id: int, email: str) -> None:
         logger.warning("Verification email could not be sent for user %s.", user_id, exc_info=True)
 
 
+async def _send_password_reset_email(user: User) -> None:
+    """Best effort, like _send_verification_email: an SMTP failure is
+    logged (user id only) and swallowed - the response never reveals it."""
+    if not settings.PUBLIC_APP_BASE_URL:
+        logger.warning(
+            "PUBLIC_APP_BASE_URL is not set - can't build a password reset link for user %s.", user.id
+        )
+        return
+    token = create_password_reset_token(user.id, user.hashed_password)
+    link = f"{settings.PUBLIC_APP_BASE_URL.rstrip('/')}/reset-password?token={token}"
+    body = (
+        "We received a request to reset the password for your RecruitPro account.\n\n"
+        "Choose a new password here:\n"
+        f"{link}\n\n"
+        f"This link expires in {RESET_PASSWORD_TOKEN_TTL_MINUTES} minutes and works once. "
+        "If you didn't ask for this, you can ignore this email - your password stays the same."
+    )
+    try:
+        await email_service.provider.send_email(user.email, "Reset your password", body)
+    except Exception:
+        logger.warning("Password reset email could not be sent for user %s.", user.id, exc_info=True)
+
+
+def _set_session_cookie(response: Response, user: User) -> None:
+    response.set_cookie(
+        "access_token",
+        create_access_token(user.id, user.hashed_password),
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite="lax",
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
+
+
+# -- failed-login lockout -----------------------------------------------------
+# Only failures count. Fails open when Redis is unreachable: an unavailable
+# limiter must not lock every user out of sign-in (unlike the anonymous
+# signup/apply endpoints, which fail closed).
+
+def _login_failure_email_key(email: str) -> str:
+    return f"login_fail:email:{rate_limit.hash_identifier(email)}"
+
+
+def _login_failure_limits(request: Request, email: str) -> list[tuple[str, int]]:
+    return [
+        (_client_ip_key("login_fail", request), settings.LOGIN_MAX_FAILURES_PER_IP),
+        (_login_failure_email_key(email), settings.LOGIN_MAX_FAILURES_PER_EMAIL),
+    ]
+
+
+async def _refuse_if_locked_out(limits: list[tuple[str, int]]) -> None:
+    try:
+        for key, limit in limits:
+            count, retry_after = await rate_limit.peek(key, settings.LOGIN_FAILURE_WINDOW_SECONDS)
+            if count >= limit:
+                minutes = -(-retry_after // 60)
+                plural = "minute" if minutes == 1 else "minutes"
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail={
+                        "reason": "too_many_login_attempts",
+                        "message": f"Too many failed sign-in attempts. Try again in {minutes} {plural}.",
+                    },
+                    headers={"Retry-After": str(retry_after)},
+                )
+    except rate_limit.RateLimiterUnavailable:
+        logger.error("Login rate limiter unavailable (Redis unreachable); not enforcing lockout.")
+
+
+async def _record_login_failure(limits: list[tuple[str, int]]) -> None:
+    try:
+        for key, _limit in limits:
+            await rate_limit.hit(key, settings.LOGIN_FAILURE_WINDOW_SECONDS)
+    except rate_limit.RateLimiterUnavailable:
+        logger.error("Login rate limiter unavailable (Redis unreachable); failure not counted.")
+
+
+async def _clear_login_failures(email: str) -> None:
+    try:
+        await rate_limit.clear(_login_failure_email_key(email), settings.LOGIN_FAILURE_WINDOW_SECONDS)
+    except rate_limit.RateLimiterUnavailable:
+        logger.error("Login rate limiter unavailable (Redis unreachable); failures not cleared.")
+
+
 # -- session ------------------------------------------------------------------
 
 @router.post("/login", response_model=MeResponse)
-async def login(payload: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
+async def login(payload: LoginRequest, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+    # Checked before the password, so a locked-out email or IP can't keep
+    # guessing. Unknown emails count too, so the lockout itself never
+    # reveals whether an account exists.
+    failure_limits = _login_failure_limits(request, payload.email)
+    await _refuse_if_locked_out(failure_limits)
+
     result = await db.execute(select(User).where(User.email == payload.email))
     user = result.scalar_one_or_none()
 
@@ -122,6 +218,7 @@ async def login(payload: LoginRequest, response: Response, db: AsyncSession = De
         payload.password, user.hashed_password if user else _DUMMY_PASSWORD_HASH
     )
     if user is None or not user.is_active or not password_ok:
+        await _record_login_failure(failure_limits)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_INVALID_CREDENTIALS_DETAIL)
 
     # Only reachable with the correct password, so it can't be used to
@@ -129,15 +226,8 @@ async def login(payload: LoginRequest, response: Response, db: AsyncSession = De
     if user.email_verified_at is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail={"reason": "email_not_verified"})
 
-    token = create_access_token(user.id)
-    response.set_cookie(
-        "access_token",
-        token,
-        httponly=True,
-        secure=settings.COOKIE_SECURE,
-        samesite="lax",
-        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-    )
+    await _clear_login_failures(payload.email)
+    _set_session_cookie(response, user)
     return await _me(db, user)
 
 
@@ -160,6 +250,7 @@ async def me(current_user: User = Depends(get_authenticated_user), db: AsyncSess
 @router.post("/change-password")
 async def change_password(
     payload: ChangePasswordRequest,
+    response: Response,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_authenticated_user),
 ):
@@ -174,6 +265,9 @@ async def change_password(
     current_user.hashed_password = hash_password(payload.new_password)
     current_user.must_change_password = False
     await db.commit()
+    # The change invalidates every existing session (see
+    # password_fingerprint) - including this one, so issue a fresh cookie.
+    _set_session_cookie(response, current_user)
     return {"success": True}
 
 
@@ -257,6 +351,51 @@ async def resend_verification(
     if user is not None and user.is_active and user.email_verified_at is None:
         await _send_verification_email(user.id, user.email)
     return _CHECK_INBOX
+
+
+# -- forgotten password -------------------------------------------------------
+
+@router.post("/forgot-password", status_code=status.HTTP_202_ACCEPTED)
+async def forgot_password(payload: ForgotPasswordRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    await rate_limit.enforce(
+        _client_ip_key("forgot", request), settings.FORGOT_PASSWORD_MAX_PER_IP_PER_HOUR
+    )
+    await rate_limit.enforce(
+        f"forgot:email:{rate_limit.hash_identifier(payload.email)}",
+        settings.FORGOT_PASSWORD_MAX_PER_EMAIL_PER_HOUR,
+    )
+    user = (await db.execute(select(User).where(User.email == payload.email))).scalar_one_or_none()
+    # Unverified accounts recover through resend-verification instead.
+    if user is not None and user.is_active and user.email_verified_at is not None:
+        await _send_password_reset_email(user)
+    return _CHECK_INBOX
+
+
+@router.post("/reset-password")
+async def reset_password(payload: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+    invalid = HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"reason": "invalid_or_expired_token"})
+    decoded = decode_password_reset_token(payload.token)  # purpose-checked
+    if decoded is None:
+        raise invalid
+    user_id, password_claim = decoded
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if (
+        user is None
+        or not user.is_active
+        or user.email_verified_at is None
+        # Already used, or the password changed since it was issued.
+        or not password_fingerprint_matches(password_claim, user.hashed_password)
+    ):
+        raise invalid
+    _require_password_strength(payload.new_password)
+
+    user.hashed_password = hash_password(payload.new_password)
+    # The emailed link proves ownership of the address, so this also
+    # replaces an admin-issued temporary password.
+    user.must_change_password = False
+    await db.commit()
+    await _clear_login_failures(user.email)
+    return {"status": "password_reset"}
 
 
 # -- organization user management ---------------------------------------------
