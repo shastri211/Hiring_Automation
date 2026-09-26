@@ -30,6 +30,8 @@ import { RequirePlatformAdmin } from '../components/auth/RequirePlatformAdmin';
 import { Signup } from '../pages/Signup';
 import { VerifyEmail } from '../pages/VerifyEmail';
 import { ChangePassword } from '../pages/ChangePassword';
+import { ForgotPassword } from '../pages/ForgotPassword';
+import { ResetPassword } from '../pages/ResetPassword';
 
 const RouteError = () => {
   const error = useRouteError();
@@ -201,6 +203,17 @@ const router = createBrowserRouter([
   {
     path: '/verify-email',
     element: <VerifyEmail />,
+    errorElement: <RouteError />
+  },
+  // Public forgotten-password request and the emailed reset-link landing.
+  {
+    path: '/forgot-password',
+    element: <ForgotPassword />,
+    errorElement: <RouteError />
+  },
+  {
+    path: '/reset-password',
+    element: <ResetPassword />,
     errorElement: <RouteError />
   }
 ]);

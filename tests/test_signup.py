@@ -239,7 +239,7 @@ async def test_verify_rejects_expired_tampered_and_wrong_purpose_tokens(client, 
     expired = auth_service._encode(user.id, auth_service.VERIFY_EMAIL_PURPOSE, timedelta(seconds=-5))
     valid = create_verification_token(user.id)
     tampered = valid[:-3] + ("AAA" if not valid.endswith("AAA") else "BBB")
-    session_token = create_access_token(user.id)
+    session_token = create_access_token(user.id, user.hashed_password)
     no_purpose = auth_service.jwt.encode(
         {"sub": str(user.id), "exp": datetime.now(timezone.utc) + timedelta(hours=1)},
         auth_service.settings.SECRET_KEY,
@@ -272,13 +272,13 @@ async def test_verification_token_is_not_a_session(client, db_session, limiter, 
     client.cookies.set("access_token", no_purpose)
     assert (await client.get("/auth/me")).status_code == 401
 
-    client.cookies.set("access_token", create_access_token(user.id))
+    client.cookies.set("access_token", create_access_token(user.id, user.hashed_password))
     assert (await client.get("/auth/me")).status_code == 200
 
 
 async def test_session_token_cannot_verify_email(client, db_session, limiter, mock_send):
     user, _ = await _signed_up_user(client, db_session, mock_send)
-    res = await client.post("/auth/verify-email", json={"token": create_access_token(user.id)})
+    res = await client.post("/auth/verify-email", json={"token": create_access_token(user.id, user.hashed_password)})
     assert res.status_code == 400
     assert (await _user(db_session, user.email)).email_verified_at is None
 

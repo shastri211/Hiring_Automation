@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import logging
 import re
 from datetime import datetime, timedelta, timezone
@@ -33,8 +35,10 @@ def verify_password(password: str, hashed_password: str) -> bool:
 # existed) is rejected by every decoder.
 SESSION_PURPOSE = "session"
 VERIFY_EMAIL_PURPOSE = "verify_email"
+RESET_PASSWORD_PURPOSE = "reset_password"
 
 VERIFY_EMAIL_TOKEN_TTL_HOURS = 24
+RESET_PASSWORD_TOKEN_TTL_MINUTES = 60
 
 # Shared by signup, change-password and admin-created accounts.
 MIN_PASSWORD_LENGTH = 8
@@ -57,19 +61,33 @@ def normalize_user_email(email: str | None) -> str:
 EMAIL_FORMAT_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
-def _encode(user_id: int, purpose: str, expires_delta: timedelta) -> str:
+def password_fingerprint(hashed_password: str) -> str:
+    """A short digest of the user's current password hash, embedded in
+    session and password-reset tokens. Any password change alters it, which
+    invalidates every token issued before - so a reset or change logs out
+    all other sessions, and a reset link works only once."""
+    return hashlib.sha256(hashed_password.encode("utf-8")).hexdigest()[:32]
+
+
+def password_fingerprint_matches(claim: str | None, hashed_password: str) -> bool:
+    return claim is not None and hmac.compare_digest(claim, password_fingerprint(hashed_password))
+
+
+def _encode(user_id: int, purpose: str, expires_delta: timedelta, hashed_password: str | None = None) -> str:
     payload = {
         "sub": str(user_id),
         "purpose": purpose,
         "exp": datetime.now(timezone.utc) + expires_delta,
     }
+    if hashed_password is not None:
+        payload["pwd"] = password_fingerprint(hashed_password)
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=JWT_ALGORITHM)
 
 
-def _decode(token: str, purpose: str) -> int | None:
-    """Returns the user id iff the token is validly signed, unexpired, and
-    carries exactly `purpose`. The purpose is checked before `sub` is
-    trusted. Never raises."""
+def _decode(token: str, purpose: str) -> tuple[int, str | None] | None:
+    """Returns (user id, password fingerprint claim or None) iff the token is
+    validly signed, unexpired, and carries exactly `purpose`. The purpose is
+    checked before `sub` is trusted. Never raises."""
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[JWT_ALGORITHM])
         if payload.get("purpose") != purpose:
@@ -77,20 +95,24 @@ def _decode(token: str, purpose: str) -> int | None:
         sub = payload.get("sub")
         if sub is None:
             return None
-        return int(sub)
+        return int(sub), payload.get("pwd")
     except (jwt.PyJWTError, ValueError, TypeError):
         return None
 
 
-def create_access_token(user_id: int) -> str:
-    """Issue a signed session JWT (`purpose` = "session")."""
-    return _encode(user_id, SESSION_PURPOSE, timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES))
+def create_access_token(user_id: int, hashed_password: str) -> str:
+    """Issue a signed session JWT (`purpose` = "session"), bound to the
+    user's current password (see password_fingerprint)."""
+    return _encode(
+        user_id, SESSION_PURPOSE, timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES), hashed_password
+    )
 
 
-def decode_access_token(token: str) -> int | None:
-    """Decode a session token, returning the user id - None for any
-    missing/invalid/expired/malformed token or any non-session purpose, so
-    callers (get_authenticated_user) can uniformly turn that into a 401."""
+def decode_access_token(token: str) -> tuple[int, str | None] | None:
+    """Decode a session token into (user id, password fingerprint claim) -
+    None for any missing/invalid/expired/malformed token or any non-session
+    purpose. The caller (get_authenticated_user) still has to check the
+    fingerprint against the user's current password."""
     return _decode(token, SESSION_PURPOSE)
 
 
@@ -100,4 +122,18 @@ def create_verification_token(user_id: int) -> str:
 
 def decode_verification_token(token: str) -> int | None:
     """Only accepts `purpose` = "verify_email" - a session token is rejected."""
-    return _decode(token, VERIFY_EMAIL_PURPOSE)
+    decoded = _decode(token, VERIFY_EMAIL_PURPOSE)
+    return decoded[0] if decoded else None
+
+
+def create_password_reset_token(user_id: int, hashed_password: str) -> str:
+    """Bound to the current password, so it stops working once used."""
+    return _encode(
+        user_id, RESET_PASSWORD_PURPOSE, timedelta(minutes=RESET_PASSWORD_TOKEN_TTL_MINUTES), hashed_password
+    )
+
+
+def decode_password_reset_token(token: str) -> tuple[int, str | None] | None:
+    """Only accepts `purpose` = "reset_password"; the caller checks the
+    fingerprint against the user's current password."""
+    return _decode(token, RESET_PASSWORD_PURPOSE)

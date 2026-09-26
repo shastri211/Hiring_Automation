@@ -163,6 +163,8 @@ KNOWN_PUBLIC_AUTH_ROUTES = {
     ("/auth/signup", ("POST",)),
     ("/auth/verify-email", ("POST",)),
     ("/auth/resend-verification", ("POST",)),
+    ("/auth/forgot-password", ("POST",)),
+    ("/auth/reset-password", ("POST",)),
 }
 
 

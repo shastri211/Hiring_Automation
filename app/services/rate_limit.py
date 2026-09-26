@@ -36,16 +36,20 @@ def hash_identifier(value: str) -> str:
     return hashlib.sha256((value or "").encode()).hexdigest()[:16]
 
 
+def _window(key: str, window_seconds: int) -> Tuple[str, int]:
+    """(Redis key for the current fixed window, seconds until it ends)."""
+    now = int(time.time())
+    window = now // window_seconds
+    return f"ratelimit:{key}:{window}", max((window + 1) * window_seconds - now, 1)
+
+
 async def check(key: str, limit: int, window_seconds: int) -> Tuple[bool, int]:
     """Count one hit against `key` in the current fixed window.
 
     Returns (allowed, retry_after_seconds). The hit is counted even when
     over the limit, so hammering doesn't reset anything.
     """
-    now = int(time.time())
-    window = now // window_seconds
-    redis_key = f"ratelimit:{key}:{window}"
-    retry_after = (window + 1) * window_seconds - now
+    redis_key, retry_after = _window(key, window_seconds)
     try:
         pipe = queue_service.redis_client.pipeline(transaction=True)
         pipe.incr(redis_key)
@@ -53,7 +57,40 @@ async def check(key: str, limit: int, window_seconds: int) -> Tuple[bool, int]:
         count, _ = await pipe.execute()
     except Exception as e:
         raise RateLimiterUnavailable(str(e)) from e
-    return int(count) <= limit, max(retry_after, 1)
+    return int(count) <= limit, retry_after
+
+
+# Counting only some requests (e.g. failed logins) instead of every one:
+# peek before acting, hit when the counted outcome happens, clear on success.
+
+async def peek(key: str, window_seconds: int) -> Tuple[int, int]:
+    """(hits so far in the current window, retry_after_seconds), without
+    counting a new hit."""
+    redis_key, retry_after = _window(key, window_seconds)
+    try:
+        count = await queue_service.redis_client.get(redis_key)
+    except Exception as e:
+        raise RateLimiterUnavailable(str(e)) from e
+    return int(count or 0), retry_after
+
+
+async def hit(key: str, window_seconds: int) -> None:
+    redis_key, _ = _window(key, window_seconds)
+    try:
+        pipe = queue_service.redis_client.pipeline(transaction=True)
+        pipe.incr(redis_key)
+        pipe.expire(redis_key, window_seconds + 60)
+        await pipe.execute()
+    except Exception as e:
+        raise RateLimiterUnavailable(str(e)) from e
+
+
+async def clear(key: str, window_seconds: int) -> None:
+    redis_key, _ = _window(key, window_seconds)
+    try:
+        await queue_service.redis_client.delete(redis_key)
+    except Exception as e:
+        raise RateLimiterUnavailable(str(e)) from e
 
 
 async def enforce(key: str, limit: int, window_seconds: int = HOUR_SECONDS) -> None:

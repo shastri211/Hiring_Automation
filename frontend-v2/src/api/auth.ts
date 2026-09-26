@@ -21,6 +21,13 @@ export const authApi = {
   resendVerification: (email: string): Promise<{ status: string }> =>
     apiClient.post('/auth/resend-verification', { email }),
 
+  // Public - always the same generic 202 {status: "check_inbox"}.
+  forgotPassword: (email: string): Promise<{ status: string }> =>
+    apiClient.post('/auth/forgot-password', { email }),
+
+  resetPassword: (token: string, newPassword: string): Promise<{ status: string }> =>
+    apiClient.post('/auth/reset-password', { token, new_password: newPassword }),
+
   // Organization user management (admin-only on the server).
   createUser: (payload: UserCreate): Promise<UserResponse> => apiClient.post('/auth/users', payload),
 

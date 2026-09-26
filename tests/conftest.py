@@ -82,6 +82,19 @@ async def _reset_test_schema():
             text("SELECT setval(pg_get_serial_sequence('organizations', 'id'), :id)"), {"id": TEST_ORG_ID}
         )
 
+    # Same idea for Redis: the suite uses its own database (pytest.ini's
+    # REDIS_DB), cleared of leftover queue and rate-limit keys once per
+    # session. Never runs against the dev database (0).
+    if settings.REDIS_DB != 0:
+        from app.services.queue import queue_service
+        client = queue_service.redis_client
+        try:
+            stale = [queue_service.stream_name, queue_service.retry_hash]
+            stale += [key async for key in client.scan_iter("ratelimit:*")]
+            await client.delete(*stale)
+        except Exception:
+            pass  # Redis down - tests that need it mock or fail on their own.
+
     yield
 
 @pytest.fixture(autouse=True)

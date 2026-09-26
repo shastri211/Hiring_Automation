@@ -26,10 +26,15 @@ class Settings(BaseSettings):
     # Redis
     REDIS_HOST: str = "127.0.0.1"
     REDIS_PORT: int = 6379
-    
+    # Logical Redis database. The test suite (pytest.ini) uses its own so
+    # queue messages it enqueues - carrying ids from the isolated test
+    # schema - never reach the dev worker's stream, the same reason
+    # DB_SCHEMA exists for Postgres.
+    REDIS_DB: int = 0
+
     @property
     def REDIS_URL(self) -> str:
-        return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0"
+        return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
         
     # Qdrant
     QDRANT_URL: str = "http://localhost:6333"
@@ -128,6 +133,14 @@ class Settings(BaseSettings):
     SIGNUP_MAX_PER_IP_PER_HOUR: int = 5
     VERIFY_RESEND_MAX_PER_IP_PER_HOUR: int = 10
     VERIFY_RESEND_MAX_PER_EMAIL_PER_HOUR: int = 3
+    FORGOT_PASSWORD_MAX_PER_IP_PER_HOUR: int = 10
+    FORGOT_PASSWORD_MAX_PER_EMAIL_PER_HOUR: int = 3
+    # Failed-login lockout (app/api/auth.py): once an email or a client IP
+    # reaches its limit of failed attempts inside the window, further
+    # attempts - even with the right password - are refused until it ends.
+    LOGIN_FAILURE_WINDOW_SECONDS: int = 900
+    LOGIN_MAX_FAILURES_PER_EMAIL: int = 5
+    LOGIN_MAX_FAILURES_PER_IP: int = 50
     # Platform-admin provider connectivity tests (real provider calls).
     PLATFORM_PROVIDER_TEST_MAX_PER_IP_PER_HOUR: int = 20
 
