@@ -20,7 +20,6 @@ Coverage required by the acceptance criteria:
 - conservative handling of uncertain / ambiguous fields
 """
 
-import pytest
 from app.services.extractor.local_profiler import LocalProfilerService
 
 # ---------------------------------------------------------------------------
@@ -651,20 +650,3 @@ class TestConservativeHandling:
         assert exp == [] or all(
             isinstance(e, dict) for e in exp
         ), "Experience must be list of dicts or empty"
-
-
-# ===========================================================================
-# 11. Profile job (unchanged API)
-# ===========================================================================
-
-class TestProfileJob:
-
-    def test_profile_job_returns_string(self):
-        jd = (
-            "Python Backend Developer\n"
-            "We need a developer with 3+ years of Python experience.\n"
-            "Skills: Python, FastAPI, PostgreSQL\n"
-        )
-        result = LocalProfilerService.profile_job(jd)
-        assert isinstance(result, str)
-        assert len(result) > 0

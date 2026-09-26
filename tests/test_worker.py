@@ -2,14 +2,11 @@ import asyncio
 import logging
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from app.models.resume import Resume
-from app.models.profile import CandidateProfile
 from app.models.job import Job
 from app.services.orchestrator import orchestrator
 from app.worker import worker_loop, fail_task_permanently
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import patch, AsyncMock
 from tenancy_fixtures import TEST_ORG_ID
 
 @pytest.mark.asyncio

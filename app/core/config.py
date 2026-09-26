@@ -1,8 +1,6 @@
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "Resume Screener"
-    
     # Database
     POSTGRES_USER: str = "screener"
     POSTGRES_PASSWORD: str = "screener_password"
@@ -46,8 +44,6 @@ class Settings(BaseSettings):
     EMBEDDING_DIMENSION: int = 768
     SENTENCE_TRANSFORMERS_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
     QDRANT_COLLECTION: str = "resume_candidates_768"
-    QDRANT_COLLECTION_V2: str = "resume_candidates_v2_768"
-    QDRANT_COLLECTION_LOCAL_V2: str = "resume_candidates_local_v2_384"
     
     # LLM Providers (API Keys)
     GROQ_API_KEY: str | None = None
@@ -184,7 +180,6 @@ class Settings(BaseSettings):
     
     # Storage & Screening Config
     STORAGE_LOCAL_DIR: str = "uploads"
-    RETRIEVAL_TOP_K: int = 50
 
     # Resume upload limits (defense against disk-fill DoS / accidental huge batches).
     MAX_RESUME_FILE_SIZE_MB: int = 15

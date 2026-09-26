@@ -4,7 +4,6 @@ import pytest
 from httpx import AsyncClient
 from unittest.mock import patch
 
-from app.main import app
 from app.models.resume import Resume
 from app.models.job import Job
 from app.models.interview import Interview

@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import patch
 from app.services.llm_provider import LLMProviderFactory, BaseProvider, RateLimitError, LLMError, LLMExhaustionError
 from app.services.model_registry import model_registry, LLMModelConfig
 

@@ -206,12 +206,6 @@ class LocalProfilerService:
         confidence = cls._calculate_confidence(extracted_text, sections, local_profile)
         return local_profile, canonical_text, confidence
 
-    @classmethod
-    def profile_job(cls, job_text: str) -> str:
-        """Return canonical text for a job description (for embedding)."""
-        sections = cls._segment_text(job_text)
-        return cls._build_canonical_text(job_text, sections)
-
     # ------------------------------------------------------------------ #
     # Section segmentation                                                 #
     # ------------------------------------------------------------------ #

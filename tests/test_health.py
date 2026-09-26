@@ -37,7 +37,7 @@ async def test_health_check_reports_qdrant_down(client: AsyncClient):
 
         response = await client.get("/health")
 
-        assert response.status_code == 200
+        assert response.status_code == 503
         body = response.json()
         assert body["status"] == "error"
         assert body["qdrant"] == "error"

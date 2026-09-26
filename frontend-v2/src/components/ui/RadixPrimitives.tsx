@@ -1,7 +1,5 @@
 import React, { forwardRef } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import * as TooltipPrimitive from '@radix-ui/react-tooltip';
-import * as TabsPrimitive from '@radix-ui/react-tabs';
 import * as ProgressPrimitive from '@radix-ui/react-progress';
 import * as SelectPrimitive from '@radix-ui/react-select';
 import { X, Check, ChevronDown } from 'lucide-react';
@@ -67,36 +65,6 @@ export const DialogDescription = forwardRef<React.ElementRef<typeof DialogPrimit
   )
 );
 DialogDescription.displayName = DialogPrimitive.Description.displayName;
-
-// -----------------------------------------------------------------------------
-// Tabs
-// -----------------------------------------------------------------------------
-export const Tabs = TabsPrimitive.Root;
-
-export const TabsList = forwardRef<React.ElementRef<typeof TabsPrimitive.List>, React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>>(
-  ({ className, ...props }, ref) => (
-    <TabsPrimitive.List ref={ref} className={cn("inline-flex h-10 items-center justify-center rounded-md bg-[var(--bg-hover)] p-1 text-[var(--text-secondary)]", className)} {...props} />
-  )
-);
-TabsList.displayName = TabsPrimitive.List.displayName;
-
-export const TabsTrigger = forwardRef<React.ElementRef<typeof TabsPrimitive.Trigger>, React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>>(
-  ({ className, ...props }, ref) => (
-    <TabsPrimitive.Trigger
-      ref={ref}
-      className={cn("inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-[var(--bg-surface)] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-[var(--bg-surface)] data-[state=active]:text-[var(--text-primary)] data-[state=active]:shadow-sm", className)}
-      {...props}
-    />
-  )
-);
-TabsTrigger.displayName = TabsPrimitive.Trigger.displayName;
-
-export const TabsContent = forwardRef<React.ElementRef<typeof TabsPrimitive.Content>, React.ComponentPropsWithoutRef<typeof TabsPrimitive.Content>>(
-  ({ className, ...props }, ref) => (
-    <TabsPrimitive.Content ref={ref} className={cn("mt-2 ring-offset-[var(--bg-surface)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2", className)} {...props} />
-  )
-);
-TabsContent.displayName = TabsPrimitive.Content.displayName;
 
 // -----------------------------------------------------------------------------
 // Select
@@ -186,22 +154,3 @@ export const Progress = forwardRef<React.ElementRef<typeof ProgressPrimitive.Roo
   )
 );
 Progress.displayName = ProgressPrimitive.Root.displayName;
-
-// -----------------------------------------------------------------------------
-// Tooltip
-// -----------------------------------------------------------------------------
-export const TooltipProvider = TooltipPrimitive.Provider;
-export const Tooltip = TooltipPrimitive.Root;
-export const TooltipTrigger = TooltipPrimitive.Trigger;
-
-export const TooltipContent = forwardRef<React.ElementRef<typeof TooltipPrimitive.Content>, React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content>>(
-  ({ className, sideOffset = 4, ...props }, ref) => (
-    <TooltipPrimitive.Content
-      ref={ref}
-      sideOffset={sideOffset}
-      className={cn("z-50 overflow-hidden rounded-md border border-[var(--border-light)] bg-[var(--bg-surface)] px-3 py-1.5 text-sm text-[var(--text-primary)] shadow-md animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2", className)}
-      {...props}
-    />
-  )
-);
-TooltipContent.displayName = TooltipPrimitive.Content.displayName;

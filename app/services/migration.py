@@ -1,7 +1,5 @@
 import logging
-import json
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import AsyncSessionLocal
 from app.models.job import Job
 from app.models.resume import Resume
@@ -9,6 +7,7 @@ from app.models.profile import CandidateProfile
 from app.services.embeddings import embedding_router
 from app.services.vector_store import vector_store
 from app.services.model_registry import model_registry
+from app.services.orchestrator import candidate_embedding_input
 
 logger = logging.getLogger(__name__)
 
@@ -85,27 +84,11 @@ class MigrationService:
                             logger.warning(f"Migration: Resume {resume.id} has no profile, skipping.")
                             continue
                             
-                        prof_dict = {
-                            "name": prof.name,
-                            "contact": {
-                                "email": prof.email,
-                                "phone": prof.phone,
-                            },
-                            "summary": prof.summary,
-                            "total_experience_years": prof.total_experience_years,
-                            "education": prof.education,
-                            "experience": prof.experience,
-                            "skills": prof.skills,
-                            "projects": prof.projects,
-                            "certifications": prof.certifications,
-                            "languages": prof.languages,
-                            "achievements": prof.achievements,
-                        }
-                        
-                        profile_json = json.dumps(prof_dict)
-                        # Generate embedding using the new profile
+                        # Same representation as first-time embedding, so the
+                        # migrated vectors match ones added to this job later.
+                        prof_dict, text_to_embed = candidate_embedding_input(prof)
                         resume_embedding, _ = await embedding_router.generate_embedding(
-                            profile_json,
+                            text_to_embed,
                             required_profile_name=actual_profile.model
                         )
                         

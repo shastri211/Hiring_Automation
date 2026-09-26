@@ -1,16 +1,11 @@
 import asyncio
 import logging
-import os
-import uuid
-import traceback
-import json
 from sqlalchemy import select
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.db.session import AsyncSessionLocal
 from app.services.queue import queue_service
 from app.models.resume import Resume
-from app.models.profile import CandidateProfile
 from app.models.job import Job
 from app.models.batch import ScreeningBatch
 from app.services.orchestrator import orchestrator, update_batch_progress
@@ -213,7 +208,7 @@ async def worker_loop(consumer_id: str):
                     logger.error(f"Configuration error: {e}. Failing permanently.")
                     await fail_task_permanently(action, item_id, str(e))
                     await queue_service.ack(msg_id)
-                except Exception as e:
+                except Exception:
                     attempt = await queue_service.record_failure(msg_id)
                     logger.exception(f"Task {action} on {item_id} failed (Attempt {attempt}). Not acking message {msg_id}.")
                 finally:

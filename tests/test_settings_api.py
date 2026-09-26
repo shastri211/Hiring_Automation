@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock
 from httpx import AsyncClient
 from tenancy_fixtures import TEST_ORG_ID
 
