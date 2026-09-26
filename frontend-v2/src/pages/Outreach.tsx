@@ -76,6 +76,7 @@ export const Outreach = () => {
               <SelectItem value="all">All Statuses</SelectItem>
               <SelectItem value="PENDING">Pending</SelectItem>
               <SelectItem value="SENT">Sent</SelectItem>
+              <SelectItem value="SIMULATED">Not delivered (no SMTP)</SelectItem>
               <SelectItem value="FAILED">Failed</SelectItem>
               <SelectItem value="BLOCKED">Blocked</SelectItem>
             </SelectContent>

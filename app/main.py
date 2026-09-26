@@ -15,7 +15,6 @@ setup_logging()
 from contextlib import asynccontextmanager
 from app.services.queue import queue_service
 import logging
-import os
 
 _DEFAULT_SECRET_KEY = "dev-only-insecure-secret-key-change-me"
 

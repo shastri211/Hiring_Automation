@@ -2,7 +2,7 @@ import os
 import logging
 import zipfile
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List

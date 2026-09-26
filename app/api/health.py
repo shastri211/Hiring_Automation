@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from app.db.session import get_db
@@ -32,4 +33,6 @@ async def health_check(db: AsyncSession = Depends(get_db)):
         health_status["qdrant"] = "error"
         health_status["status"] = "error"
 
-    return health_status
+    # 503 when any dependency is down, so load balancers / orchestrators
+    # probing this endpoint actually see the outage.
+    return JSONResponse(status_code=200 if health_status["status"] == "ok" else 503, content=health_status)

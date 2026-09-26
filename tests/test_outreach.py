@@ -239,7 +239,6 @@ async def test_single_decision_shortlist_triggers_outreach(client: AsyncClient):
     from app.models.job import Job
     from app.models.resume import Resume
     from app.models.screening import ScreeningResult
-    from app.models.profile import CandidateProfile
     import datetime
 
     job = MagicMock(spec=Job)

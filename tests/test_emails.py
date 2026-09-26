@@ -648,3 +648,65 @@ async def test_process_send_email_task_fails_safe_on_crashed_prior_attempt(mock_
     assert "crashed mid-send" in msg.error_message or "did not complete cleanly" in msg.error_message
 
 
+@pytest.mark.asyncio
+@patch("app.services.email.AsyncSessionLocal", new_callable=MagicMock)
+async def test_process_send_email_task_marks_simulated_send_as_not_delivered(mock_session_local):
+    """With no SMTP server configured the provider only simulates the send -
+    nothing reaches the candidate, so the message must not be recorded SENT."""
+    from app.services.email import email_service
+
+    mock_session = _mock_session_local(mock_session_local)
+    msg = _make_pending_message()
+    msg_exec = MagicMock()
+    msg_exec.scalar_one_or_none.return_value = msg
+    profile_exec = MagicMock()
+    profile_exec.scalar_one_or_none.return_value = _make_candidate_profile("jane@example.com")
+    mock_session.execute = AsyncMock(side_effect=[msg_exec, profile_exec])
+    mock_session.commit = AsyncMock()
+
+    with patch.object(email_service.provider, "host", None):
+        await email_service.process_send_email_task(1)
+
+    assert msg.status == "SIMULATED"
+    assert msg.sent_at is None
+    assert "SMTP is not configured" in msg.error_message
+
+
+@pytest.mark.asyncio
+@patch("app.services.email.AsyncSessionLocal", new_callable=MagicMock)
+async def test_queue_bulk_emails_resends_a_simulated_message(mock_session_local):
+    """A SIMULATED message was never delivered, so a later bulk send (e.g.
+    once SMTP is configured) resumes it like a FAILED one."""
+    from app.services.email import email_service
+
+    mock_session = _mock_session_local(mock_session_local)
+    template_exec = MagicMock()
+    template_exec.scalar_one_or_none.return_value = MagicMock(spec=EmailTemplate, id=1, body_content="Hi", subject="Hi")
+    existing_msg = MagicMock()
+    existing_msg.id = 9
+    existing_msg.status = "SIMULATED"
+    existing_exec = MagicMock()
+    existing_exec.scalar_one_or_none.return_value = existing_msg
+    candidate = MagicMock(spec=CandidateProfile)
+    candidate.email = "jane@example.com"
+    candidate.name = "Jane Doe"
+    candidate_exec = MagicMock()
+    candidate_exec.scalar_one_or_none.return_value = candidate
+    job_exec = MagicMock()
+    job_exec.scalar_one_or_none.return_value = MagicMock(spec=Job, title="Backend Engineer")
+    mock_session.execute = AsyncMock(
+        side_effect=[_org_exec(), template_exec, _job_resumes_exec([7]), existing_exec, candidate_exec, job_exec]
+    )
+    mock_session.add = MagicMock()
+    mock_session.commit = AsyncMock()
+    mock_queue_service = MagicMock()
+    mock_queue_service.enqueue_task = AsyncMock()
+
+    queued_count = await email_service.queue_bulk_emails(
+        job_id=1, resume_ids=[7], template_id=1, queue_service=mock_queue_service,
+    )
+
+    assert queued_count == 1
+    assert existing_msg.status == "PENDING"
+    mock_session.add.assert_not_called()
+    mock_queue_service.enqueue_task.assert_awaited_once_with({"action": "SEND_EMAIL", "email_message_id": 9})

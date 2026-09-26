@@ -103,16 +103,10 @@ async def get_batches_overview(db: AsyncSession = Depends(get_db), current_user:
     for batch, job_title, job_status in rows:
         status_counts = counts_by_batch.get(batch.id, {})
         # A SCREEN batch never has Resume rows pointing at its batch_id (see
-        # screening_trigger.enqueue_screen_job) - its total_resumes is
-        # assigned directly there and stays meaningful. Only an UPLOAD batch
-        # gets its total recomputed live, since it's the one whose
-        # total_resumes can go stale (a resume deleted after upload leaves
-        # the snapshot pointing at candidates that no longer exist).
-        # A SCREEN batch has no Resume rows pointing at its batch_id (see
-        # screening_trigger.enqueue_screen_job), so status_counts is always
-        # empty for one - processed/failed have to come from the batch's own
-        # snapshot columns (kept correct by the worker's screen_job handling)
-        # instead, the same way total already does below.
+        # screening_trigger.enqueue_screen_job), so its total/processed/failed
+        # come from its own snapshot columns (kept correct by the worker's
+        # screen_job handling). Only an UPLOAD batch is recounted live, since
+        # its snapshot goes stale if a resume is deleted after upload.
         if batch.batch_type == "SCREEN":
             total = batch.total_resumes
             processed = batch.processed

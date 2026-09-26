@@ -159,7 +159,7 @@ async def bulk_send_emails(
     except ValueError as e:
         # e.g., missing template or missing dograh link
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to queue bulk emails")
         raise HTTPException(status_code=500, detail="Internal server error queueing emails")
 

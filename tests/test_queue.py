@@ -1,6 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-import asyncio
+from unittest.mock import AsyncMock, patch
 from app.services.queue import queue_service
 
 @pytest.mark.asyncio

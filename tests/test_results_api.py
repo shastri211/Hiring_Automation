@@ -3,7 +3,6 @@ candidate detail, and idempotent screening results."""
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock, ANY
 from httpx import AsyncClient
-from sqlalchemy import select
 
 # -- Helpers --------------------------------------------------------------------
 

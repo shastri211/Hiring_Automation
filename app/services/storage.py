@@ -3,7 +3,7 @@ import re
 import uuid
 import aiofiles
 import hashlib
-from typing import BinaryIO, Callable, Tuple
+from typing import Callable, Tuple
 from fastapi import UploadFile
 from app.core.config import settings
 

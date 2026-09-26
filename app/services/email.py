@@ -6,7 +6,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import List, Optional
 from datetime import datetime, timezone
-from sqlalchemy import select, update
+from sqlalchemy import select
 from app.db.session import AsyncSessionLocal
 from app.models.email import EmailTemplate, EmailMessage
 from app.models.profile import CandidateProfile
@@ -227,12 +227,13 @@ class EmailService:
                 subject = self.render_template(template.subject, context)
                 body = self.render_template(template.body_content, context)
                 
-                # Create message record. FAILED is the only resumable prior
-                # attempt for this (resume_id, template_id) pair - BLOCKED is
-                # filtered out above and never reaches here. The unique
-                # constraint means a fresh insert for FAILED would raise
-                # IntegrityError, so it must update the existing row in place.
-                if existing_msg and existing_msg.status == "FAILED":
+                # Create message record. FAILED and SIMULATED (never
+                # delivered - no SMTP configured at the time) are the
+                # resumable prior attempts for this (resume_id, template_id)
+                # pair - BLOCKED is filtered out above and never reaches here.
+                # The unique constraint means a fresh insert for them would
+                # raise IntegrityError, so the existing row is updated in place.
+                if existing_msg and existing_msg.status in ("FAILED", "SIMULATED"):
                     # Retry flow: update existing
                     existing_msg.status = "PENDING"
                     existing_msg.subject = subject
@@ -331,9 +332,17 @@ class EmailService:
                     html_body=msg.body_content
                 )
 
-                # Update success
-                msg.status = "SENT"
                 msg.provider_message_id = provider_response.get("id")
+                if provider_response.get("status") == "simulated":
+                    # No SMTP server configured: nothing reached the
+                    # candidate, so this must not read as SENT. Resendable
+                    # once SMTP is set up.
+                    msg.status = "SIMULATED"
+                    msg.error_message = "Not delivered: SMTP is not configured (SMTP_HOST is unset)."
+                    await session.commit()
+                    logger.warning(f"Email message {email_message_id} was simulated, not delivered (SMTP not configured).")
+                    return
+                msg.status = "SENT"
                 msg.sent_at = datetime.utcnow()
                 await session.commit()
                 logger.info(f"Successfully sent email message {email_message_id} to {recipient_email}")

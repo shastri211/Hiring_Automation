@@ -15,7 +15,6 @@ from app.services.vector_store import vector_store
 from app.services.llm_provider import LLMProviderFactory, InvalidEvaluationResultError
 from app.services import screening_audit
 from app.models.job import Job
-from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -527,7 +526,8 @@ Expected JSON Schema:
             sanitized.pop(field, None)
             
         # Job-aware conditional fields
-        job_reqs = str(job_profile.get("required_capabilities", [])) + str(job_profile.get("preferred_capabilities", [])) + str(job_profile.get("requirements", []))
+        # JobProfileSchema's requirement fields (app/schemas/profile.py).
+        job_reqs = str(job_profile.get("required_skills", [])) + str(job_profile.get("preferred_skills", [])) + str(job_profile.get("requirements", []))
         job_reqs = job_reqs.lower()
         
         # Languages

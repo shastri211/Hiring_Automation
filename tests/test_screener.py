@@ -19,6 +19,9 @@ async def _fake_savepoint():
 def _mock_db_with_savepoints() -> AsyncMock:
     mock_db = AsyncMock()
     mock_db.begin_nested = MagicMock(side_effect=lambda: _fake_savepoint())
+    # AsyncSession.add is synchronous - an AsyncMock here leaves an
+    # un-awaited coroutine behind on every call.
+    mock_db.add = MagicMock()
     return mock_db
 
 

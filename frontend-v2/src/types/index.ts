@@ -22,15 +22,6 @@ export interface Job {
   application_url?: string | null;
 }
 
-export interface ScreeningBatch {
-  id: number;
-  job_id: number;
-  status: string;
-  total_resumes: number;
-  processed: number;
-  failed: number;
-}
-
 export interface Resume {
   id: number;
   batch_id?: number | null;
@@ -449,7 +440,7 @@ export interface EmailMessage {
   template_id?: number;
   subject: string;
   body_content: string;
-  status: 'PENDING' | 'SENT' | 'FAILED' | 'BLOCKED';
+  status: 'PENDING' | 'SENT' | 'SIMULATED' | 'FAILED' | 'BLOCKED';
   provider_message_id?: string;
   error_message?: string;
   created_at: string;
