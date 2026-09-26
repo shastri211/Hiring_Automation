@@ -26,6 +26,7 @@ from app.models.candidate import Candidate, CandidateMergeLog, CandidateMatchSug
 from app.models.application import Application, ApplicationResumeHistory
 from app.models.resume import Resume
 from app.models.profile import CandidateProfile
+from app.services.tenancy import NotInOrganization
 
 logger = logging.getLogger(__name__)
 
@@ -84,9 +85,17 @@ async def resolve_canonical_candidate_id(db: AsyncSession, candidate_id: int) ->
     return current_id
 
 
-async def _find_active_candidate_by_email(db: AsyncSession, email: str) -> Optional[Candidate]:
+async def _find_active_candidate_by_email(
+    db: AsyncSession, email: str, organization_id: int
+) -> Optional[Candidate]:
+    # Scoped exactly like uq_candidates_primary_email_active
+    # (organization_id, primary_email): identity never crosses organizations.
     result = await db.execute(
-        select(Candidate).where(Candidate.primary_email == email, Candidate.merged_into_id.is_(None))
+        select(Candidate).where(
+            Candidate.organization_id == organization_id,
+            Candidate.primary_email == email,
+            Candidate.merged_into_id.is_(None),
+        )
     )
     return result.scalar_one_or_none()
 
@@ -94,6 +103,7 @@ async def _find_active_candidate_by_email(db: AsyncSession, email: str) -> Optio
 async def _create_candidate(
     db: AsyncSession,
     *,
+    organization_id: int,
     canonical_name: Optional[str],
     primary_email: Optional[str],
     primary_phone: Optional[str],
@@ -102,12 +112,18 @@ async def _create_candidate(
 
     When primary_email is set, this can race another worker profiling a
     different resume with the same new email concurrently - closed by the
-    partial unique index on (primary_email) WHERE merged_into_id IS NULL.
+    partial unique index on (organization_id, primary_email) WHERE
+    merged_into_id IS NULL.
     On IntegrityError, created=False and the row we lost the race to is
     returned instead, mirroring the SAVEPOINT/IntegrityError pattern
     already used for resume file_hash uploads in app/api/resumes.py.
     """
-    candidate = Candidate(canonical_name=canonical_name, primary_email=primary_email, primary_phone=primary_phone)
+    candidate = Candidate(
+        organization_id=organization_id,
+        canonical_name=canonical_name,
+        primary_email=primary_email,
+        primary_phone=primary_phone,
+    )
 
     if primary_email is None:
         db.add(candidate)
@@ -120,7 +136,7 @@ async def _create_candidate(
             await db.flush()
         return candidate, True
     except IntegrityError:
-        existing = await _find_active_candidate_by_email(db, primary_email)
+        existing = await _find_active_candidate_by_email(db, primary_email, organization_id)
         if existing is None:
             # Vanishingly unlikely (the row we collided with would have to
             # have been deleted/merged in the same instant) - surface
@@ -150,6 +166,8 @@ async def _file_phone_match_suggestion(db: AsyncSession, *, resume_id: int, new_
 
     result = await db.execute(
         select(Candidate).where(
+            # Suggestions never pair candidates across organizations.
+            Candidate.organization_id == new_candidate.organization_id,
             Candidate.primary_phone.isnot(None),
             Candidate.merged_into_id.is_(None),
             Candidate.id != new_candidate.id,
@@ -171,7 +189,9 @@ async def _file_phone_match_suggestion(db: AsyncSession, *, resume_id: int, new_
             return
 
 
-async def resolve_candidate_for_resume(db: AsyncSession, resume: Resume, profile: CandidateProfile) -> int:
+async def resolve_candidate_for_resume(
+    db: AsyncSession, resume: Resume, profile: CandidateProfile, *, organization_id: int
+) -> int:
     """Assigns resume.candidate_id and returns the resolved candidate id.
 
     - Exact normalized-email match against an existing (non-merged)
@@ -187,14 +207,18 @@ async def resolve_candidate_for_resume(db: AsyncSession, resume: Resume, profile
     email = normalize_email(profile.email)
 
     if email:
-        existing = await _find_active_candidate_by_email(db, email)
+        existing = await _find_active_candidate_by_email(db, email, organization_id)
         if existing is not None:
             resolved_id = await resolve_canonical_candidate_id(db, existing.id)
             resume.candidate_id = resolved_id
             return resolved_id
 
     candidate, created = await _create_candidate(
-        db, canonical_name=profile.name, primary_email=email, primary_phone=profile.phone,
+        db,
+        organization_id=organization_id,
+        canonical_name=profile.name,
+        primary_email=email,
+        primary_phone=profile.phone,
     )
     resolved_id = await resolve_canonical_candidate_id(db, candidate.id)
     resume.candidate_id = resolved_id
@@ -248,7 +272,24 @@ async def get_or_create_application(
     return existing, False
 
 
-async def merge_candidates(db: AsyncSession, *, absorbed_id: int, into_id: int, merged_by: int) -> CandidateMergeLog:
+async def _require_candidates_in_org(db: AsyncSession, candidate_ids, organization_id: int) -> None:
+    """Every id must be a candidate of `organization_id`; otherwise
+    NotInOrganization (missing and another tenant's alike)."""
+    wanted = set(candidate_ids)
+    found = set(
+        (
+            await db.execute(
+                select(Candidate.id).where(Candidate.id.in_(wanted), Candidate.organization_id == organization_id)
+            )
+        ).scalars().all()
+    )
+    if found != wanted:
+        raise NotInOrganization("Candidate not found")
+
+
+async def merge_candidates(
+    db: AsyncSession, *, absorbed_id: int, into_id: int, merged_by: int, organization_id: int
+) -> CandidateMergeLog:
     """HR-initiated merge. Pure redirect - no Resume/Application row is ever
     touched, which is what makes unmerge_candidate a lossless, instant undo.
 
@@ -261,6 +302,11 @@ async def merge_candidates(db: AsyncSession, *, absorbed_id: int, into_id: int, 
     resolve_canonical_candidate_id can only log an error about afterward,
     never prevent.
     """
+    # Both inputs must be this organization's candidates (checked before
+    # locking anything). Merge redirects only ever point within one
+    # organization, so the canonical targets resolved below are too.
+    await _require_candidates_in_org(db, {absorbed_id, into_id}, organization_id)
+
     lock_ids = sorted({absorbed_id, into_id})
     await db.execute(select(Candidate.id).where(Candidate.id.in_(lock_ids)).with_for_update())
 
@@ -283,10 +329,13 @@ async def merge_candidates(db: AsyncSession, *, absorbed_id: int, into_id: int, 
     return log
 
 
-async def unmerge_candidate(db: AsyncSession, *, absorbed_id: int, reverted_by: int) -> CandidateMergeLog:
+async def unmerge_candidate(
+    db: AsyncSession, *, absorbed_id: int, reverted_by: int, organization_id: int
+) -> CandidateMergeLog:
     """Reverses the most recent active merge for absorbed_id. Since merges
     never move data, this instantly restores full visibility of the
     absorbed candidate's resumes/applications."""
+    await _require_candidates_in_org(db, {absorbed_id}, organization_id)
     log = (
         await db.execute(
             select(CandidateMergeLog)
@@ -305,13 +354,27 @@ async def unmerge_candidate(db: AsyncSession, *, absorbed_id: int, reverted_by: 
     return log
 
 
-async def reject_match_suggestion(db: AsyncSession, *, suggestion_id: int, reviewed_by: int) -> CandidateMatchSuggestion:
-    """HR reviewed a suggestion and decided the two candidates are distinct."""
+async def _get_suggestion_in_org(db: AsyncSession, suggestion_id: int, organization_id: int) -> CandidateMatchSuggestion:
+    """A suggestion only ever pairs candidates of one organization (see
+    _file_phone_match_suggestion), so the newer candidate's organization is
+    the suggestion's."""
     suggestion = (
-        await db.execute(select(CandidateMatchSuggestion).where(CandidateMatchSuggestion.id == suggestion_id))
+        await db.execute(
+            select(CandidateMatchSuggestion)
+            .join(Candidate, Candidate.id == CandidateMatchSuggestion.candidate_b_id)
+            .where(CandidateMatchSuggestion.id == suggestion_id, Candidate.organization_id == organization_id)
+        )
     ).scalar_one_or_none()
     if suggestion is None:
-        raise ValueError("Match suggestion not found.")
+        raise NotInOrganization("Match suggestion not found.")
+    return suggestion
+
+
+async def reject_match_suggestion(
+    db: AsyncSession, *, suggestion_id: int, reviewed_by: int, organization_id: int
+) -> CandidateMatchSuggestion:
+    """HR reviewed a suggestion and decided the two candidates are distinct."""
+    suggestion = await _get_suggestion_in_org(db, suggestion_id, organization_id)
 
     suggestion.status = "REJECTED"
     suggestion.reviewed_by = reviewed_by
@@ -319,18 +382,17 @@ async def reject_match_suggestion(db: AsyncSession, *, suggestion_id: int, revie
     return suggestion
 
 
-async def merge_from_suggestion(db: AsyncSession, *, suggestion_id: int, merged_by: int) -> CandidateMergeLog:
+async def merge_from_suggestion(
+    db: AsyncSession, *, suggestion_id: int, merged_by: int, organization_id: int
+) -> CandidateMergeLog:
     """HR confirmed a suggestion: merges the newer candidate (candidate_b,
     the one created for the resume that triggered the suggestion) into the
     pre-existing one (candidate_a)."""
-    suggestion = (
-        await db.execute(select(CandidateMatchSuggestion).where(CandidateMatchSuggestion.id == suggestion_id))
-    ).scalar_one_or_none()
-    if suggestion is None:
-        raise ValueError("Match suggestion not found.")
+    suggestion = await _get_suggestion_in_org(db, suggestion_id, organization_id)
 
     log = await merge_candidates(
         db, absorbed_id=suggestion.candidate_b_id, into_id=suggestion.candidate_a_id, merged_by=merged_by,
+        organization_id=organization_id,
     )
     suggestion.status = "MERGED"
     suggestion.reviewed_by = merged_by

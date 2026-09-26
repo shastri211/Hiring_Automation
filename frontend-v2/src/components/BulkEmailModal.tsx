@@ -48,11 +48,6 @@ export const BulkEmailModal = ({
 }) => {
   const { data: templates, isLoading } = useEmailTemplates();
   const [selectedTemplate, setSelectedTemplate] = useState<number | null>(null);
-  // Explicit test override typed in here at send time - when set, every
-  // message in this send is redirected there instead of each candidate's
-  // own (often fake/sample-resume) email, and skips the Settings > Outreach
-  // Automation allowlist check.
-  const [testEmail, setTestEmail] = useState('');
   // Starts as every group; narrows to just the failed ones after a partial
   // failure, so "Retry" only re-attempts what didn't go through.
   const [pendingGroups, setPendingGroups] = useState<ResumeGroup[]>(resumeGroups);
@@ -62,7 +57,7 @@ export const BulkEmailModal = ({
   const totalResumes = resumeGroups.reduce((sum, g) => sum + g.resumeIds.length, 0);
 
   const sendMutation = useMutation({
-    mutationFn: async ({ groups, templateId, overrideEmail }: { groups: ResumeGroup[]; templateId: number; overrideEmail: string }): Promise<SendOutcome> => {
+    mutationFn: async ({ groups, templateId }: { groups: ResumeGroup[]; templateId: number }): Promise<SendOutcome> => {
       // One bulk-send call per job group - the backend endpoint is
       // job-scoped - settled independently so one job's failure never
       // blocks the others from sending.
@@ -71,7 +66,6 @@ export const BulkEmailModal = ({
           emailsApi.bulkSend(group.jobId, {
             resume_ids: group.resumeIds,
             template_id: templateId,
-            override_recipient_email: overrideEmail || undefined,
           })
         )
       );
@@ -114,7 +108,7 @@ export const BulkEmailModal = ({
 
   const handleSend = () => {
     if (!selectedTemplate || pendingGroups.length === 0) return;
-    sendMutation.mutate({ groups: pendingGroups, templateId: selectedTemplate, overrideEmail: testEmail.trim() });
+    sendMutation.mutate({ groups: pendingGroups, templateId: selectedTemplate });
   };
 
   const hasPartialFailure = !!lastOutcome && lastOutcome.failed.length > 0;
@@ -165,21 +159,10 @@ export const BulkEmailModal = ({
             </Select>
           )}
 
-          <div className="mt-4">
-            <Label className="block mb-2">Test recipient (optional)</Label>
-            <input
-              type="email"
-              value={testEmail}
-              onChange={(e) => setTestEmail(e.target.value)}
-              placeholder="you@example.com"
-              className="w-full border border-[var(--border-light)] rounded-md shadow-sm text-sm bg-[var(--bg-surface)] text-[var(--text-primary)] placeholder-[var(--text-tertiary)] px-3 py-2 focus-ring"
-            />
-            <p className="text-xs text-[var(--text-tertiary)] mt-1">
-              When set, every email in this send goes here instead of each candidate's real address - bypasses the
-              Settings &gt; Outreach Automation allowlist. Leave blank to send to candidates' real addresses (still
-              gated by that allowlist).
-            </p>
-          </div>
+          <p className="mt-4 text-xs text-[var(--text-tertiary)]">
+            Sent to each candidate's own email address, as extracted from their resume - there is no test
+            recipient or redirect.
+          </p>
 
           {sendMutation.isError && (
             <div className="mt-4 p-3 bg-red-50 text-red-600 rounded-md text-sm">

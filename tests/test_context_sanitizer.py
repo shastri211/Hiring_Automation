@@ -1,5 +1,4 @@
 """Tests for ScreenerService._sanitize_context — purely unit, no DB/LLM/network calls."""
-import pytest
 from app.services.screener import screener_service
 
 
@@ -12,12 +11,13 @@ def _sanitize(candidate: dict, job: dict) -> dict:
 
 
 def _job_with(*requirement_keywords) -> dict:
-    """Build a minimal job profile whose requirements contain the given keywords."""
-    return {"required_capabilities": list(requirement_keywords), "preferred_capabilities": [], "requirements": []}
+    """Build a minimal job profile (JobProfileSchema shape) whose required
+    skills contain the given keywords."""
+    return {"required_skills": list(requirement_keywords), "preferred_skills": [], "requirements": []}
 
 
 def _job_empty() -> dict:
-    return {"required_capabilities": [], "preferred_capabilities": [], "requirements": []}
+    return {"required_skills": [], "preferred_skills": [], "requirements": []}
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +185,16 @@ class TestEdgeCases:
         result = _sanitize(candidate, {"title": "Developer"})
         assert "name" not in result
         assert "languages" not in result
+
+    def test_keeps_certifications_and_languages_named_only_in_preferred_skills(self):
+        """Regression: the sanitizer read non-existent *_capabilities keys, so
+        a JD listing these under JobProfileSchema's skills fields had them
+        stripped from the evaluation context."""
+        candidate = {"certifications": ["AWS Certified Developer"], "languages": ["German"]}
+        job = {"required_skills": ["Python"], "preferred_skills": ["AWS", "German language"], "requirements": []}
+        result = _sanitize(candidate, job)
+        assert result["certifications"] == ["AWS Certified Developer"]
+        assert result["languages"] == ["German"]
 
     def test_certifications_kept_when_aws_in_requirements(self):
         # "aws" is a trigger keyword in the first certifications check block

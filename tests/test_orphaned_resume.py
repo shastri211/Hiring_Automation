@@ -1,9 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-import app.worker
 from app.services.orchestrator import orchestrator
 from app.models.resume import Resume
-from app.models.job import Job
 
 @pytest.mark.asyncio
 @patch("app.services.orchestrator.AsyncSessionLocal", new_callable=MagicMock)

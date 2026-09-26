@@ -1,11 +1,9 @@
 import os
-import traceback
-from sqlalchemy import select, update
+from sqlalchemy import select
 from app.db.session import AsyncSessionLocal
 from app.models.resume import Resume
 from app.models.profile import CandidateProfile
 from app.models.job import Job
-from app.models.screening import ScreeningResult
 from app.services.storage import storage_service
 from app.services.extractor.factory import get_extractor
 from app.services.profiler import profiler_service
@@ -43,6 +41,33 @@ def _is_valid_profile(profile_data: dict) -> bool:
         if value:  # non-None, non-empty string, non-empty list, non-zero number
             return True
     return False
+
+def candidate_embedding_input(prof: CandidateProfile) -> tuple[dict, str]:
+    """(Qdrant payload profile, text to embed) for a candidate profile.
+
+    The single definition of a candidate's semantic representation, shared
+    by first-time embedding (Stage 3 below) and embedding-profile migration
+    (app/services/migration.py), so vectors within one job are always
+    computed from the same kind of text.
+    """
+    prof_dict = {
+        "name": prof.name,
+        "contact": {
+            "email": prof.email,
+            "phone": prof.phone,
+        },
+        "summary": prof.summary,
+        "total_experience_years": prof.total_experience_years,
+        "education": prof.education,
+        "experience": prof.experience,
+        "skills": prof.skills,
+        "projects": prof.projects,
+        "certifications": prof.certifications,
+        "languages": prof.languages,
+        "achievements": prof.achievements,
+    }
+    return prof_dict, prof.canonical_text or json.dumps(prof_dict)
+
 
 async def update_batch_progress(session, batch_id: int, allow_complete: bool = True) -> None:
     """Recompute a ScreeningBatch's processed/failed counters from the
@@ -148,7 +173,8 @@ class RecruitmentOrchestrator:
                 # itself is untouched: it's always computed fresh per
                 # (job_id, resume_id) regardless of what was reused upstream.
                 reusable_source = await resume_reuse.find_reusable_source(
-                    session, file_hash=resume.file_hash, exclude_resume_id=resume.id
+                    session, file_hash=resume.file_hash, exclude_resume_id=resume.id,
+                    organization_id=job.organization_id,
                 )
 
                 # Phase 4: did this resume turn out to be a new version of an
@@ -265,7 +291,7 @@ class RecruitmentOrchestrator:
                     # existing Application is recorded so Stage 3 can trigger
                     # a fresh screening pass once the resume is READY.
                     resolved_candidate_id = await candidate_identity.resolve_candidate_for_resume(
-                        session, resume, profile_row
+                        session, resume, profile_row, organization_id=job.organization_id
                     )
                     _application, resume_is_version_swap = await candidate_identity.get_or_create_application(
                         session, candidate_id=resolved_candidate_id, job_id=job.id, resume=resume
@@ -280,28 +306,7 @@ class RecruitmentOrchestrator:
                         select(CandidateProfile).where(CandidateProfile.resume_id == resume_id)
                     )
                     prof = profile_result.scalar_one()
-                    # reconstruct dict
-                    prof_dict = {
-                        "name": prof.name,
-                        "contact": {
-                            "email": prof.email,
-                            "phone": prof.phone,
-                        },
-                        "summary": prof.summary,
-                        "total_experience_years": prof.total_experience_years,
-                        "education": prof.education,
-                        "experience": prof.experience,
-                        "skills": prof.skills,
-                        "projects": prof.projects,
-                        "certifications": prof.certifications,
-                        "languages": prof.languages,
-                        "achievements": prof.achievements,
-                    }
-                                        
-                    if prof.canonical_text:
-                        text_to_embed = prof.canonical_text
-                    else:
-                        text_to_embed = json.dumps(prof_dict)
+                    prof_dict, text_to_embed = candidate_embedding_input(prof)
 
                     # Reuse only applies when this job's embedding profile is
                     # pinned (job.embedding_profile is set at job creation -

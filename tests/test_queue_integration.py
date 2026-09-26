@@ -1,8 +1,6 @@
 import pytest
 import asyncio
-import time
 import uuid
-import json
 from app.services.queue import QueueService
 from app.core.config import settings
 import redis.asyncio as redis

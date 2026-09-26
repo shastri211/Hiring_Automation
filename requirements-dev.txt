@@ -1,0 +1,5 @@
+# Test tooling on top of the runtime dependencies.
+-r requirements.txt
+pytest==9.1.1
+pytest-asyncio==1.4.0
+pytest-env==1.7.1

@@ -2,14 +2,12 @@ import asyncio
 import logging
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from app.models.resume import Resume
-from app.models.profile import CandidateProfile
 from app.models.job import Job
 from app.services.orchestrator import orchestrator
 from app.worker import worker_loop, fail_task_permanently
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import patch, AsyncMock
+from tenancy_fixtures import TEST_ORG_ID
 
 @pytest.mark.asyncio
 async def test_process_candidate_not_found():
@@ -63,7 +61,7 @@ async def test_unknown_action_is_logged_and_acked_not_silently_dropped(caplog):
 
 @pytest.mark.asyncio
 async def test_fail_task_permanently_marks_job_embedding_status_failed(db_session):
-    job = Job(title="Migration Failure Test", description="d", embedding_status="MIGRATING")
+    job = Job(organization_id=TEST_ORG_ID, title="Migration Failure Test", description="d", embedding_status="MIGRATING")
     db_session.add(job)
     await db_session.commit()
     await db_session.refresh(job)
@@ -75,3 +73,15 @@ async def test_fail_task_permanently_marks_job_embedding_status_failed(db_sessio
     )
     refreshed = result.scalar_one()
     assert refreshed.embedding_status == "FAILED"
+
+
+@pytest.mark.asyncio
+async def test_worker_main_configures_logging_before_starting():
+    """The worker is its own process: without setup_logging every INFO line
+    from the pipeline is silently dropped."""
+    import app.worker as worker
+    with patch("app.worker.setup_logging") as mock_setup, \
+         patch.object(worker.queue_service, "init_stream", AsyncMock(side_effect=RuntimeError("stop"))):
+        with pytest.raises(RuntimeError):
+            await worker.main()
+    mock_setup.assert_called_once()

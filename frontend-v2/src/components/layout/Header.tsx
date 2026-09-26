@@ -1,5 +1,5 @@
 
-import { Menu, LogOut } from 'lucide-react';
+import { Menu, LogOut, KeyRound } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '../ui';
 import { ThemeToggle } from './ThemeToggle';
@@ -18,9 +18,20 @@ const UserMenu = () => {
       >
         {getInitials(user.name)}
       </div>
-      <span className="hidden sm:inline text-sm font-medium text-[var(--text-primary)] max-w-[10rem] truncate">
-        {user.name}
+      <span className="hidden sm:flex flex-col leading-tight max-w-[12rem] min-w-0">
+        <span className="text-sm font-medium text-[var(--text-primary)] truncate">{user.name}</span>
+        <span className="text-xs text-[var(--text-tertiary)] truncate" title={user.organization.name}>
+          {user.organization.name}{user.role === 'admin' ? ' · Admin' : ''}
+        </span>
       </span>
+      <Link
+        to="/change-password"
+        className="focus-ring rounded p-1.5 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-app)] transition-colors"
+        title="Change password"
+        aria-label="Change password"
+      >
+        <KeyRound size={16} />
+      </Link>
       <button
         onClick={() => logout()}
         className="focus-ring rounded p-1.5 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-app)] transition-colors"

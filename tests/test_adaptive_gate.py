@@ -1,4 +1,3 @@
-import pytest
 from app.services.screener import _adaptive_pre_screen
 
 def test_adaptive_gate_monotonic():

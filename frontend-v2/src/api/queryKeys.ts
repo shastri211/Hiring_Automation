@@ -43,4 +43,5 @@ export const queryKeys = {
 
   matchSuggestions: (status: string) => ['match-suggestions', status] as const,
   candidate: (id: number) => ['candidate', id] as const,
+  candidateSearch: (term: string, excludeId?: number) => ['candidate-search', term, excludeId] as const,
 };

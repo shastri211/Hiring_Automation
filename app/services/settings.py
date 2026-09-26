@@ -1,5 +1,5 @@
 import logging
-from typing import Tuple
+from typing import Optional, Tuple
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -13,35 +13,58 @@ logger = logging.getLogger(__name__)
 
 
 class SettingsService:
-    async def get_settings(self, db: AsyncSession) -> AppSettings:
-        """Get-or-create the id=1 singleton row."""
-        result = await db.execute(select(AppSettings).where(AppSettings.id == 1))
-        app_settings = result.scalar_one_or_none()
+    """Per-organization settings: exactly one AppSettings row per
+    organization (organization_id is unique). Every caller passes the
+    organization explicitly - a request's comes from the logged-in user, a
+    background task's from the job it is acting on."""
+
+    async def get_row(self, db: AsyncSession, organization_id: int) -> Optional[AppSettings]:
+        """Read-only lookup - never creates a row (safe in worker hot paths)."""
+        result = await db.execute(select(AppSettings).where(AppSettings.organization_id == organization_id))
+        return result.scalar_one_or_none()
+
+    def new_settings_row(self, organization_id: int) -> AppSettings:
+        """A freshly-constructed row for `organization_id`, not yet added to
+        any session - the single place that defines what a brand-new
+        organization's settings look like. Used by get_settings's
+        create-branch below, and by signup (app/api/auth.py), which needs
+        the row created in the same atomic commit as the Organization/User
+        rows rather than get_settings's own separate commit."""
+        return AppSettings(organization_id=organization_id)
+
+    async def get_settings(self, db: AsyncSession, organization_id: int) -> AppSettings:
+        """Get-or-create the organization's row."""
+        app_settings = await self.get_row(db, organization_id)
         if app_settings is not None:
             return app_settings
 
-        app_settings = AppSettings(id=1)
+        app_settings = self.new_settings_row(organization_id)
         db.add(app_settings)
         try:
             await db.commit()
         except IntegrityError:
-            # Race: another request created it first.
+            # Race: another request created this organization's row first
+            # (unique organization_id).
             await db.rollback()
-            result = await db.execute(select(AppSettings).where(AppSettings.id == 1))
-            app_settings = result.scalar_one_or_none()
+            app_settings = await self.get_row(db, organization_id)
             if app_settings is not None:
                 return app_settings
             raise
         await db.refresh(app_settings)
         return app_settings
 
-    async def update_settings(self, db: AsyncSession, patch: dict) -> AppSettings:
-        app_settings = await self.get_settings(db)
+    async def update_settings(self, db: AsyncSession, organization_id: int, patch: dict) -> AppSettings:
+        app_settings = await self.get_settings(db, organization_id)
 
         for field in ("shortlist_email_template_id", "interview_scheduled_email_template_id"):
             if field in patch and patch[field] is not None:
+                # Same "does not exist" error whether the template is missing
+                # or belongs to another organization.
                 template_result = await db.execute(
-                    select(EmailTemplate).where(EmailTemplate.id == patch[field])
+                    select(EmailTemplate).where(
+                        EmailTemplate.id == patch[field],
+                        EmailTemplate.organization_id == organization_id,
+                    )
                 )
                 if template_result.scalar_one_or_none() is None:
                     raise ValueError(f"Email template {patch[field]} does not exist")
@@ -53,15 +76,14 @@ class SettingsService:
         await db.refresh(app_settings)
         return app_settings
 
-    async def get_effective_screening_config(self, db: AsyncSession) -> Tuple[int, int, float]:
+    async def get_effective_screening_config(self, db: AsyncSession, organization_id: int) -> Tuple[int, int, float]:
         """Read-only lookup of the three adaptive-gate thresholds.
 
         Never creates a row (this runs in the screen_job hot path) - each field
         falls back individually to the env-configured default when the DB
         column (or the row itself) is NULL/missing.
         """
-        result = await db.execute(select(AppSettings).where(AppSettings.id == 1))
-        app_settings = result.scalar_one_or_none()
+        app_settings = await self.get_row(db, organization_id)
 
         min_keep = settings.MIN_CANDIDATES_TO_SCREEN
         max_keep = settings.MAX_CANDIDATES_TO_SCREEN

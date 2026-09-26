@@ -90,5 +90,18 @@ export const jobsApi = {
 
   declineInterview: (jobId: number, resumeId: number) => {
     return apiClient.post<any>(`/jobs/${jobId}/interviews/${resumeId}/decline`) as unknown as Promise<{ success: boolean; message: string }>;
+  },
+
+  // Public candidate apply link (see app/api/public_application.py).
+  openApplicationLink: (jobId: number) => {
+    return apiClient.post<any>(`/jobs/${jobId}/application-link`) as unknown as Promise<Job>;
+  },
+
+  rotateApplicationLink: (jobId: number) => {
+    return apiClient.post<any>(`/jobs/${jobId}/application-link/rotate`) as unknown as Promise<Job>;
+  },
+
+  closeApplicationLink: (jobId: number) => {
+    return apiClient.delete<any>(`/jobs/${jobId}/application-link`) as unknown as Promise<Job>;
   }
 };

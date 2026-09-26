@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Literal, Optional
 
 class InterviewTriggerRequest(BaseModel):
     job_id: int
@@ -8,7 +8,11 @@ class InterviewTriggerRequest(BaseModel):
 class InterviewStatusRequest(BaseModel):
     job_id: int
     resume_id: int
-    status: str
+    # Mirrors app.services.interview.INTERVIEW_STATUSES - an unknown value
+    # is rejected (422) instead of being stored and breaking status logic.
+    status: Literal[
+        "PENDING", "SCHEDULED", "IN_PROGRESS", "RESCHEDULE_PENDING", "FAILED", "DECLINED", "COMPLETED", "NO_SHOW"
+    ]
 
 class InterviewTranscriptRequest(BaseModel):
     job_id: int

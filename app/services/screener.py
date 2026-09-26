@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import List
+from typing import List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -15,7 +15,6 @@ from app.services.vector_store import vector_store
 from app.services.llm_provider import LLMProviderFactory, InvalidEvaluationResultError
 from app.services import screening_audit
 from app.models.job import Job
-from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -84,14 +83,21 @@ class ScreenerService:
         db: AsyncSession,
         job: Job,
         limit: int = 50,
+        screening_batch_id: Optional[int] = None,
     ) -> List[ScreeningResult]:
-        """Screen candidates for a given job using semantic retrieval and LLM evaluation."""
+        """Screen candidates for a given job using semantic retrieval and LLM evaluation.
+
+        `screening_batch_id` is the SCREEN batch driving this run; every
+        result created here is linked to it so the run's own decision counts
+        can be reported (see GET /jobs/{id}/progress).
+        """
 
         # Snapshot all required ORM values before any awaited operation.
         # This prevents SQLAlchemy from attempting implicit async lazy/expired
         # loads later in the workflow.
         job_id = job.id
         job_profile = job.job_profile
+        organization_id = job.organization_id
 
         if not job_profile:
             raise ValueError("Job has no structured profile")
@@ -135,7 +141,7 @@ class ScreenerService:
         # field falling back individually to the env default when NULL) -
         # the gate algorithm itself (_adaptive_pre_screen) is unchanged.
         from app.services.settings import settings_service
-        min_keep, max_keep, gap_threshold = await settings_service.get_effective_screening_config(db)
+        min_keep, max_keep, gap_threshold = await settings_service.get_effective_screening_config(db, organization_id)
         passed_gate = _adaptive_pre_screen(
             candidates,
             min_keep=min_keep,
@@ -211,6 +217,7 @@ class ScreenerService:
                 screening_result = ScreeningResult(
                     job_id=job_id,
                     resume_id=resume_id,
+                    screening_batch_id=screening_batch_id,
                     score=None,  # Null LLM score
                     semantic_score=semantic_score,
                     strengths=None,
@@ -276,8 +283,10 @@ class ScreenerService:
                             db_profile.languages = enriched.get("languages", db_profile.languages)
                             db_profile.achievements = enriched.get("achievements", db_profile.achievements)
                             db_profile.extraction_method = "LLM_ENRICHED"
-                            # Use enriched profile for evaluation
-                            candidate_profile = enriched
+                            # Use enriched profile for evaluation - sanitized
+                            # like the payload profile above, so PII (name,
+                            # contact) never reaches the evaluation prompt.
+                            candidate_profile = self._sanitize_context(enriched, job_profile)
                             logger.info("Resume %s successfully enriched by LLM.", resume_id)
                     except Exception as enrich_err:
                         logger.warning(
@@ -295,6 +304,7 @@ class ScreenerService:
                 screening_result = ScreeningResult(
                     job_id=job_id,
                     resume_id=resume_id,
+                    screening_batch_id=screening_batch_id,
                     score=eval_result_dict.get("score", 0.0),
                     semantic_score=semantic_score,
                     strengths=eval_result_dict.get("strengths", []),
@@ -336,6 +346,7 @@ class ScreenerService:
                 screening_result = ScreeningResult(
                     job_id=job_id,
                     resume_id=resume_id,
+                    screening_batch_id=screening_batch_id,
                     score=None,
                     semantic_score=semantic_score,
                     decision="REVIEW",
@@ -515,7 +526,8 @@ Expected JSON Schema:
             sanitized.pop(field, None)
             
         # Job-aware conditional fields
-        job_reqs = str(job_profile.get("required_capabilities", [])) + str(job_profile.get("preferred_capabilities", [])) + str(job_profile.get("requirements", []))
+        # JobProfileSchema's requirement fields (app/schemas/profile.py).
+        job_reqs = str(job_profile.get("required_skills", [])) + str(job_profile.get("preferred_skills", [])) + str(job_profile.get("requirements", []))
         job_reqs = job_reqs.lower()
         
         # Languages

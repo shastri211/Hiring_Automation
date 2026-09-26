@@ -19,6 +19,15 @@ export const useCandidate = (candidateId: number | null | undefined) => {
   });
 };
 
+export const useCandidateSearch = (term: string, excludeId?: number) => {
+  const trimmed = term.trim();
+  return useQuery({
+    queryKey: queryKeys.candidateSearch(trimmed, excludeId),
+    queryFn: () => candidatesApi.searchCandidates(trimmed, excludeId),
+    enabled: trimmed.length >= 2,
+  });
+};
+
 // Every mutation below invalidates all match-suggestion status buckets
 // (PENDING/MERGED/REJECTED) since a suggestion moves between them, plus the
 // 'candidate' cache for both parties so a Candidate360 view open elsewhere
@@ -35,6 +44,7 @@ const invalidateSuggestionsAndCandidates = (
   queryClient.invalidateQueries({ queryKey: ['match-suggestions'] });
   queryClient.invalidateQueries({ queryKey: ['global-candidates'] });
   queryClient.invalidateQueries({ queryKey: ['candidate-detail'] });
+  queryClient.invalidateQueries({ queryKey: ['candidate-search'] });
   candidateIds.forEach((id) => {
     queryClient.invalidateQueries({ queryKey: queryKeys.candidate(id) });
   });

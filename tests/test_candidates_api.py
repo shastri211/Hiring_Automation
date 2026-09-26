@@ -3,7 +3,6 @@ from types import SimpleNamespace
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 from httpx import AsyncClient
-from sqlalchemy import select
 
 def _make_screening_result(id=1, job_id=1, resume_id=1, score=85.0, decision="SHORTLIST"):
     from app.models.screening import ScreeningResult

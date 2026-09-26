@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, computed_field, model_validator
 from typing import List, Dict, Any, Optional
 
 class JobBase(BaseModel):
@@ -28,8 +28,21 @@ class JobResponse(JobCreate):
     # back to `description` in that case.
     role_summary: Optional[str] = None
     responsibilities: Optional[List[str]] = None
+    # Public candidate apply link token (None = applications closed).
+    application_token: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def application_url(self) -> Optional[str]:
+        if not self.application_token:
+            return None
+        from app.core.config import settings
+
+        if not settings.PUBLIC_APP_BASE_URL:
+            return None
+        return f"{settings.PUBLIC_APP_BASE_URL}/apply/{self.application_token}"
 
     @model_validator(mode="before")
     @classmethod
@@ -64,6 +77,7 @@ class JobResponse(JobCreate):
                         "hard_constraints": job_profile.get("hard_constraints", {}),
                         "role_summary": job_profile.get("role_summary"),
                         "responsibilities": job_profile.get("responsibilities", []),
+                        "application_token": getattr(values, "application_token", None),
                     }
                     return data
         # Already a plain dict (e.g. from test fixtures)

@@ -16,15 +16,10 @@ export interface Job {
    * `description` in the UI when null (older jobs, or profiling failure). */
   role_summary?: string | null;
   responsibilities?: string[] | null;
-}
-
-export interface ScreeningBatch {
-  id: number;
-  job_id: number;
-  status: string;
-  total_resumes: number;
-  processed: number;
-  failed: number;
+  /** Public candidate apply link token - null when applications are closed. */
+  application_token?: string | null;
+  /** Full /apply/<token> URL; null when closed or PUBLIC_APP_BASE_URL is unset. */
+  application_url?: string | null;
 }
 
 export interface Resume {
@@ -169,16 +164,64 @@ export interface PublicInterviewRoomResponse {
   };
 }
 
-export type PublicInterviewErrorReason = 'not_found' | 'expired' | 'already_completed';
+export type PublicInterviewErrorReason = 'not_found' | 'expired' | 'already_completed' | 'closed';
+
+// GET /public/jobs/{token}
+export interface PublicJobResponse {
+  title: string;
+  role_summary?: string | null;
+  responsibilities: string[];
+  description: string;
+}
+
+export type PublicApplyErrorReason =
+  | 'not_found'
+  | 'closed'
+  | 'rate_limited'
+  | 'temporarily_unavailable'
+  | 'invalid_file'
+  | 'consent_required'
+  | 'invalid_email'
+  | 'invalid_name'
+  | 'invalid_phone';
 
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
+export type UserRole = 'admin' | 'member';
+
 export interface UserResponse {
   id: number;
   email: string;
   name: string;
+  role: UserRole;
+  is_active: boolean;
   created_at: string | null;
+}
+
+/** GET /auth/me and POST /auth/login - the logged-in user plus their
+ * organization and account flags. */
+export interface MeResponse extends UserResponse {
+  organization: { id: number; name: string };
+  is_platform_admin: boolean;
+  must_change_password: boolean;
+}
+
+export interface SignupRequest {
+  company_name: string;
+  name: string;
+  email: string;
+  password: string;
+}
+
+export interface ChangePasswordRequest {
+  current_password: string;
+  new_password: string;
+}
+
+export interface UserUpdate {
+  role?: UserRole;
+  is_active?: boolean;
 }
 
 export interface LoginRequest {
@@ -232,12 +275,14 @@ export interface BatchProgressDetail {
   review: number;
   rejected: number;
   pre_screened_out?: number;
-  batch_type: 'UPLOAD' | 'SCREEN';
+  batch_type: 'UPLOAD' | 'SCREEN' | 'APPLICATION';
 }
 
 export interface BatchProgressResponse {
   job_id: number;
   batches: BatchProgressDetail[];
+  // READY resumes of this job with no screening result yet.
+  unscreened: number;
 }
 
 export interface JobBatchOverviewItem {
@@ -250,7 +295,7 @@ export interface JobBatchOverviewItem {
   processed: number;
   failed: number;
   created_at?: string | null;
-  batch_type: 'UPLOAD' | 'SCREEN';
+  batch_type: 'UPLOAD' | 'SCREEN' | 'APPLICATION';
 }
 
 // Candidate Profile Detail
@@ -277,6 +322,16 @@ export interface CandidateDetailResponse {
   profile?: CandidateProfileDetail | null;
   screening?: ScreeningResultResponse | null;
   interview?: Interview | null;
+  /** Only for resumes submitted via the public apply link: what the candidate
+   * typed into the form - unverified, never merged into the extracted profile. */
+  self_reported_contact?: SelfReportedContact | null;
+}
+
+export interface SelfReportedContact {
+  name: string;
+  email: string;
+  phone?: string | null;
+  submitted_at: string;
 }
 
 export interface ScreeningResultsParams {
@@ -385,10 +440,9 @@ export interface EmailMessage {
   template_id?: number;
   subject: string;
   body_content: string;
-  status: 'PENDING' | 'SENT' | 'FAILED' | 'BLOCKED';
+  status: 'PENDING' | 'SENT' | 'SIMULATED' | 'FAILED' | 'BLOCKED';
   provider_message_id?: string;
   error_message?: string;
-  override_recipient_email?: string;
   created_at: string;
   sent_at?: string;
 }
@@ -396,7 +450,6 @@ export interface EmailMessage {
 export interface BulkEmailRequest {
   resume_ids: number[];
   template_id: number;
-  override_recipient_email?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -404,7 +457,8 @@ export interface BulkEmailRequest {
 // ---------------------------------------------------------------------------
 export interface AppSettingsResponse {
   id: number;
-  org_name?: string | null;
+  /** The organization's own name (admin-editable via PATCH /settings/). */
+  organization_name?: string | null;
   min_candidates_to_screen?: number | null;
   max_candidates_to_screen?: number | null;
   semantic_gap_threshold?: number | null;
@@ -413,8 +467,6 @@ export interface AppSettingsResponse {
   auto_generate_interview_on_shortlist: boolean;
   auto_email_on_interview_scheduled: boolean;
   interview_scheduled_email_template_id?: number | null;
-  email_test_allowlist?: string | null;
-  email_test_override_recipient?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 }

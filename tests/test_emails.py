@@ -5,13 +5,30 @@ from httpx import AsyncClient
 from app.models.email import EmailTemplate
 from app.models.profile import CandidateProfile
 from app.models.job import Job
-from app.models.settings import AppSettings
 
 
 def _mock_session_local(mock_session_local):
     mock_session = AsyncMock()
     mock_session_local.return_value.__aenter__.return_value = mock_session
     return mock_session
+
+
+def _org_exec():
+    """Result of the job -> organization_id lookup the send path does before
+    reading that organization's settings."""
+    from tenancy_fixtures import TEST_ORG_ID
+
+    org_exec = MagicMock()
+    org_exec.scalar_one_or_none.return_value = TEST_ORG_ID
+    return org_exec
+
+
+def _job_resumes_exec(resume_ids):
+    """Result of queue_bulk_emails' "which of these resume ids belong to this
+    job" lookup."""
+    exec_result = MagicMock()
+    exec_result.scalars.return_value.all.return_value = list(resume_ids)
+    return exec_result
 
 
 @pytest.mark.asyncio
@@ -45,7 +62,7 @@ async def test_queue_bulk_emails_enqueues_via_shared_queue_service(mock_session_
     job_exec.scalar_one_or_none.return_value = job
 
     mock_session.execute = AsyncMock(
-        side_effect=[template_exec, existing_exec, candidate_exec, job_exec]
+        side_effect=[_org_exec(), template_exec, _job_resumes_exec([7]), existing_exec, candidate_exec, job_exec]
     )
 
     new_msg = MagicMock()
@@ -72,6 +89,103 @@ async def test_queue_bulk_emails_enqueues_via_shared_queue_service(mock_session_
     mock_queue_service.enqueue_task.assert_awaited_once_with(
         {"action": "SEND_EMAIL", "email_message_id": 42}
     )
+
+
+@pytest.mark.asyncio
+@patch("app.services.email.AsyncSessionLocal", new_callable=MagicMock)
+async def test_queue_bulk_emails_skips_org_lookup_when_caller_already_resolved_it(mock_session_local):
+    """A caller that already validated the job's organization (the bulk-send
+    route, via tenancy.get_job_for_org_or_404) passes organization_id and
+    queue_bulk_emails must use it directly instead of re-deriving it via
+    tenancy.organization_id_for_job - one fewer query, and the template
+    lookup is still scoped to that same organization_id."""
+    from app.services.email import email_service
+
+    mock_session = _mock_session_local(mock_session_local)
+
+    template = MagicMock(spec=EmailTemplate)
+    template.id = 1
+    template.body_content = "Hi {{candidate_name}}, thanks for applying to {{job_title}}."
+    template_exec = MagicMock()
+    template_exec.scalar_one_or_none.return_value = template
+
+    existing_exec = MagicMock()
+    existing_exec.scalar_one_or_none.return_value = None
+
+    candidate = MagicMock(spec=CandidateProfile)
+    candidate.email = "jane@example.com"
+    candidate.name = "Jane Doe"
+    candidate_exec = MagicMock()
+    candidate_exec.scalar_one_or_none.return_value = candidate
+
+    job = MagicMock(spec=Job)
+    job.title = "Backend Engineer"
+    job_exec = MagicMock()
+    job_exec.scalar_one_or_none.return_value = job
+
+    # No _org_exec() here - with organization_id given, the first query is
+    # the template lookup, not the job -> organization_id derivation.
+    mock_session.execute = AsyncMock(
+        side_effect=[template_exec, _job_resumes_exec([7]), existing_exec, candidate_exec, job_exec]
+    )
+
+    def _add(obj):
+        obj.id = 42
+
+    mock_session.add = MagicMock(side_effect=_add)
+    mock_session.flush = AsyncMock()
+    mock_session.commit = AsyncMock()
+
+    mock_queue_service = MagicMock()
+    mock_queue_service.enqueue_task = AsyncMock()
+
+    from tenancy_fixtures import TEST_ORG_ID
+
+    queued_count = await email_service.queue_bulk_emails(
+        job_id=1, resume_ids=[7], template_id=1, queue_service=mock_queue_service,
+        organization_id=TEST_ORG_ID,
+    )
+
+    assert queued_count == 1
+    assert mock_session.execute.await_count == 5  # not 6 - no organization_id_for_job lookup
+
+
+@pytest.mark.asyncio
+@patch("app.services.email.AsyncSessionLocal", new_callable=MagicMock)
+async def test_queue_bulk_emails_never_resumes_a_historical_blocked_message(mock_session_local):
+    """BLOCKED is historical only (the allowlist gate that ever produced it
+    was removed) - a BLOCKED row must be skipped, never flipped back to
+    PENDING and resent, since nothing ever re-validated that address the way
+    the (now-gone) allowlist used to on a genuine retry."""
+    from app.services.email import email_service
+
+    mock_session = _mock_session_local(mock_session_local)
+
+    template_exec = MagicMock()
+    template_exec.scalar_one_or_none.return_value = MagicMock(spec=EmailTemplate, id=1, body_content="Hi", subject="Hi")
+
+    existing_msg = MagicMock()
+    existing_msg.status = "BLOCKED"
+    existing_exec = MagicMock()
+    existing_exec.scalar_one_or_none.return_value = existing_msg
+
+    mock_session.execute = AsyncMock(
+        side_effect=[_org_exec(), template_exec, _job_resumes_exec([7]), existing_exec]
+    )
+    mock_session.add = MagicMock()
+    mock_session.commit = AsyncMock()
+
+    mock_queue_service = MagicMock()
+    mock_queue_service.enqueue_task = AsyncMock()
+
+    queued_count = await email_service.queue_bulk_emails(
+        job_id=1, resume_ids=[7], template_id=1, queue_service=mock_queue_service,
+    )
+
+    assert queued_count == 0
+    assert existing_msg.status == "BLOCKED"  # untouched
+    mock_session.add.assert_not_called()
+    mock_queue_service.enqueue_task.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -109,7 +223,7 @@ async def test_queue_bulk_emails_skips_candidate_without_interview_link(mock_ses
     interview_exec.scalar_one_or_none.return_value = None  # no Interview row yet
 
     mock_session.execute = AsyncMock(
-        side_effect=[template_exec, existing_exec, candidate_exec, job_exec, interview_exec]
+        side_effect=[_org_exec(), template_exec, _job_resumes_exec([7]), existing_exec, candidate_exec, job_exec, interview_exec]
     )
 
     mock_queue_service = MagicMock()
@@ -165,7 +279,7 @@ async def test_queue_bulk_emails_renders_interview_link_when_present(mock_sessio
     interview_exec.scalar_one_or_none.return_value = interview
 
     mock_session.execute = AsyncMock(
-        side_effect=[template_exec, existing_exec, candidate_exec, job_exec, interview_exec]
+        side_effect=[_org_exec(), template_exec, _job_resumes_exec([7]), existing_exec, candidate_exec, job_exec, interview_exec]
     )
 
     new_msg = MagicMock()
@@ -234,7 +348,7 @@ async def test_queue_bulk_emails_skips_when_link_expired(mock_session_local):
     interview_exec.scalar_one_or_none.return_value = interview
 
     mock_session.execute = AsyncMock(
-        side_effect=[template_exec, existing_exec, candidate_exec, job_exec, interview_exec]
+        side_effect=[_org_exec(), template_exec, _job_resumes_exec([7]), existing_exec, candidate_exec, job_exec, interview_exec]
     )
 
     mock_queue_service = MagicMock()
@@ -423,7 +537,6 @@ async def test_list_email_messages_paginated(client: AsyncClient):
     msg.status = "SENT"
     msg.provider_message_id = "abc"
     msg.error_message = None
-    msg.override_recipient_email = None
     msg.created_at = datetime.datetime.utcnow()
     msg.sent_at = datetime.datetime.utcnow()
 
@@ -460,7 +573,6 @@ def _make_pending_message():
     msg.body_content = "Body"
     msg.error_message = None
     msg.provider_message_id = None
-    msg.override_recipient_email = None
     msg.sent_at = None
     msg.send_attempt_started_at = None
     return msg
@@ -477,11 +589,10 @@ def _make_candidate_profile(email):
 
 @pytest.mark.asyncio
 @patch("app.services.email.AsyncSessionLocal", new_callable=MagicMock)
-async def test_process_send_email_task_blocks_recipient_not_in_allowlist(mock_session_local):
-    """A candidate email extracted from test/sample resume data must never
-    reach the email provider unless the user has explicitly cleared it in
-    Settings -> Outreach Automation. The message should be marked BLOCKED,
-    not SENT/FAILED, and the provider must never be called."""
+async def test_process_send_email_task_sends_to_candidates_own_email(mock_session_local):
+    """The recipient is always the candidate's own email as extracted from
+    their resume (CandidateProfile.email) - no override, no redirect, no
+    allowlist gate. The provider is called with that address directly."""
     from app.services.email import email_service
 
     mock_session = _mock_session_local(mock_session_local)
@@ -490,62 +601,19 @@ async def test_process_send_email_task_blocks_recipient_not_in_allowlist(mock_se
     msg_exec = MagicMock()
     msg_exec.scalar_one_or_none.return_value = msg
 
-    profile = _make_candidate_profile("candidate@fake-resume.test")
+    profile = _make_candidate_profile("Real.Candidate@Example.com")
     profile_exec = MagicMock()
     profile_exec.scalar_one_or_none.return_value = profile
 
-    allowlist_row = MagicMock(spec=AppSettings)
-    allowlist_row.email_test_allowlist = "someone-else@example.com"
-    allowlist_row.email_test_override_recipient = None
-    settings_exec = MagicMock()
-    settings_exec.scalar_one_or_none.return_value = allowlist_row
-
-    # process_send_email_task looks up AppSettings (for a possible global
-    # test-override recipient) before the profile, so it comes second here.
-    mock_session.execute = AsyncMock(side_effect=[msg_exec, settings_exec, profile_exec])
-    mock_session.commit = AsyncMock()
-
-    with patch.object(email_service.provider, "send_email", new_callable=AsyncMock) as mock_send:
-        await email_service.process_send_email_task(1)
-        mock_send.assert_not_called()
-
-    assert msg.status == "BLOCKED"
-    assert "not in the test email allowlist" in msg.error_message
-
-
-@pytest.mark.asyncio
-@patch("app.services.email.AsyncSessionLocal", new_callable=MagicMock)
-async def test_process_send_email_task_sends_when_recipient_in_allowlist(mock_session_local):
-    """An address the user has explicitly cleared in the allowlist (any case/
-    whitespace) still goes through to the provider as before."""
-    from app.services.email import email_service
-
-    mock_session = _mock_session_local(mock_session_local)
-
-    msg = _make_pending_message()
-    msg_exec = MagicMock()
-    msg_exec.scalar_one_or_none.return_value = msg
-
-    profile = _make_candidate_profile("Real.Tester@Example.com")
-    profile_exec = MagicMock()
-    profile_exec.scalar_one_or_none.return_value = profile
-
-    allowlist_row = MagicMock(spec=AppSettings)
-    allowlist_row.email_test_allowlist = " real.tester@example.com , other@example.com "
-    allowlist_row.email_test_override_recipient = None
-    settings_exec = MagicMock()
-    settings_exec.scalar_one_or_none.return_value = allowlist_row
-
-    # process_send_email_task looks up AppSettings (for a possible global
-    # test-override recipient) before the profile, so it comes second here.
-    mock_session.execute = AsyncMock(side_effect=[msg_exec, settings_exec, profile_exec])
+    # Only two execute calls: message lookup, then the candidate's own profile.
+    mock_session.execute = AsyncMock(side_effect=[msg_exec, profile_exec])
     mock_session.commit = AsyncMock()
 
     with patch.object(email_service.provider, "send_email", new_callable=AsyncMock) as mock_send:
         mock_send.return_value = {"id": "smtp_123"}
         await email_service.process_send_email_task(1)
         mock_send.assert_called_once_with(
-            to_email="Real.Tester@Example.com", subject="Hi", html_body="Body"
+            to_email="Real.Candidate@Example.com", subject="Hi", html_body="Body"
         )
 
     assert msg.status == "SENT"
@@ -582,67 +650,63 @@ async def test_process_send_email_task_fails_safe_on_crashed_prior_attempt(mock_
 
 @pytest.mark.asyncio
 @patch("app.services.email.AsyncSessionLocal", new_callable=MagicMock)
-async def test_process_send_email_task_uses_global_test_override_and_skips_allowlist(mock_session_local):
-    """AppSettings.email_test_override_recipient (set in Settings > Outreach
-    Automation) must redirect a send there instead of the candidate's real
-    address, and must skip the allowlist check entirely - this is what makes
-    a fully automated send (shortlist/interview-scheduled, which has no
-    per-send override field) testable without an allowlist edit."""
+async def test_process_send_email_task_marks_simulated_send_as_not_delivered(mock_session_local):
+    """With no SMTP server configured the provider only simulates the send -
+    nothing reaches the candidate, so the message must not be recorded SENT."""
     from app.services.email import email_service
 
     mock_session = _mock_session_local(mock_session_local)
-
     msg = _make_pending_message()
     msg_exec = MagicMock()
     msg_exec.scalar_one_or_none.return_value = msg
-
-    settings_row = MagicMock(spec=AppSettings)
-    settings_row.email_test_override_recipient = "tester@example.com"
-    settings_row.email_test_allowlist = None  # deliberately empty - must not matter
-    settings_exec = MagicMock()
-    settings_exec.scalar_one_or_none.return_value = settings_row
-
-    # Only two execute calls expected: message lookup, then settings lookup -
-    # no CandidateProfile lookup should happen at all when the global
-    # override is set.
-    mock_session.execute = AsyncMock(side_effect=[msg_exec, settings_exec])
+    profile_exec = MagicMock()
+    profile_exec.scalar_one_or_none.return_value = _make_candidate_profile("jane@example.com")
+    mock_session.execute = AsyncMock(side_effect=[msg_exec, profile_exec])
     mock_session.commit = AsyncMock()
 
-    with patch.object(email_service.provider, "send_email", new_callable=AsyncMock) as mock_send:
-        mock_send.return_value = {"id": "smtp_123"}
+    with patch.object(email_service.provider, "host", None):
         await email_service.process_send_email_task(1)
-        mock_send.assert_called_once_with(
-            to_email="tester@example.com", subject="Hi", html_body="Body"
-        )
 
-    assert msg.status == "SENT"
+    assert msg.status == "SIMULATED"
+    assert msg.sent_at is None
+    assert "SMTP is not configured" in msg.error_message
 
 
 @pytest.mark.asyncio
 @patch("app.services.email.AsyncSessionLocal", new_callable=MagicMock)
-async def test_process_send_email_task_per_send_override_wins_over_global(mock_session_local):
-    """A per-message override_recipient_email (set by the Bulk Email modal's
-    test-recipient field) takes priority over the persistent global
-    AppSettings.email_test_override_recipient - AppSettings is never even
-    queried in this case."""
+async def test_queue_bulk_emails_resends_a_simulated_message(mock_session_local):
+    """A SIMULATED message was never delivered, so a later bulk send (e.g.
+    once SMTP is configured) resumes it like a FAILED one."""
     from app.services.email import email_service
 
     mock_session = _mock_session_local(mock_session_local)
-
-    msg = _make_pending_message()
-    msg.override_recipient_email = "per-send@example.com"
-    msg_exec = MagicMock()
-    msg_exec.scalar_one_or_none.return_value = msg
-
-    mock_session.execute = AsyncMock(side_effect=[msg_exec])
+    template_exec = MagicMock()
+    template_exec.scalar_one_or_none.return_value = MagicMock(spec=EmailTemplate, id=1, body_content="Hi", subject="Hi")
+    existing_msg = MagicMock()
+    existing_msg.id = 9
+    existing_msg.status = "SIMULATED"
+    existing_exec = MagicMock()
+    existing_exec.scalar_one_or_none.return_value = existing_msg
+    candidate = MagicMock(spec=CandidateProfile)
+    candidate.email = "jane@example.com"
+    candidate.name = "Jane Doe"
+    candidate_exec = MagicMock()
+    candidate_exec.scalar_one_or_none.return_value = candidate
+    job_exec = MagicMock()
+    job_exec.scalar_one_or_none.return_value = MagicMock(spec=Job, title="Backend Engineer")
+    mock_session.execute = AsyncMock(
+        side_effect=[_org_exec(), template_exec, _job_resumes_exec([7]), existing_exec, candidate_exec, job_exec]
+    )
+    mock_session.add = MagicMock()
     mock_session.commit = AsyncMock()
+    mock_queue_service = MagicMock()
+    mock_queue_service.enqueue_task = AsyncMock()
 
-    with patch.object(email_service.provider, "send_email", new_callable=AsyncMock) as mock_send:
-        mock_send.return_value = {"id": "smtp_123"}
-        await email_service.process_send_email_task(1)
-        mock_send.assert_called_once_with(
-            to_email="per-send@example.com", subject="Hi", html_body="Body"
-        )
+    queued_count = await email_service.queue_bulk_emails(
+        job_id=1, resume_ids=[7], template_id=1, queue_service=mock_queue_service,
+    )
 
-    assert msg.status == "SENT"
-    assert msg.provider_message_id == "smtp_123"
+    assert queued_count == 1
+    assert existing_msg.status == "PENDING"
+    mock_session.add.assert_not_called()
+    mock_queue_service.enqueue_task.assert_awaited_once_with({"action": "SEND_EMAIL", "email_message_id": 9})

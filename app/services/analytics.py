@@ -8,10 +8,14 @@ from app.models.resume import Resume
 from app.models.job import Job
 from app.models.screening import ScreeningResult
 from app.models.interview import Interview
+from app.services.tenancy import org_job_ids
 
 
 class AnalyticsService:
-    async def funnel(self, db: AsyncSession, job_id: Optional[int] = None) -> dict:
+    """Every aggregate is restricted to one organization's jobs; job_id
+    (already org-checked by the route) narrows it further."""
+
+    async def funnel(self, db: AsyncSession, *, organization_id: int, job_id: Optional[int] = None) -> dict:
         query = (
             select(
                 func.count(func.distinct(Resume.id)).label("uploaded"),
@@ -36,6 +40,7 @@ class AnalyticsService:
                 Interview,
                 (Interview.resume_id == Resume.id) & (Interview.job_id == Resume.job_id),
             )
+            .where(Resume.job_id.in_(org_job_ids(organization_id)))
         )
         if job_id is not None:
             query = query.where(Resume.job_id == job_id)
@@ -51,9 +56,13 @@ class AnalyticsService:
             "completed": row.completed or 0,
         }
 
-    async def decision_breakdown(self, db: AsyncSession, job_id: Optional[int] = None) -> dict:
-        query = select(ScreeningResult.decision, func.count(ScreeningResult.id)).group_by(
-            ScreeningResult.decision
+    async def decision_breakdown(
+        self, db: AsyncSession, *, organization_id: int, job_id: Optional[int] = None
+    ) -> dict:
+        query = (
+            select(ScreeningResult.decision, func.count(ScreeningResult.id))
+            .where(ScreeningResult.job_id.in_(org_job_ids(organization_id)))
+            .group_by(ScreeningResult.decision)
         )
         if job_id is not None:
             query = query.where(ScreeningResult.job_id == job_id)
@@ -64,7 +73,7 @@ class AnalyticsService:
         return {"items": items, "total": total}
 
     async def throughput(
-        self, db: AsyncSession, days: int = 30, job_id: Optional[int] = None
+        self, db: AsyncSession, *, organization_id: int, days: int = 30, job_id: Optional[int] = None
     ) -> dict:
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
@@ -73,7 +82,10 @@ class AnalyticsService:
                 func.date_trunc("day", ScreeningResult.created_at).label("day"),
                 func.count(ScreeningResult.id),
             )
-            .where(ScreeningResult.created_at >= cutoff)
+            .where(
+                ScreeningResult.created_at >= cutoff,
+                ScreeningResult.job_id.in_(org_job_ids(organization_id)),
+            )
             .group_by("day")
             .order_by("day")
         )
@@ -91,11 +103,14 @@ class AnalyticsService:
 
         return {"items": items}
 
-    async def time_in_stage(self, db: AsyncSession, job_id: Optional[int] = None) -> dict:
+    async def time_in_stage(
+        self, db: AsyncSession, *, organization_id: int, job_id: Optional[int] = None
+    ) -> dict:
         resume_to_screened_query = (
             select(func.avg(func.extract("epoch", ScreeningResult.created_at - Resume.created_at)))
             .select_from(ScreeningResult)
             .join(Resume, Resume.id == ScreeningResult.resume_id)
+            .where(ScreeningResult.job_id.in_(org_job_ids(organization_id)))
         )
         screened_to_interview_query = (
             select(func.avg(func.extract("epoch", Interview.created_at - ScreeningResult.created_at)))
@@ -105,6 +120,7 @@ class AnalyticsService:
                 (ScreeningResult.resume_id == Interview.resume_id)
                 & (ScreeningResult.job_id == Interview.job_id),
             )
+            .where(Interview.job_id.in_(org_job_ids(organization_id)))
         )
         if job_id is not None:
             resume_to_screened_query = resume_to_screened_query.where(ScreeningResult.job_id == job_id)
@@ -122,11 +138,12 @@ class AnalyticsService:
             else None,
         }
 
-    async def job_volume(self, db: AsyncSession) -> dict:
+    async def job_volume(self, db: AsyncSession, *, organization_id: int) -> dict:
         query = (
             select(Job.id, Job.title, func.count(Resume.id))
             .select_from(Job)
             .outerjoin(Resume, Resume.job_id == Job.id)
+            .where(Job.organization_id == organization_id)
             .group_by(Job.id, Job.title)
             .order_by(Job.id)
         )

@@ -5,8 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import jobs, resumes, health, integration, candidates, emails
 from app.api import settings as settings_api
 from app.api import integrations_status, talent_pool, analytics, interviews, interview_analysis
-from app.api import public_interview, auth
-from app.api.deps import get_current_user
+from app.api import public_interview, public_application, auth
+from app.api.deps import get_current_user, require_platform_admin
 from app.core.config import settings
 from app.core.logging import setup_logging
 
@@ -15,7 +15,6 @@ setup_logging()
 from contextlib import asynccontextmanager
 from app.services.queue import queue_service
 import logging
-import os
 
 _DEFAULT_SECRET_KEY = "dev-only-insecure-secret-key-change-me"
 
@@ -80,7 +79,12 @@ app.include_router(integration.router, prefix="/integration", tags=["integration
 app.include_router(candidates.router, prefix="/candidates", tags=["candidates"], dependencies=_auth_dep)
 app.include_router(emails.router, prefix="/emails", tags=["emails"], dependencies=_auth_dep)
 app.include_router(settings_api.router, prefix="/settings", tags=["settings"], dependencies=_auth_dep)
-app.include_router(integrations_status.router, prefix="/integrations", tags=["integrations"], dependencies=_auth_dep)
+# Platform-level, not organization-level: shows/exercises provider
+# configuration and keys shared by every tenant.
+app.include_router(
+    integrations_status.router, prefix="/integrations", tags=["integrations"],
+    dependencies=[Depends(require_platform_admin)],
+)
 app.include_router(talent_pool.router, prefix="/talent-pool", tags=["talent-pool"], dependencies=_auth_dep)
 app.include_router(analytics.router, prefix="/analytics", tags=["analytics"], dependencies=_auth_dep)
 app.include_router(interviews.router, prefix="/interviews", tags=["interviews"], dependencies=_auth_dep)
@@ -88,3 +92,6 @@ app.include_router(interview_analysis.router, prefix="/interview-analysis", tags
 # public_interview stays open: candidates using it are never HR users and
 # never get a session cookie.
 app.include_router(public_interview.router, prefix="/public/interview", tags=["public-interview"])
+# public_application is likewise open: auth is possession of a job's
+# application_token; rate-limited per client IP and per job.
+app.include_router(public_application.router, prefix="/public/jobs", tags=["public-application"])

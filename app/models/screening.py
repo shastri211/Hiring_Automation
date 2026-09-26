@@ -16,6 +16,14 @@ class ScreeningResult(Base):
     # link to Application at cutover, once screening code writes it directly
     # and (job_id, resume_id) is retired.
     application_id = Column(Integer, ForeignKey("applications.id"), nullable=True, index=True)
+    # The SCREEN batch (screening run) that created this result; NULL for
+    # results created by an HR decision outside a screening run.
+    screening_batch_id = Column(
+        Integer,
+        ForeignKey("screening_batches.id", name="fk_screening_results_screening_batch_id"),
+        nullable=True,
+        index=True,
+    )
 
     score = Column(Float, nullable=True)
     semantic_score = Column(Float, nullable=True)

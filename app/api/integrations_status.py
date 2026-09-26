@@ -1,9 +1,10 @@
 import asyncio
 import logging
 import smtplib
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from app.core.config import settings
+from app.services import rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +89,13 @@ async def _test_dograh() -> dict:
 
 
 @router.post("/{provider}/test")
-async def test_integration(provider: str):
+async def test_integration(provider: str, request: Request):
+    # Real outbound provider calls - bounded even for platform admins.
+    client_ip = request.client.host if request.client else "unknown"
+    await rate_limit.enforce(
+        f"provider_test:ip:{rate_limit.hash_client_ip(client_ip)}",
+        settings.PLATFORM_PROVIDER_TEST_MAX_PER_IP_PER_HOUR,
+    )
     provider = provider.lower()
     if provider == "smtp":
         return await _test_smtp()

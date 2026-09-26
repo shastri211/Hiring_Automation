@@ -11,3 +11,5 @@ from app.models.user import User
 from app.models.candidate import Candidate, CandidateMergeLog, CandidateMatchSuggestion
 from app.models.application import Application, ApplicationResumeHistory
 from app.models.decision_audit import DecisionAudit
+from app.models.public_application import PublicApplicationSubmission
+from app.models.organization import Organization
