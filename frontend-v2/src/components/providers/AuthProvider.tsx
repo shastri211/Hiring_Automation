@@ -1,22 +1,9 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
-import { authApi } from '../api/auth';
-import { registerPasswordChangeRequiredHandler, registerUnauthorizedHandler } from '../api/authEvents';
-import { queryClient } from '../api/queryClient';
-import type { MeResponse } from '../types';
-
-interface AuthContextValue {
-  /** The logged-in user with their organization, role and account flags. */
-  user: MeResponse | null;
-  isLoading: boolean;
-  isAdmin: boolean;
-  isPlatformAdmin: boolean;
-  login: (email: string, password: string) => Promise<MeResponse>;
-  logout: () => Promise<void>;
-  /** Re-read /auth/me (e.g. after changing a temporary password). */
-  refreshMe: () => Promise<void>;
-}
-
-const AuthContext = createContext<AuthContextValue | null>(null);
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { authApi } from '../../api/auth';
+import { registerPasswordChangeRequiredHandler, registerUnauthorizedHandler } from '../../api/authEvents';
+import { queryClient } from '../../api/queryClient';
+import { AuthContext } from '../../hooks/useAuth';
+import type { MeResponse } from '../../types';
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<MeResponse | null>(null);
@@ -95,9 +82,3 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     </AuthContext.Provider>
   );
 };
-
-export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used within an AuthProvider');
-  return ctx;
-}

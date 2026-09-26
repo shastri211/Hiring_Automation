@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { Loader2, Users, FileText, ChevronLeft, ChevronRight, PackagePlus, Mail } from 'lucide-react';
@@ -44,10 +44,11 @@ export const GlobalCandidates = () => {
   // would otherwise silently vanish from the send (while the toolbar still
   // shows a stale "N selected" count) once the page/filter changes and
   // data.items no longer contains those rows. Selection is page-scoped by
-  // design (see Phase 7 plan), so clear it whenever the page changes.
-  useEffect(() => {
+  // design (see Phase 7 plan), so every page/filter change clears it.
+  const goToPage = (nextPage: number) => {
+    setPage(nextPage);
     setSelectedIds([]);
-  }, [page, decision]);
+  };
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked && data?.items) {
@@ -113,7 +114,7 @@ export const GlobalCandidates = () => {
               value={decision || 'all'}
               onValueChange={(value) => {
                 setDecision(value === 'all' ? undefined : (value as CandidateDecision));
-                setPage(1);
+                goToPage(1);
               }}
             >
               <SelectTrigger>
@@ -237,14 +238,14 @@ export const GlobalCandidates = () => {
               <div className="flex gap-1">
                 <button
                   disabled={page === 1}
-                  onClick={() => setPage((p) => p - 1)}
+                  onClick={() => goToPage(page - 1)}
                   className="p-1 rounded hover:bg-[var(--bg-hover)] disabled:opacity-50 text-[var(--text-secondary)] focus-ring"
                 >
                   <ChevronLeft className="w-5 h-5" />
                 </button>
                 <button
                   disabled={page * PAGE_SIZE >= data.total}
-                  onClick={() => setPage((p) => p + 1)}
+                  onClick={() => goToPage(page + 1)}
                   className="p-1 rounded hover:bg-[var(--bg-hover)] disabled:opacity-50 text-[var(--text-secondary)] focus-ring"
                 >
                   <ChevronRight className="w-5 h-5" />
