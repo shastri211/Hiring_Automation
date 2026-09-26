@@ -17,6 +17,12 @@ export const candidatesApi = {
     return apiClient.get<any>('/candidates/', { params }) as unknown as Promise<PaginatedResponse<GlobalScreeningResultResponse>>;
   },
 
+  // Canonical (not merged-away) candidates matching name/email/phone - the
+  // manual-merge target picker. `term` must be at least 2 characters.
+  searchCandidates: (term: string, excludeId?: number): Promise<CandidateResponse[]> => {
+    return apiClient.get('/candidates/search', { params: { q: term, exclude_id: excludeId } });
+  },
+
   getCandidate: (candidateId: number): Promise<CandidateResponse> => {
     return apiClient.get(`/candidates/${candidateId}`);
   },

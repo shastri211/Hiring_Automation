@@ -285,7 +285,7 @@ NO_IDENTIFIER_INPUT = {
     ("GET", "/auth/me"), ("POST", "/auth/change-password"),
     ("POST", "/auth/users"), ("GET", "/auth/users"),
     ("GET", "/jobs/"), ("GET", "/jobs/batches/overview"), ("POST", "/jobs/"), ("POST", "/jobs/upload"),
-    ("GET", "/candidates/"), ("GET", "/candidates/match-suggestions"),
+    ("GET", "/candidates/"), ("GET", "/candidates/match-suggestions"), ("GET", "/candidates/search"),
     ("POST", "/emails/templates"), ("GET", "/emails/templates"),
     ("GET", "/settings/"),
     ("GET", "/talent-pool/"),
@@ -415,6 +415,10 @@ async def test_lists_and_aggregates_never_include_another_organization(graph):
         assert a["resume"] not in cand_rows and b["resume"] in cand_rows
         sugg = await ids("/candidates/match-suggestions", items=None)
         assert a["suggestion"] not in sugg and b["suggestion"] in sugg
+        # Both organizations' candidates share this phone number and "Cand" names.
+        for term in ("5550001111", "Cand"):
+            found = await ids("/candidates/search", items=None, q=term)
+            assert a["candidate"] not in found and a["candidate2"] not in found and b["candidate"] in found
         tpls = await ids("/emails/templates", items=None)
         assert a["template"] not in tpls and b["template"] in tpls
         msg_jobs = await ids("/emails/messages", key="job_id", page_size=100)

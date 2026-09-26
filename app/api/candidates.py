@@ -243,6 +243,34 @@ async def list_match_suggestions(
     return items
 
 
+# Registered before "/{candidate_id}" so "search" isn't parsed as an id.
+@router.get("/search", response_model=List[CandidateResponse])
+async def search_candidates(
+    q: str = Query(..., min_length=2, max_length=100),
+    exclude_id: Optional[int] = Query(None, description="Candidate to leave out (e.g. the one being merged)"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """This organization's canonical candidates (not merged away) whose name,
+    email or phone contains `q` - the target picker for a manual merge."""
+    term = q.strip()
+    query = (
+        select(Candidate)
+        .where(
+            Candidate.organization_id == current_user.organization_id,
+            Candidate.merged_into_id.is_(None),
+            Candidate.canonical_name.icontains(term, autoescape=True)
+            | Candidate.primary_email.icontains(term, autoescape=True)
+            | Candidate.primary_phone.icontains(term, autoescape=True),
+        )
+        .order_by(Candidate.canonical_name.nulls_last(), Candidate.id)
+        .limit(10)
+    )
+    if exclude_id is not None:
+        query = query.where(Candidate.id != exclude_id)
+    return (await db.execute(query)).scalars().all()
+
+
 @router.get("/{candidate_id}", response_model=CandidateResponse)
 async def get_candidate(
     candidate_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)
