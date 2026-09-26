@@ -3,9 +3,9 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './api/queryClient';
 import { Toaster } from 'sonner';
 import { AppRoutes } from './routes';
-import { ThemeProvider } from './hooks/useTheme';
-import { ConfirmProvider } from './hooks/useConfirm';
-import { AuthProvider } from './hooks/useAuth';
+import { ThemeProvider } from './components/providers/ThemeProvider';
+import { ConfirmProvider } from './components/providers/ConfirmProvider';
+import { AuthProvider } from './components/providers/AuthProvider';
 import './styles/global.css';
 
 

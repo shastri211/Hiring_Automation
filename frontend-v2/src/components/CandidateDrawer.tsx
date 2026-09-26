@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Mail, Phone, ExternalLink, ChevronRight, Save } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { jobsApi } from '../api/jobs';
@@ -38,21 +38,14 @@ export const CandidateDrawer = ({ jobId, resumeId, isOpen, onClose, onView360 }:
 
   const decisionMutation = useDecisionMutation(jobId);
 
-  const [localNotes, setLocalNotes] = useState('');
-
-  // Reset immediately on resumeId change (before the new query resolves) so
-  // a candidate with no screening/notes never inherits the PREVIOUS
-  // candidate's still-in-state text - which the disabled-check below would
-  // then treat as a real edit and let Save Notes write onto the wrong resume.
-  useEffect(() => {
-    setLocalNotes('');
-  }, [resumeId]);
-
-  useEffect(() => {
-    if (data?.screening?.notes !== undefined) {
-      setLocalNotes(data.screening.notes || '');
-    }
-  }, [data?.screening?.notes]);
+  // An unsaved notes edit is tagged with the resume it was typed for, and
+  // the textarea otherwise shows that resume's saved notes. Switching
+  // candidates therefore never carries the PREVIOUS candidate's text over -
+  // which the disabled-check below would treat as a real edit and let Save
+  // Notes write onto the wrong resume.
+  const [draft, setDraft] = useState<{ resumeId: number | null; notes: string } | null>(null);
+  const localNotes = draft?.resumeId === resumeId ? draft.notes : (data?.screening?.notes || '');
+  const setLocalNotes = (notes: string) => setDraft({ resumeId, notes });
 
   const handleSaveNotes = () => {
     if (resumeId !== null) {
