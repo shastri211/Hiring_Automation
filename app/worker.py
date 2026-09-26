@@ -1,10 +1,12 @@
 import asyncio
+import logging
 import os
 import uuid
 import traceback
 import json
 from sqlalchemy import select
 from app.core.config import settings
+from app.core.logging import setup_logging
 from app.db.session import AsyncSessionLocal
 from app.services.queue import queue_service
 from app.models.resume import Resume
@@ -14,6 +16,8 @@ from app.models.batch import ScreeningBatch
 from app.services.orchestrator import orchestrator, update_batch_progress
 from app.services.llm_provider import ConfigurationError
 from app.services.interview import interview_adapter
+
+logger = logging.getLogger(__name__)
 
 WORKER_ID = settings.WORKER_ID
 
@@ -67,9 +71,9 @@ async def recover_stuck_messages():
             actual_consumer = f"{WORKER_ID}-0"
             claimed = await queue_service.claim_stuck_messages(actual_consumer, min_idle_ms=300000)
             for c_msg_id, payload in claimed:
-                print(f"Worker {actual_consumer} recovered stuck message {c_msg_id}")
-        except Exception as e:
-            print(f"Recovery task error: {e}")
+                logger.info(f"Worker {actual_consumer} recovered stuck message {c_msg_id}")
+        except Exception:
+            logger.exception("Stuck-message recovery error")
         await asyncio.sleep(60)
 
 
@@ -79,23 +83,30 @@ async def mark_expired_interviews_no_show_loop():
             await interview_adapter.mark_expired_interviews_as_no_show()
         except Exception:
             logger.exception("NO_SHOW sweep error")
+        try:
+            await interview_adapter.fail_abandoned_in_progress_interviews()
+        except Exception:
+            logger.exception("Abandoned IN_PROGRESS interview sweep error")
         await asyncio.sleep(settings.INTERVIEW_NO_SHOW_SWEEP_INTERVAL_SECONDS)
 
 
-async def requeue_unenqueued_applications_loop():
-    """Recovery for public applications whose queue enqueue was never
-    confirmed - see app/services/public_application.py."""
+async def requeue_unenqueued_resumes_loop():
+    """Recovery for resumes whose queue enqueue was never confirmed - public
+    applications (app/services/public_application.py) and recruiter uploads
+    (app/services/resume_intake.py)."""
     from app.services.public_application import requeue_unenqueued_applications
+    from app.services.resume_intake import requeue_unenqueued_uploads
     while True:
         try:
             await requeue_unenqueued_applications()
         except Exception:
             logger.exception("Public application requeue sweep error")
+        try:
+            await requeue_unenqueued_uploads()
+        except Exception:
+            logger.exception("Upload requeue sweep error")
         await asyncio.sleep(settings.PUBLIC_APPLY_REQUEUE_SWEEP_INTERVAL_SECONDS)
 
-
-import logging
-logger = logging.getLogger(__name__)
 
 # Well under claim_stuck_messages' min_idle_ms (300000/5min default) so a
 # message being actively worked never looks idle enough to be reclaimed by
@@ -218,11 +229,14 @@ async def worker_loop(consumer_id: str):
 
 
 async def main():
+    # app/main.py configures logging for the API process; the worker is its
+    # own process and needs the same, or every INFO line is dropped.
+    setup_logging()
     await queue_service.init_stream()
     tasks = [asyncio.create_task(worker_loop(f"{WORKER_ID}-{i}")) for i in range(settings.WORKER_CONCURRENCY)]
     tasks.append(asyncio.create_task(recover_stuck_messages()))
     tasks.append(asyncio.create_task(mark_expired_interviews_no_show_loop()))
-    tasks.append(asyncio.create_task(requeue_unenqueued_applications_loop()))
+    tasks.append(asyncio.create_task(requeue_unenqueued_resumes_loop()))
     await asyncio.gather(*tasks)
 
 if __name__ == "__main__":

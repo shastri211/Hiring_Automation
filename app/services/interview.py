@@ -81,6 +81,12 @@ _MAIN_AGENDA_NODE_NAME = "Main Agenda and Questions"
 _ACTIVE_STATUSES = ("SCHEDULED", "IN_PROGRESS")
 _RETRIABLE_STATUSES = ("RESCHEDULE_PENDING", "FAILED")
 _TERMINAL_STATUSES = ("DECLINED", "COMPLETED", "NO_SHOW")
+# Every status an Interview can hold - what the status webhook may set.
+INTERVIEW_STATUSES = ("PENDING",) + _ACTIVE_STATUSES + _RETRIABLE_STATUSES + _TERMINAL_STATUSES
+# How long past link expiry an IN_PROGRESS interview may still wait for its
+# result webhook before the sweep gives up on it (a call started just before
+# expiry can legitimately finish, and report, after it).
+_IN_PROGRESS_RESULT_GRACE = timedelta(hours=1)
 
 
 class InterviewNotRetriableError(Exception):
@@ -222,6 +228,13 @@ class InterviewIntegrationAdapter:
             )
             interview = existing.scalar_one_or_none()
             if interview:
+                if interview.status == "DECLINED":
+                    # A recruiter's decline is final - never reopened by a
+                    # provider callback. Acknowledged so it isn't redelivered.
+                    logger.warning(
+                        "Ignoring status webhook %r for declined interview %s", status, interview.id
+                    )
+                    return True
                 interview.status = status
                 await session.commit()
                 return True
@@ -314,6 +327,14 @@ class InterviewIntegrationAdapter:
                 interview.provider_run_id = str(incoming_run_id)
                 interview.provider_run_attempt = interview.retry_count
 
+            if interview.status == "DECLINED":
+                # A call already under way when the recruiter declined can
+                # still report in. Keep its data, but the decline is final:
+                # status and outcome stay as the recruiter set them.
+                logger.warning("Recorded evaluation for declined interview %s without reopening it", interview.id)
+                await session.commit()
+                return True
+
             call_disposition = normalized.get("call_disposition") or ""
             interview.outcome = call_disposition or None
 
@@ -367,5 +388,38 @@ class InterviewIntegrationAdapter:
                         await session.commit()
             except Exception:
                 logger.exception("Failed to mark interview %s as NO_SHOW", interview_id)
+
+    async def fail_abandoned_in_progress_interviews(self) -> None:
+        """Periodic sweep: an IN_PROGRESS interview (the candidate opened
+        the room) whose link expired more than _IN_PROGRESS_RESULT_GRACE ago
+        with no result recorded for the current attempt is marked FAILED, so
+        it doesn't stay "in progress" forever and the recruiter can retry it
+        (subject to the retry cap). A late result webhook still applies
+        normally afterwards.
+        """
+        cutoff = datetime.now(timezone.utc) - _IN_PROGRESS_RESULT_GRACE
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Interview.id).where(
+                    Interview.status == "IN_PROGRESS",
+                    Interview.link_expires_at <= cutoff,
+                    or_(
+                        Interview.provider_run_id.is_(None),
+                        Interview.provider_run_attempt.is_distinct_from(Interview.retry_count),
+                    ),
+                )
+            )
+            interview_ids = [row[0] for row in result.all()]
+
+        for interview_id in interview_ids:
+            try:
+                async with AsyncSessionLocal() as session:
+                    interview = await session.get(Interview, interview_id)
+                    if interview and interview.status == "IN_PROGRESS":
+                        interview.status = "FAILED"
+                        interview.outcome = "no_result_received"
+                        await session.commit()
+            except Exception:
+                logger.exception("Failed to mark abandoned interview %s as FAILED", interview_id)
 
 interview_adapter = InterviewIntegrationAdapter()

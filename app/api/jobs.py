@@ -441,26 +441,7 @@ async def delete_job(
     current_user: User = Depends(get_current_user),
 ):
     job = await _get_job_or_404(job_id, db, current_user.organization_id)
-    
-    # Clean up Qdrant vectors
-    if job.embedding_profile:
-        profile = model_registry.get_profile_by_model(job.embedding_profile)
-        if profile:
-            try:
-                await vector_store.delete_points_by_filter(profile.collection, {"job_id": job.id})
-            except Exception as e:
-                logger.error(f"Failed to delete Qdrant vectors for job {job.id} in collection {profile.collection}: {e}")
-        else:
-            logger.warning(f"No embedding profile registered for '{job.embedding_profile}'; skipping Qdrant cleanup for job {job.id}")
-
-    # Delete files associated with this job. Resumes are stored by
-    # storage_service under "{STORAGE_LOCAL_DIR}/job_{job_id}/batch_.../..."
-    # (see app/api/resumes.py + app/services/storage.py) - must match that
-    # layout exactly or the on-disk files are silently orphaned.
-    import shutil
-    job_dir = os.path.join(settings.STORAGE_LOCAL_DIR, f"job_{job_id}")
-    if os.path.exists(job_dir):
-        shutil.rmtree(job_dir, ignore_errors=True)
+    embedding_profile = job.embedding_profile
 
     # Delete from DB (manual cascade to avoid FK constraint errors). Order
     # matters: every table below is deleted before the row(s) it references,
@@ -504,7 +485,29 @@ async def delete_job(
 
     await db.delete(job)
     await db.commit()
-    
+
+    # Vectors and files go only after the rows are gone: if the commit above
+    # fails, nothing is left pointing at deleted data. A failure here only
+    # leaves unreferenced leftovers, which is logged.
+    if embedding_profile:
+        profile = model_registry.get_profile_by_model(embedding_profile)
+        if profile:
+            try:
+                await vector_store.delete_points_by_filter(profile.collection, {"job_id": job_id})
+            except Exception as e:
+                logger.error(f"Failed to delete Qdrant vectors for job {job_id} in collection {profile.collection}: {e}")
+        else:
+            logger.warning(f"No embedding profile registered for '{embedding_profile}'; skipping Qdrant cleanup for job {job_id}")
+
+    # Resumes are stored by storage_service under
+    # "{STORAGE_LOCAL_DIR}/job_{job_id}/batch_.../..." (see app/api/resumes.py +
+    # app/services/storage.py) - must match that layout exactly or the
+    # on-disk files are silently orphaned.
+    import shutil
+    job_dir = os.path.join(settings.STORAGE_LOCAL_DIR, f"job_{job_id}")
+    if os.path.exists(job_dir):
+        shutil.rmtree(job_dir, ignore_errors=True)
+
     return None
 
 

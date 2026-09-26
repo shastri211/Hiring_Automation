@@ -76,3 +76,15 @@ async def test_fail_task_permanently_marks_job_embedding_status_failed(db_sessio
     )
     refreshed = result.scalar_one()
     assert refreshed.embedding_status == "FAILED"
+
+
+@pytest.mark.asyncio
+async def test_worker_main_configures_logging_before_starting():
+    """The worker is its own process: without setup_logging every INFO line
+    from the pipeline is silently dropped."""
+    import app.worker as worker
+    with patch("app.worker.setup_logging") as mock_setup, \
+         patch.object(worker.queue_service, "init_stream", AsyncMock(side_effect=RuntimeError("stop"))):
+        with pytest.raises(RuntimeError):
+            await worker.main()
+    mock_setup.assert_called_once()

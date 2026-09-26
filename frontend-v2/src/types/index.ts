@@ -173,7 +173,7 @@ export interface PublicInterviewRoomResponse {
   };
 }
 
-export type PublicInterviewErrorReason = 'not_found' | 'expired' | 'already_completed';
+export type PublicInterviewErrorReason = 'not_found' | 'expired' | 'already_completed' | 'closed';
 
 // GET /public/jobs/{token}
 export interface PublicJobResponse {

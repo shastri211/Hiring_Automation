@@ -22,6 +22,10 @@ const ERROR_COPY: Record<PublicInterviewErrorReason, { title: string; descriptio
     title: 'Interview already completed',
     description: "This interview has already been completed, so this link can't be used again. If you think this is a mistake, please contact the recruiter.",
   },
+  closed: {
+    title: 'This interview is no longer available',
+    description: 'This interview has been closed, so this link can no longer be used. Please contact the recruiter if you have any questions.',
+  },
 };
 
 const DOGRAH_SCRIPT_ID = 'dograh-widget-script';
