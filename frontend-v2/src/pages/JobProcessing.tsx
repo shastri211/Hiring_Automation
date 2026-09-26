@@ -92,10 +92,7 @@ export const JobProcessing = () => {
     );
   }
 
-  // Calculate totals across all batches to determine if we can screen
-  const totalReady = batches.reduce((sum, b) => sum + (b.completed || 0), 0);
-  const totalScreened = batches.reduce((sum, b) => sum + (b.shortlisted || 0) + (b.review || 0) + (b.rejected || 0) + (b.pre_screened_out || 0), 0);
-  const unScreenedCount = Math.max(0, totalReady - totalScreened);
+  const unScreenedCount = progressData?.unscreened ?? 0;
   const hasRunningBatch = batches.some(b => b.status === 'PROCESSING');
 
   return (

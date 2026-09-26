@@ -16,7 +16,7 @@ class Job(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    status = Column(String(50), default="ACTIVE") # ACTIVE, PAUSED, ARCHIVED
+    status = Column(String(50), nullable=False, default="ACTIVE", server_default="ACTIVE") # ACTIVE, PAUSED, ARCHIVED
 
     embedding_profile = Column(String(255), nullable=True) # E.g., 'gemini-embedding-2'
     embedding_status = Column(String(50), nullable=True, default="READY") # READY, MIGRATING, FAILED

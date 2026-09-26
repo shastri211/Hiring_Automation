@@ -176,6 +176,8 @@ class BatchProgressDetail(BaseModel):
 class BatchProgressResponse(BaseModel):
     job_id: int
     batches: List[BatchProgressDetail]
+    # READY resumes of this job with no screening result yet.
+    unscreened: int = 0
 
 
 class JobBatchOverviewItem(BaseModel):
