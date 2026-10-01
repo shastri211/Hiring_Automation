@@ -6,9 +6,9 @@
 
 x-backend: &backend
   profiles: ["app"]
-  build: .
+  build: ./backend
   image: resume-screener-backend
-  env_file: .env
+  env_file: backend/.env
   environment:
     # Inside the compose network, not the host's localhost.
     POSTGRES_SERVER: postgres
@@ -73,7 +73,7 @@ services:
 
   web:
     profiles: ["app"]
-    build: ./frontend-v2
+    build: ./frontend
     ports:
       - "8080:80"
     depends_on:
