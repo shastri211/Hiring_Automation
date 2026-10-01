@@ -56,31 +56,35 @@ async def _reset_test_schema():
             "pytest.ini's `env` section (DB_SCHEMA=test_isolation)."
         )
 
-    async with engine.begin() as conn:
-        tables = (
-            await conn.execute(
-                text(
-                    "SELECT table_name FROM information_schema.tables "
-                    "WHERE table_schema = :schema AND table_name != 'alembic_version'"
-                ),
-                {"schema": settings.DB_SCHEMA},
-            )
-        ).scalars().all()
-        if tables:
-            quoted = ", ".join(f'"{t}"' for t in tables)
-            await conn.execute(text(f"TRUNCATE TABLE {quoted} RESTART IDENTITY CASCADE"))
+    try:
+        async with engine.begin() as conn:
+            tables = (
+                await conn.execute(
+                    text(
+                        "SELECT table_name FROM information_schema.tables "
+                        "WHERE table_schema = :schema AND table_name != 'alembic_version'"
+                    ),
+                    {"schema": settings.DB_SCHEMA},
+                )
+            ).scalars().all()
+            if tables:
+                quoted = ", ".join(f'"{t}"' for t in tables)
+                await conn.execute(text(f"TRUNCATE TABLE {quoted} RESTART IDENTITY CASCADE"))
 
-        # Every root row needs an organization (multi-tenancy). The suite's
-        # default one - owner of the auth override user below and of any
-        # root row a test builds with organization_id=TEST_ORG_ID.
-        from tenancy_fixtures import TEST_ORG_ID
-        await conn.execute(
-            text("INSERT INTO organizations (id, name) VALUES (:id, 'Test Organization')"),
-            {"id": TEST_ORG_ID},
-        )
-        await conn.execute(
-            text("SELECT setval(pg_get_serial_sequence('organizations', 'id'), :id)"), {"id": TEST_ORG_ID}
-        )
+            # Every root row needs an organization (multi-tenancy). The suite's
+            # default one - owner of the auth override user below and of any
+            # root row a test builds with organization_id=TEST_ORG_ID.
+            from tenancy_fixtures import TEST_ORG_ID
+            await conn.execute(
+                text("INSERT INTO organizations (id, name) VALUES (:id, 'Test Organization')"),
+                {"id": TEST_ORG_ID},
+            )
+            await conn.execute(
+                text("SELECT setval(pg_get_serial_sequence('organizations', 'id'), :id)"), {"id": TEST_ORG_ID}
+            )
+    except Exception as e:
+        import warnings
+        warnings.warn(f"Could not reset test DB schema (likely no Postgres running). Database-dependent tests will fail. {e}")
 
     # Same idea for Redis: the suite uses its own database (pytest.ini's
     # REDIS_DB), cleared of leftover queue and rate-limit keys once per

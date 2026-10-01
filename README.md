@@ -28,16 +28,17 @@ candidates can be sent emails and browser-based voice interviews.
 | Vectors | Qdrant Cloud |
 | LLMs | Groq / Gemini / OpenRouter / NVIDIA with automatic fallback |
 | Embeddings | Gemini, with a local sentence-transformers fallback |
-| Frontend | React + Vite + TanStack Query (`frontend-v2/`) |
+| Frontend | React + Vite + TanStack Query (`frontend/`) |
 
 ## Local development
 
 Prerequisites: Docker, Python 3.13, Node 22.
 
 ```bash
-cp .env.example .env          # then fill in the values (see below)
-docker compose up -d          # Postgres + Redis
-python -m venv .venv && .venv/Scripts/activate   # macOS/Linux: source .venv/bin/activate
+cp backend/.env.example backend/.env   # then fill in the values (see below)
+docker compose up -d                   # Postgres + Redis
+cd backend
+python -m venv venv && venv\Scripts\activate   # macOS/Linux: source venv/bin/activate
 pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements-dev.txt
 alembic upgrade head
 python -m scripts.create_user --platform-admin   # first account (interactive)
@@ -48,7 +49,7 @@ Run the three processes (the API on port 8001 matches the Vite dev proxy):
 ```bash
 uvicorn app.main:app --port 8001
 python -m app.worker
-npm --prefix frontend-v2 install && npm --prefix frontend-v2 run dev
+npm --prefix frontend install && npm --prefix frontend run dev
 ```
 
 Open http://localhost:5173. Companies can also sign up at `/signup`.
@@ -82,7 +83,7 @@ DB_SCHEMA=test_isolation alembic upgrade head
 pytest -q
 ```
 
-Frontend checks: `npm --prefix frontend-v2 run lint` and `npm --prefix frontend-v2 run build`.
+Frontend checks: `npm --prefix frontend run lint` and `npm --prefix frontend run build`.
 CI (`.github/workflows/ci.yml`) runs both on every push to `main` and every pull request.
 
 ## Running everything in containers
@@ -99,11 +100,11 @@ their service names automatically.
 ## Project layout
 
 ```
-app/api/          HTTP routes (thin - business logic lives in app/services/)
-app/services/     pipeline, screening, identity, email, interviews, tenancy
-app/models/       SQLAlchemy models        alembic/versions/  migrations
-app/worker.py     queue consumer + recovery sweeps
-frontend-v2/src/  pages, components, API clients, hooks
-scripts/          operator tools (create_user, one-time backfill)
-tests/            pytest suite
+backend/app/api/          HTTP routes (thin - business logic lives in backend/app/services/)
+backend/app/services/     pipeline, screening, identity, email, interviews, tenancy
+backend/app/models/       SQLAlchemy models        backend/alembic/versions/  migrations
+backend/app/worker.py     queue consumer + recovery sweeps
+frontend/src/  pages, components, API clients, hooks
+backend/scripts/          operator tools (create_user, one-time backfill)
+backend/tests/            pytest suite
 ```
