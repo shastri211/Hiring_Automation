@@ -6,7 +6,7 @@ import type { ButtonProps } from './Button';
  * stay component-only (React fast refresh). */
 
 const baseClasses =
-  'inline-flex items-center justify-center gap-2 font-medium rounded-md border border-transparent cursor-pointer transition-base whitespace-nowrap focus-ring disabled:opacity-50 disabled:cursor-not-allowed';
+  'inline-flex items-center justify-center gap-2 font-medium rounded-md border cursor-pointer transition-base whitespace-nowrap focus-ring disabled:opacity-50 disabled:cursor-not-allowed';
 
 const sizeClasses = {
   md: 'h-9 px-3.5 text-sm',
@@ -14,13 +14,13 @@ const sizeClasses = {
 };
 
 const variantClasses = {
-  primary: 'bg-[var(--accent)] text-[var(--accent-fg)] hover:not-disabled:bg-[var(--accent-hover)]',
+  primary: 'border-transparent bg-[var(--accent)] text-[var(--accent-fg)] hover:not-disabled:bg-[var(--accent-hover)]',
   secondary:
-    'bg-[var(--bg-surface)] border-[var(--border-strong)] text-[var(--text-primary)] hover:not-disabled:bg-[var(--bg-hover)]',
+    'bg-[var(--bg-surface)] border-[color:var(--border-strong)] text-[var(--text-primary)] hover:not-disabled:bg-[var(--bg-hover)]',
   ghost:
-    'bg-transparent text-[var(--text-secondary)] hover:not-disabled:bg-[var(--bg-hover)] hover:not-disabled:text-[var(--text-primary)]',
+    'border-transparent bg-transparent text-[var(--text-secondary)] hover:not-disabled:bg-[var(--bg-hover)] hover:not-disabled:text-[var(--text-primary)]',
   danger:
-    'bg-[var(--color-danger-600)] text-[var(--bg-surface)] hover:not-disabled:opacity-90',
+    'border-transparent bg-[var(--color-danger-600)] text-[var(--bg-surface)] hover:not-disabled:opacity-90',
 };
 
 export const buttonClasses = (variant: NonNullable<ButtonProps['variant']> = 'primary', size: NonNullable<ButtonProps['size']> = 'md', className?: string) =>

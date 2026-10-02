@@ -9,14 +9,19 @@ export interface Crumb {
   to?: string;
 }
 
+/**
+ * Single-line trail. Below `sm` only the last two crumbs are shown (parent →
+ * current) so a deep trail never wraps; the earlier ones return from `sm` up.
+ */
 export const Breadcrumbs = ({ items, className }: { items: Crumb[]; className?: string }) => (
   <nav aria-label="Breadcrumb" className={cn('min-w-0', className)}>
-    <ol className="flex min-w-0 flex-wrap items-center gap-1.5 text-sm">
+    <ol className="flex min-w-0 flex-nowrap items-center gap-1.5 overflow-hidden text-sm">
       {items.map((item, i) => {
         const last = i === items.length - 1;
+        const hiddenOnMobile = i < items.length - 2;
         return (
           <Fragment key={`${item.label}-${i}`}>
-            <li className="min-w-0">
+            <li className={cn('min-w-0', last ? 'shrink' : 'shrink-0 max-w-[10rem] truncate sm:max-w-[14rem]', hiddenOnMobile && 'hidden sm:block')}>
               {item.to && !last ? (
                 <Link to={item.to} className="transition-base focus-ring rounded text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
                   {item.label}
@@ -31,7 +36,7 @@ export const Breadcrumbs = ({ items, className }: { items: Crumb[]; className?: 
               )}
             </li>
             {!last && (
-              <li aria-hidden="true" className="text-[var(--text-tertiary)]">
+              <li aria-hidden="true" className={cn('shrink-0 text-[var(--text-tertiary)]', hiddenOnMobile && 'hidden sm:block')}>
                 <ChevronRight size={14} />
               </li>
             )}

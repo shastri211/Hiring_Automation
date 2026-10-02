@@ -1,19 +1,25 @@
-import { useState } from 'react';
-import { Mail, Phone, ExternalLink, ChevronRight, Save } from 'lucide-react';
+import { useRef } from 'react';
+import { ChevronRight, ExternalLink, Mail, Phone } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { jobsApi } from '../api/jobs';
 import { resumesApi } from '../api/resumes';
 import { queryKeys } from '../api/queryKeys';
-import { useDecisionMutation } from '../hooks/useDecisionMutation';
-import { Button } from './ui/Button';
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from './ui';
-import { 
-  ScoreVisualizer, 
-  DecisionControlBar, 
-  ExtractedSkills, 
-  ScreeningAnalysis,
+import { useDecisionMutation, useRetryEvaluation } from '../hooks/useDecisionMutation';
+import {
+  Button, Drawer, DrawerBody, DrawerContent, DrawerFooter, DrawerHeader, ErrorState, FitScore, Section, Skeleton,
+} from './ui';
+import {
   CandidateStatusBanner,
+  DecisionControlBar,
+  EvaluationFailedBanner,
+  EvidenceList,
+  GapsList,
+  RecruiterNotes,
+  StrengthsList,
 } from './candidate/CandidateComponents';
+import { DecisionStatus } from './candidate/ScreeningCells';
+import { formatSemantic } from '../utils/format';
+import { getInitials } from '../utils/initials';
 
 interface CandidateDrawerProps {
   jobId: number;
@@ -23,6 +29,12 @@ interface CandidateDrawerProps {
   onView360?: () => void;
 }
 
+/**
+ * CandidateDrawer — the QUICK REVIEW surface: who they are, how well they fit,
+ * why, and the decision. Deliberately not a compressed Candidate 360 - work
+ * history, education, skills, outreach and identity tools live on the full
+ * profile, one click away.
+ */
 export const CandidateDrawer = ({ jobId, resumeId, isOpen, onClose, onView360 }: CandidateDrawerProps) => {
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: queryKeys.candidateDetail(jobId, resumeId!),
@@ -31,154 +43,167 @@ export const CandidateDrawer = ({ jobId, resumeId, isOpen, onClose, onView360 }:
   });
 
   const { data: job } = useQuery({
-    queryKey: ['job', jobId],
+    queryKey: queryKeys.job(jobId),
     queryFn: () => jobsApi.getJob(jobId),
     enabled: isOpen,
   });
 
+  // The drawer is opened from a table row (not a Radix trigger), so Radix has no
+  // element to hand focus back to on close. Remember whatever had focus when it
+  // opened and return there, so keyboard users land back on their row.
+  const returnFocusTo = useRef<HTMLElement | null>(null);
+
   const decisionMutation = useDecisionMutation(jobId);
+  const retryEvaluation = useRetryEvaluation(jobId);
 
-  // An unsaved notes edit is tagged with the resume it was typed for, and
-  // the textarea otherwise shows that resume's saved notes. Switching
-  // candidates therefore never carries the PREVIOUS candidate's text over -
-  // which the disabled-check below would treat as a real edit and let Save
-  // Notes write onto the wrong resume.
-  const [draft, setDraft] = useState<{ resumeId: number | null; notes: string } | null>(null);
-  const localNotes = draft?.resumeId === resumeId ? draft.notes : (data?.screening?.notes || '');
-  const setLocalNotes = (notes: string) => setDraft({ resumeId, notes });
-
-  const handleSaveNotes = () => {
-    if (resumeId !== null) {
-      decisionMutation.mutate({ resumeId, decision: data?.screening?.decision || null, notes: localNotes });
-    }
-  };
+  const screening = data?.screening;
+  const name = data?.profile?.name || (resumeId !== null ? `Candidate #${resumeId}` : 'Candidate');
+  const summary = data?.profile?.summary;
+  const hasScoredEvaluation = !!screening && screening.decision !== 'PRE_SCREENED_OUT';
+  const leadEvidence = screening?.evidence?.[0];
+  const moreEvidence = screening?.evidence?.slice(1) ?? [];
+  const showStatusBanner = !screening || screening.decision === 'PRE_SCREENED_OUT';
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="left-auto right-0 top-0 h-dvh w-full max-w-xl translate-x-0 translate-y-0 gap-0 overflow-hidden rounded-none border-y-0 border-r-0 p-0 shadow-2xl sm:rounded-none">
-      <div className="relative flex h-full w-full max-w-xl flex-col overflow-hidden bg-[var(--bg-surface)]">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-light)] bg-[var(--bg-surface)]">
-          <div>
-            <DialogTitle className="text-lg font-semibold text-[var(--text-primary)]">
-              {isLoading ? 'Loading...' : data?.profile?.name || `Candidate #${resumeId}`}
-            </DialogTitle>
-            <DialogDescription className="mt-0.5 text-xs font-medium text-[var(--text-secondary)]">
-              {job?.title ? `Applying for ${job.title}` : 'Candidate application'}
-              {data?.filename && <> &bull; {data.filename}</>}
-            </DialogDescription>
-          </div>
-        </div>
+    <Drawer open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DrawerContent
+        onOpenAutoFocus={() => {
+          returnFocusTo.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        }}
+        onCloseAutoFocus={(e) => {
+          e.preventDefault();
+          returnFocusTo.current?.focus();
+        }}
+      >
+        <DrawerHeader
+          title={isLoading ? 'Loading…' : name}
+          description={job?.title ? `Applying for ${job.title}` : 'Candidate application'}
+          leading={
+            <span
+              aria-hidden="true"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-subtle-bg)] text-sm font-semibold text-[var(--color-primary-subtle-text)]"
+            >
+              {isLoading ? '' : getInitials(data?.profile?.name)}
+            </span>
+          }
+        />
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto p-6 bg-[var(--bg-app)]">
+        <DrawerBody className="space-y-7">
           {isLoading && (
-            <div className="flex justify-center py-20">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--color-primary-500)]"></div>
+            <div className="space-y-6" aria-hidden="true">
+              <Skeleton className="h-4 w-48" />
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-24 w-full" />
+              <Skeleton className="h-24 w-full" />
             </div>
           )}
 
-          {isError && (
-            <div className="bg-[var(--color-danger-subtle-bg)] text-[var(--color-danger-subtle-text)] p-4 rounded-lg flex items-center justify-between gap-4">
-              <span>Failed to load candidate details.</span>
-              <Button variant="secondary" onClick={() => refetch()}>Retry</Button>
-            </div>
-          )}
+          {isError && <ErrorState className="py-10" title="Failed to load candidate details" onRetry={() => refetch()} />}
 
           {data && (
-            <div className="space-y-6">
-              {/* Status banner when no screening result or PRE_SCREENED_OUT */}
-              {(!data.screening || data.screening.decision === 'PRE_SCREENED_OUT') && (
+            <>
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-[var(--text-secondary)]">
+                <DecisionStatus candidate={{ status: screening?.status ?? data.status, decision: screening?.decision, evaluation_failed: screening?.evaluation_failed }} />
+                {data.profile?.email && (
+                  <a href={`mailto:${data.profile.email}`} className="focus-ring inline-flex min-w-0 items-center gap-1.5 rounded hover:text-[var(--text-primary)]">
+                    <Mail size={14} aria-hidden="true" className="shrink-0 text-[var(--text-tertiary)]" />
+                    <span className="truncate">{data.profile.email}</span>
+                  </a>
+                )}
+                {data.profile?.phone && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Phone size={14} aria-hidden="true" className="shrink-0 text-[var(--text-tertiary)]" /> {data.profile.phone}
+                  </span>
+                )}
+              </div>
+
+              {screening?.evaluation_failed && (
+                <EvaluationFailedBanner onRetry={() => retryEvaluation.mutate(resumeId!)} isPending={retryEvaluation.isPending} />
+              )}
+              {showStatusBanner && (
                 <CandidateStatusBanner
-                  resumeStatus={data.screening?.status ?? null}
-                  decision={data.screening?.decision ?? null}
-                  errorMessage={data.screening?.error_message ?? null}
+                  resumeStatus={screening?.status ?? data.status}
+                  decision={screening?.decision ?? null}
+                  errorMessage={screening?.error_message ?? data.error_message ?? null}
                 />
               )}
 
-              {/* Score only when an actual score exists (not PRE_SCREENED_OUT) */}
-              {data.screening && data.screening.decision !== 'PRE_SCREENED_OUT' && (
-                <ScoreVisualizer screening={data.screening} />
+              {hasScoredEvaluation && screening.score != null && (
+                <section aria-label="Fit score">
+                  <p className="text-eyebrow mb-3">AI fit score</p>
+                  <FitScore score={screening.score} size="lg" />
+                  <p className="text-caption tabular mt-3">Semantic match {formatSemantic(screening.semantic_score)}</p>
+                </section>
               )}
 
-              {/* Profile Details */}
-              <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-light)] shadow-sm overflow-hidden">
-                <div className="px-5 py-3 border-b border-[var(--border-light)] bg-[var(--bg-app)]">
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Candidate Profile</h3>
-                </div>
-                <div className="p-5 space-y-4 text-sm">
-                  <DecisionControlBar
-                    decision={data.screening?.decision}
-                    isPending={decisionMutation.isPending}
-                    onDecision={(d) => {
-                      if (resumeId !== null) decisionMutation.mutate({ resumeId, decision: d, notes: localNotes });
-                    }}
-                  />
-
-                  <div className="mt-4 pt-4 border-t border-[var(--border-light)]">
-                    <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">Recruiter Notes</label>
-                    <textarea
-                      className="w-full bg-[var(--bg-surface)] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] border-[var(--border-light)] rounded-md shadow-sm focus:border-[var(--border-focus)] focus:ring-[var(--border-focus)] sm:text-sm p-3"
-                      rows={3}
-                      placeholder="Add private notes about this candidate..."
-                      value={localNotes}
-                      onChange={(e) => setLocalNotes(e.target.value)}
-                    />
-                    <div className="flex justify-end mt-2">
-                      <Button variant="secondary" size="sm" onClick={handleSaveNotes} disabled={decisionMutation.isPending || localNotes === (data.screening?.notes || '')}>
-                        <Save className="w-4 h-4 mr-2" /> Save Notes
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-2">
-                    <div className="flex gap-3">
-                      <Mail className="w-4 h-4 text-[var(--text-tertiary)] mt-0.5" />
-                      <span className="text-[var(--text-secondary)] break-all">{data.profile?.email || '—'}</span>
-                    </div>
-                    <div className="flex gap-3">
-                      <Phone className="w-4 h-4 text-[var(--text-tertiary)] mt-0.5" />
-                      <span className="text-[var(--text-secondary)]">{data.profile?.phone || '—'}</span>
-                    </div>
-                  </div>
-                  
-                  <ExtractedSkills profile={data.profile} />
-                </div>
-              </div>
-
-              {data.screening && data.screening.decision !== 'PRE_SCREENED_OUT' && (
-                <ScreeningAnalysis screening={data.screening} />
+              {hasScoredEvaluation && (leadEvidence || summary) && (
+                <Section title="AI summary">
+                  {leadEvidence && <p className="text-sm leading-relaxed text-[var(--text-primary)]">{leadEvidence}</p>}
+                  {summary && (
+                    <p className="mt-2 line-clamp-4 text-sm leading-relaxed text-[var(--text-secondary)]">{summary}</p>
+                  )}
+                </Section>
               )}
-            </div>
+
+              {hasScoredEvaluation && (
+                <>
+                  <Section title="Key strengths"><StrengthsList items={screening.strengths} /></Section>
+                  <Section title="Potential gaps"><GapsList items={screening.gaps} /></Section>
+                  {moreEvidence.length > 0 && (
+                    <details className="text-sm">
+                      <summary className="transition-base focus-ring cursor-pointer select-none rounded text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
+                        More evidence ({moreEvidence.length})
+                      </summary>
+                      <div className="mt-3"><EvidenceList items={moreEvidence} /></div>
+                    </details>
+                  )}
+                </>
+              )}
+
+              {resumeId !== null && (
+                <RecruiterNotes
+                  key={resumeId}
+                  jobId={jobId}
+                  resumeId={resumeId}
+                  savedNotes={screening?.notes}
+                  decision={screening?.decision}
+                />
+              )}
+            </>
           )}
-        </div>
+        </DrawerBody>
 
-        {/* Footer Actions */}
-        <div className="p-4 border-t border-[var(--border-light)] bg-[var(--bg-surface)] flex justify-between items-center">
+        <DrawerFooter className="flex-col items-stretch gap-3">
+          {data && (
+            <DecisionControlBar
+              decision={screening?.decision}
+              isPending={decisionMutation.isPending}
+              onDecision={(d) => {
+                if (resumeId !== null) decisionMutation.mutate({ resumeId, decision: d });
+              }}
+            />
+          )}
+          <div className="flex items-center justify-between gap-3 border-t border-[var(--border-light)] pt-3">
           {data?.filename ? (
             <a
               href={resumesApi.getResumeFileUrl(resumeId ?? 0)}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-sm text-[var(--color-primary-600)] hover:text-[var(--color-primary-700)] font-medium flex items-center gap-1 focus-ring rounded px-1"
+              className="focus-ring inline-flex items-center gap-1.5 rounded px-1 text-sm font-medium text-[var(--color-primary-600)] hover:text-[var(--color-primary-700)]"
             >
-              <ExternalLink className="w-4 h-4" /> Original Resume
+              <ExternalLink size={15} aria-hidden="true" /> Original resume
             </a>
           ) : (
-            <span className="text-sm text-[var(--text-tertiary)] font-medium flex items-center gap-1 px-1 cursor-not-allowed" title="Original resume unavailable">
-              <ExternalLink className="w-4 h-4 opacity-50" /> Original Resume Unavailable
+            <span className="inline-flex items-center gap-1.5 px-1 text-sm text-[var(--text-tertiary)]" title="Original resume unavailable">
+              <ExternalLink size={15} aria-hidden="true" className="opacity-50" /> Resume unavailable
             </span>
           )}
-          <Button 
-            onClick={() => {
-              if (onView360) onView360();
-            }}
-          >
-            View Full Profile <ChevronRight className="w-4 h-4 ml-1" />
+          <Button onClick={() => onView360?.()} disabled={!data}>
+            View full profile <ChevronRight size={15} aria-hidden="true" />
           </Button>
-        </div>
-      </div>
-      </DialogContent>
-    </Dialog>
+          </div>
+        </DrawerFooter>
+      </DrawerContent>
+    </Drawer>
   );
 };

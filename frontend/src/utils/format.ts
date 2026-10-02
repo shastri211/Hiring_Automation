@@ -18,3 +18,6 @@ export const decisionLabel = (decision?: string | null): string => {
     default: return 'Undecided';
   }
 };
+
+/** Raw semantic similarity (0-1) from the screening gate, three decimals. */
+export const formatSemantic = (value?: number | null) => (value != null ? value.toFixed(3) : '—');

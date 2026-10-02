@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
-import { ArrowLeft, ExternalLink, Briefcase, GraduationCap, PackagePlus, Pencil, Check, X, Undo2, Users2, Inbox, GitMerge } from 'lucide-react';
+import { ArrowLeft, Check, ExternalLink, GitMerge, Inbox, Mail, PackagePlus, Pencil, Phone, Undo2, Users2, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { jobsApi } from '../api/jobs';
 import { resumesApi } from '../api/resumes';
@@ -9,20 +9,28 @@ import { useDecisionMutation, useRetryEvaluation } from '../hooks/useDecisionMut
 import { useAddToTalentPool } from '../hooks/useTalentPool';
 import { useCandidate, useUpdateCandidateName, useUnmergeCandidate } from '../hooks/useCandidateIdentity';
 import { useConfirm } from '../hooks/useConfirm';
-import { Button } from '../components/ui/Button';
-import { Spinner, PageHeader, Input, Badge } from '../components/ui';
-import { parseRecommendation } from '../utils/interviewEvaluation';
+import { useBreadcrumbs } from '../hooks/useBreadcrumbs';
 import {
-  ScoreVisualizer,
+  Alert, Badge, Button, ErrorState, FitScore, IconButton, Input, LinkButton, Section, Skeleton,
+} from '../components/ui';
+import {
+  CandidateStatusBanner,
   DecisionControlBar,
+  EvaluationFailedBanner,
+  EvidenceList,
   ExtractedSkills,
+  RecruiterNotes,
   ScreeningAnalysis,
-  EvaluationFailedBanner
 } from '../components/candidate/CandidateComponents';
+import { DecisionStatus } from '../components/candidate/ScreeningCells';
+import { formatSemantic } from '../utils/format';
+import { CandidateTimeline } from '../components/candidate/CandidateTimeline';
+import { InterviewSummary } from '../components/candidate/InterviewSummary';
 import { OutreachHistory } from '../components/candidate/OutreachHistory';
 import { MergeCandidateDialog } from '../components/candidate/MergeCandidateDialog';
+import { getInitials } from '../utils/initials';
 
-const CandidateIdentityCard = ({ candidateId, applicationsCount }: { candidateId: number; applicationsCount?: number | null }) => {
+const CandidateIdentityPanel = ({ candidateId, applicationsCount }: { candidateId: number; applicationsCount?: number | null }) => {
   const { data: candidate, isLoading } = useCandidate(candidateId);
   const updateName = useUpdateCandidateName();
   const unmerge = useUnmergeCandidate();
@@ -55,62 +63,59 @@ const CandidateIdentityCard = ({ candidateId, applicationsCount }: { candidateId
   };
 
   return (
-    <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-light)] shadow-[var(--shadow-sm)] p-6">
-      <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3 flex items-center gap-2">
-        <Users2 className="w-4 h-4 text-[var(--text-tertiary)]" /> Candidate Identity
-      </h3>
-
+    <Section title="Candidate identity" icon={<Users2 size={13} />}>
       {candidate.merged_into_id != null && (
-        <div className="mb-3 p-3 rounded-lg bg-[var(--color-warning-subtle-bg)] text-[var(--color-warning-subtle-text)] text-xs">
-          <p className="mb-2">
-            This candidate record was merged into{' '}
-            <span className="font-medium">{candidate.merged_into_name || `candidate #${candidate.merged_into_id}`}</span>.
-          </p>
-          <Button variant="secondary" onClick={handleUndoMerge} disabled={unmerge.isPending} className="flex items-center gap-1.5 h-7 px-2.5 text-xs">
-            <Undo2 className="w-3.5 h-3.5" /> Undo Merge
-          </Button>
-        </div>
+        <Alert
+          variant="warning"
+          className="mb-3"
+          action={
+            <Button variant="secondary" size="sm" onClick={handleUndoMerge} disabled={unmerge.isPending}>
+              <Undo2 size={13} aria-hidden="true" /> Undo merge
+            </Button>
+          }
+        >
+          This candidate record was merged into{' '}
+          <span className="font-medium">{candidate.merged_into_name || `candidate #${candidate.merged_into_id}`}</span>.
+        </Alert>
       )}
 
-      <div className="text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide mb-1">Display name</div>
+      <p className="text-eyebrow mb-1.5">Display name</p>
       {isEditing ? (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <Input
             autoFocus
+            aria-label="Display name"
             value={nameInput}
             onChange={(e) => setNameInput(e.target.value)}
-            placeholder="Leave blank to use extracted/derived name"
-            className="h-8 text-sm"
+            onKeyDown={(e) => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') setIsEditing(false); }}
+            placeholder="Leave blank to use extracted name"
+            className="h-8"
           />
-          <button onClick={saveName} disabled={updateName.isPending} className="text-[var(--color-success-600)] hover:opacity-75 shrink-0" title="Save">
-            <Check className="w-4 h-4" />
-          </button>
-          <button onClick={() => setIsEditing(false)} className="text-[var(--text-tertiary)] hover:opacity-75 shrink-0" title="Cancel">
-            <X className="w-4 h-4" />
-          </button>
+          <IconButton label="Save name" tone="success" icon={<Check size={15} />} onClick={saveName} disabled={updateName.isPending} />
+          <IconButton label="Cancel editing" icon={<X size={15} />} onClick={() => setIsEditing(false)} />
         </div>
       ) : (
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-[var(--text-primary)]">{candidate.canonical_name || <em className="text-[var(--text-tertiary)] not-italic">Using extracted/derived name</em>}</span>
-          <button onClick={startEdit} className="text-[var(--text-tertiary)] hover:text-[var(--color-primary-600)]" title="Edit display name">
-            <Pencil className="w-3.5 h-3.5" />
-          </button>
+        <div className="flex items-center justify-between gap-2">
+          <span className="min-w-0 truncate text-sm text-[var(--text-primary)]">
+            {candidate.canonical_name || <span className="text-[var(--text-tertiary)]">Using extracted name</span>}
+          </span>
+          <IconButton label="Edit display name" icon={<Pencil size={14} />} onClick={startEdit} />
         </div>
       )}
 
       {applicationsCount != null && (
-        <p className="mt-3 pt-3 border-t border-[var(--border-light)] text-xs text-[var(--text-secondary)]">
-          Applied to {applicationsCount} job{applicationsCount === 1 ? '' : 's'} total.
+        <p className="mt-3 text-sm text-[var(--text-secondary)]">
+          Applied to {applicationsCount} job{applicationsCount === 1 ? '' : 's'} in total.
         </p>
       )}
 
       {candidate.merged_into_id == null && (
-        <Button variant="secondary" onClick={() => setIsMerging(true)} className="mt-3 flex items-center gap-1.5 h-7 px-2.5 text-xs">
-          <GitMerge className="w-3.5 h-3.5" /> Merge into another candidate...
+        <Button variant="secondary" size="sm" onClick={() => setIsMerging(true)} className="mt-3">
+          <GitMerge size={13} aria-hidden="true" /> Merge into another candidate…
         </Button>
       )}
       {isMerging && <MergeCandidateDialog candidate={candidate} onClose={() => setIsMerging(false)} />}
-    </div>
+    </Section>
   );
 };
 
@@ -127,11 +132,23 @@ export const Candidate360 = () => {
     queryFn: () => jobsApi.getJobResultDetail(jobId, resumeId),
     enabled: !!jobId && !!resumeId,
   });
+  const { data: job } = useQuery({
+    queryKey: queryKeys.job(jobId),
+    queryFn: () => jobsApi.getJob(jobId),
+    enabled: jobId > 0,
+  });
 
   const decisionMutation = useDecisionMutation(jobId);
   const retryEvaluation = useRetryEvaluation(jobId);
   const addToPool = useAddToTalentPool();
-  const interviewRecommendation = parseRecommendation(data?.interview?.evaluation?.interview_recommendation);
+
+  const name = data?.profile?.name || `Candidate #${resumeId}`;
+  useBreadcrumbs([
+    { label: 'Jobs', to: '/jobs' },
+    { label: job?.title || 'Job', to: `/jobs/${jobId}` },
+    { label: 'Candidates', to: `/jobs/${jobId}/candidates` },
+    { label: name },
+  ]);
 
   const handleBack = () => {
     // Navigate back to the previous list with preserved state, or fallback to job detail
@@ -144,179 +161,225 @@ export const Candidate360 = () => {
 
   if (isLoading) {
     return (
-      <div className="flex-1 flex items-center justify-center p-8">
-        <Spinner size={32} />
+      <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[19rem_minmax(0,1fr)]" aria-hidden="true">
+        <div className="space-y-4">
+          <Skeleton className="h-14 w-14 rounded-full" />
+          <Skeleton className="h-7 w-48" />
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-32 w-full" />
+        </div>
+        <div className="space-y-4">
+          <Skeleton className="h-6 w-56" />
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-40 w-full" />
+        </div>
       </div>
     );
   }
 
   if (isError || !data) {
     return (
-      <div className="flex-1 p-8">
-        <div className="bg-[var(--color-danger-subtle-bg)] text-[var(--color-danger-subtle-text)] p-4 rounded-lg flex items-center justify-between gap-4">
-          <span>Failed to load candidate details.</span>
-          <Button variant="secondary" onClick={() => refetch()}>Retry</Button>
-        </div>
+      <div className="rounded-lg border border-[var(--border-light)] bg-[var(--bg-surface)]">
+        <ErrorState title="Failed to load candidate details" onRetry={() => refetch()} action={<Button variant="ghost" onClick={handleBack}>Go back</Button>} />
       </div>
     );
   }
 
-  return (
-    <div className="flex-1 flex flex-col h-full bg-[var(--bg-app)] overflow-hidden">
-      {/* Header */}
-      <div className="bg-[var(--bg-surface)] border-b border-[var(--border-light)] px-8 py-4 shrink-0">
-        <PageHeader
-          size="section"
-          leading={
-            <button
-              onClick={handleBack}
-              className="transition-base focus-ring p-2 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] rounded-lg"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-          }
-          title={data.profile?.name || `Candidate #${resumeId}`}
-          subtitle={<>{data.profile?.email} &bull; {data.profile?.phone || 'No phone provided'}</>}
-          actions={
-          <>
-          {data.filename ? (
-            <a
-              href={resumesApi.getResumeFileUrl(resumeId)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="transition-base focus-ring flex items-center gap-2 px-4 py-2 text-sm font-medium text-[var(--text-secondary)] bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-lg hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-            >
-              <ExternalLink className="w-4 h-4" /> Original Resume
-            </a>
-          ) : (
-            <span className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-[var(--text-tertiary)] bg-[var(--bg-app)] border border-[var(--border-light)] rounded-lg cursor-not-allowed" title="Original resume unavailable">
-              <ExternalLink className="w-4 h-4 opacity-50" /> Original Resume Unavailable
-            </span>
-          )}
-          <Button
-            variant="secondary"
-            onClick={() => addToPool.mutate({ resume_id: resumeId, added_from_job_id: jobId })}
-            disabled={addToPool.isPending}
-            className="flex items-center gap-2"
-          >
-            <PackagePlus className="w-4 h-4" /> Add to Talent Pool
-          </Button>
-          {interviewRecommendation && (
-            <Badge variant={interviewRecommendation.variant} title={interviewRecommendation.reason || undefined}>
-              Interview: {interviewRecommendation.label}
-            </Badge>
-          )}
-          <Link to={`/interview/${jobId}/${resumeId}`}>
-            <Button>Interview Workspace</Button>
-          </Link>
-          </>
-          }
-        />
-      </div>
+  const { profile, screening, interview, self_reported_contact: selfReported } = data;
+  const hasScoredEvaluation = !!screening && screening.decision !== 'PRE_SCREENED_OUT';
+  const showStatusBanner = !screening || screening.decision === 'PRE_SCREENED_OUT';
+  const leadEvidence = screening?.evidence?.[0];
+  const experience: Record<string, unknown>[] = Array.isArray(profile?.experience) ? profile.experience : [];
+  const education: Record<string, unknown>[] = Array.isArray(profile?.education) ? profile.education : [];
+  const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v : undefined);
+  const years = profile?.total_experience_years;
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="mb-6">
+  return (
+    <div className="mx-auto grid max-w-6xl gap-x-0 gap-y-10 lg:grid-cols-[19rem_minmax(0,1fr)] lg:grid-rows-[auto_1fr]">
+      {/* LEFT, top: identity, contact, resume, decision */}
+      <div className="space-y-7 lg:col-start-1 lg:row-start-1 lg:pr-8">
+        <div>
+          <Button variant="ghost" size="sm" onClick={handleBack} className="-ml-2.5 mb-4">
+            <ArrowLeft size={14} aria-hidden="true" /> Back
+          </Button>
+          <div className="flex items-center gap-4">
+            <span
+              aria-hidden="true"
+              className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-subtle-bg)] text-lg font-semibold text-[var(--color-primary-subtle-text)]"
+            >
+              {getInitials(profile?.name)}
+            </span>
+            <div className="min-w-0">
+              <h1 className="text-page-title break-words text-2xl leading-tight">{name}</h1>
+            </div>
+          </div>
+          <p className="text-body mt-3">
+            Applied for{' '}
+            <Link to={`/jobs/${jobId}`} className="focus-ring rounded font-medium text-[var(--text-primary)] hover:underline">
+              {job?.title || 'this job'}
+            </Link>
+            {typeof years === 'number' && <> · {years} yr{years === 1 ? '' : 's'} experience</>}
+          </p>
+          <div className="mt-3">
+            <DecisionStatus candidate={{ status: screening?.status ?? data.status, decision: screening?.decision, evaluation_failed: screening?.evaluation_failed }} />
+          </div>
+        </div>
+
+        <Section title="Contact">
+          <dl className="space-y-2.5 text-sm">
+            <div className="flex items-start gap-2.5">
+              <dt className="sr-only">Email</dt>
+              <Mail size={15} aria-hidden="true" className="mt-0.5 shrink-0 text-[var(--text-tertiary)]" />
+              <dd className="min-w-0 break-all text-[var(--text-primary)]">
+                {profile?.email ? <a href={`mailto:${profile.email}`} className="focus-ring rounded hover:underline">{profile.email}</a> : <span className="text-[var(--text-tertiary)]">No email extracted</span>}
+              </dd>
+            </div>
+            <div className="flex items-start gap-2.5">
+              <dt className="sr-only">Phone</dt>
+              <Phone size={15} aria-hidden="true" className="mt-0.5 shrink-0 text-[var(--text-tertiary)]" />
+              <dd className="text-[var(--text-primary)]">{profile?.phone || <span className="text-[var(--text-tertiary)]">No phone extracted</span>}</dd>
+            </div>
+          </dl>
+        </Section>
+
+        {selfReported && (
+          <Section
+            title="Applied via public link"
+            icon={<Inbox size={13} />}
+            action={<Badge variant="warning" title="Typed by the candidate into the apply form - not verified, and not part of the extracted profile.">Unverified</Badge>}
+          >
+            <dl className="space-y-2 text-sm">
+              <div><dt className="text-eyebrow">Name</dt><dd className="break-words text-[var(--text-primary)]">{selfReported.name}</dd></div>
+              <div><dt className="text-eyebrow">Email</dt><dd className="break-all text-[var(--text-primary)]">{selfReported.email}</dd></div>
+              <div><dt className="text-eyebrow">Phone</dt><dd className="text-[var(--text-primary)]">{selfReported.phone || '—'}</dd></div>
+            </dl>
+          </Section>
+        )}
+
+        <Section title="Actions">
+          <div className="space-y-3">
             <DecisionControlBar
-              decision={data.screening?.decision}
+              stacked
+              decision={screening?.decision}
               isPending={decisionMutation.isPending}
               onDecision={(d) => decisionMutation.mutate({ resumeId, decision: d })}
             />
-          </div>
-
-          {data.self_reported_contact && (
-            <div className="mb-6 rounded-xl border border-[var(--border-light)] bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
-              <div className="flex flex-wrap items-center gap-2 mb-2">
-                <Inbox className="w-4 h-4 text-[var(--text-tertiary)]" />
-                <h2 className="text-sm font-semibold text-[var(--text-primary)]">Applied via public link</h2>
-                <Badge variant="warning" title="Typed by the candidate into the apply form - not verified, and not part of the extracted profile.">
-                  Self-reported, unverified
-                </Badge>
-              </div>
-              <dl className="grid grid-cols-1 sm:grid-cols-4 gap-x-6 gap-y-1 text-sm">
-                <div><dt className="text-[var(--text-tertiary)]">Name</dt><dd className="text-[var(--text-primary)] break-words">{data.self_reported_contact.name}</dd></div>
-                <div><dt className="text-[var(--text-tertiary)]">Email</dt><dd className="text-[var(--text-primary)] break-all">{data.self_reported_contact.email}</dd></div>
-                <div><dt className="text-[var(--text-tertiary)]">Phone</dt><dd className="text-[var(--text-primary)]">{data.self_reported_contact.phone || '—'}</dd></div>
-                <div><dt className="text-[var(--text-tertiary)]">Submitted</dt><dd className="text-[var(--text-primary)]">{new Date(data.self_reported_contact.submitted_at).toLocaleString()}</dd></div>
-              </dl>
+            <div className="flex flex-col gap-2 border-t border-[var(--border-light)] pt-3">
+              {data.filename ? (
+                <a
+                  href={resumesApi.getResumeFileUrl(resumeId)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="transition-base focus-ring inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[var(--border-strong)] bg-[var(--bg-surface)] px-3.5 text-sm font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                >
+                  <ExternalLink size={14} aria-hidden="true" /> Original resume
+                </a>
+              ) : (
+                <span className="inline-flex h-9 cursor-not-allowed items-center justify-center gap-2 rounded-md border border-[var(--border-light)] px-3.5 text-sm text-[var(--text-tertiary)]" title="Original resume unavailable">
+                  <ExternalLink size={14} aria-hidden="true" className="opacity-50" /> Resume unavailable
+                </span>
+              )}
+              <Button
+                variant="secondary"
+                onClick={() => addToPool.mutate({ resume_id: resumeId, added_from_job_id: jobId })}
+                disabled={addToPool.isPending}
+              >
+                <PackagePlus size={14} aria-hidden="true" /> Add to Talent Pool
+              </Button>
+              <LinkButton to={`/interview/${jobId}/${resumeId}`} variant="secondary">Interview workspace</LinkButton>
             </div>
+          </div>
+        </Section>
+      </div>
+
+      {/* LEFT, bottom: notes, timeline, identity (below the evaluation on mobile) */}
+      <div className="order-last space-y-7 lg:order-none lg:col-start-1 lg:row-start-2 lg:pr-8">
+        <RecruiterNotes key={resumeId} jobId={jobId} resumeId={resumeId} savedNotes={screening?.notes} decision={screening?.decision} />
+        <CandidateTimeline data={data} />
+        {screening?.raw_candidate_id != null && (
+          <CandidateIdentityPanel candidateId={screening.raw_candidate_id} applicationsCount={screening.applications_count} />
+        )}
+      </div>
+
+      {/* RIGHT: evaluation and profile, divided from the sidebar by a hairline */}
+      <div className="space-y-9 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:border-l lg:border-[var(--border-light)] lg:pl-10">
+        <h2 className="text-section-heading">Detailed AI evaluation</h2>
+
+        {screening?.evaluation_failed && (
+          <EvaluationFailedBanner onRetry={() => retryEvaluation.mutate(resumeId)} isPending={retryEvaluation.isPending} />
+        )}
+        {showStatusBanner && (
+          <CandidateStatusBanner
+            resumeStatus={screening?.status ?? data.status}
+            decision={screening?.decision ?? null}
+            errorMessage={screening?.error_message ?? data.error_message ?? null}
+          />
+        )}
+
+        {hasScoredEvaluation && screening.score != null && (
+          <section aria-label="Fit score" className="max-w-lg">
+            <FitScore score={screening.score} size="lg" />
+            <p className="text-caption tabular mt-3">Semantic match {formatSemantic(screening.semantic_score)}</p>
+          </section>
+        )}
+
+        {hasScoredEvaluation && (leadEvidence || profile?.summary) && (
+          <Section title="AI summary">
+            {leadEvidence && <p className="leading-relaxed text-[var(--text-primary)]">{leadEvidence}</p>}
+            {profile?.summary && <p className="mt-3 text-sm leading-relaxed text-[var(--text-secondary)]">{profile.summary}</p>}
+          </Section>
+        )}
+
+        {hasScoredEvaluation && <ScreeningAnalysis screening={screening} />}
+
+        {hasScoredEvaluation && (screening.evidence?.length ?? 0) > 0 && (
+          <Section title="Evidence"><EvidenceList items={screening.evidence} /></Section>
+        )}
+
+        {interview && <InterviewSummary interview={interview} workspaceTo={`/interview/${jobId}/${resumeId}`} />}
+
+        <Section title="Experience" id="experience">
+          {experience.length > 0 ? (
+            <ol className="divide-y divide-[var(--border-light)]">
+              {experience.map((exp, i) => (
+                <li key={i} className="py-4 first:pt-0 last:pb-0">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-4">
+                    <p className="font-medium text-[var(--text-primary)]">{text(exp.role) ?? text(exp.title) ?? 'Role not stated'}</p>
+                    {(text(exp.duration) ?? text(exp.dates)) && <p className="text-caption tabular">{text(exp.duration) ?? text(exp.dates)}</p>}
+                  </div>
+                  {text(exp.company) && <p className="text-sm text-[var(--text-secondary)]">{text(exp.company)}</p>}
+                  {text(exp.description) && <p className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)]">{text(exp.description)}</p>}
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="text-sm italic text-[var(--text-tertiary)]">No experience data extracted</p>
           )}
+        </Section>
 
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-            {/* Left Column: Profile Data */}
-            <div className="xl:col-span-2 space-y-6">
-              <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-light)] shadow-[var(--shadow-sm)] p-6" id="profile">
-                <h2 className="text-card-title mb-6">Profile Summary</h2>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-                  <div id="experience">
-                    <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-3 flex items-center gap-2">
-                      <Briefcase className="w-4 h-4" /> Experience
-                    </h3>
-                    <div className="space-y-4">
-                      {Array.isArray(data.profile?.experience) && data.profile.experience.length > 0 ? (
-                        data.profile.experience.map((exp: any, i: number) => (
-                          <div key={i}>
-                            <div className="font-medium text-[var(--text-primary)]">{exp.title || 'Unknown Title'}</div>
-                            <div className="text-sm text-[var(--text-secondary)]">{exp.company || 'Unknown Company'}</div>
-                            <div className="text-xs text-[var(--text-tertiary)] mt-1">{exp.dates || ''}</div>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="text-sm text-[var(--text-tertiary)] italic">No experience data extracted</div>
-                      )}
-                    </div>
+        <Section title="Education" id="education">
+          {education.length > 0 ? (
+            <ol className="divide-y divide-[var(--border-light)]">
+              {education.map((edu, i) => (
+                <li key={i} className="py-3 first:pt-0 last:pb-0">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-4">
+                    <p className="font-medium text-[var(--text-primary)]">{text(edu.degree) ?? 'Degree not stated'}</p>
+                    {text(edu.year) && <p className="text-caption tabular">{text(edu.year)}</p>}
                   </div>
-                  <div id="education">
-                    <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-3 flex items-center gap-2">
-                      <GraduationCap className="w-4 h-4" /> Education
-                    </h3>
-                    <div className="space-y-4">
-                      {Array.isArray(data.profile?.education) && data.profile.education.length > 0 ? (
-                        data.profile.education.map((edu: any, i: number) => (
-                          <div key={i}>
-                            <div className="font-medium text-[var(--text-primary)]">{edu.degree || 'Unknown Degree'}</div>
-                            <div className="text-sm text-[var(--text-secondary)]">{edu.institution || 'Unknown Institution'}</div>
-                            <div className="text-xs text-[var(--text-tertiary)] mt-1">{edu.year || ''}</div>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="text-sm text-[var(--text-tertiary)] italic">No education data extracted</div>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                  {text(edu.institution) && <p className="text-sm text-[var(--text-secondary)]">{text(edu.institution)}</p>}
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="text-sm italic text-[var(--text-tertiary)]">No education data extracted</p>
+          )}
+        </Section>
 
-                <div className="border-t border-[var(--border-light)] pt-6" id="skills">
-                  <ExtractedSkills profile={data.profile} />
-                </div>
-              </div>
+        <Section title="Skills" id="skills">
+          <ExtractedSkills profile={profile} limit={40} />
+        </Section>
 
-              <OutreachHistory resumeId={resumeId} />
-            </div>
-
-            {/* Right Column: AI Screening */}
-            <div className="xl:col-span-1">
-              <div className="space-y-6 sticky top-0 pb-8">
-                {data.screening?.raw_candidate_id != null && (
-                  <CandidateIdentityCard
-                    candidateId={data.screening.raw_candidate_id}
-                    applicationsCount={data.screening.applications_count}
-                  />
-                )}
-                {data.screening?.evaluation_failed && (
-                  <EvaluationFailedBanner
-                    onRetry={() => retryEvaluation.mutate(resumeId)}
-                    isPending={retryEvaluation.isPending}
-                  />
-                )}
-                <ScoreVisualizer screening={data.screening} />
-                <ScreeningAnalysis screening={data.screening} />
-              </div>
-            </div>
-          </div>
-        </div>
+        <OutreachHistory resumeId={resumeId} />
       </div>
     </div>
   );

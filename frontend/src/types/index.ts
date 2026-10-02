@@ -63,6 +63,8 @@ export interface ScreeningResult {
   evidence?: string[] | null;
   decision?: CandidateDecision; // e.g., 'SHORTLIST', 'REVIEW', 'REJECT'
   notes?: string | null;
+  /** When the screening result row was created (returned by the API). */
+  created_at?: string | null;
   status?: string | null;
   error_message?: string | null;
 }

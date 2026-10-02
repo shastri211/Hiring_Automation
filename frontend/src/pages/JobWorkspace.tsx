@@ -5,10 +5,11 @@ import { api } from '../api';
 import { queryKeys } from '../api/queryKeys';
 import { useFunnel } from '../hooks/useAnalytics';
 import {
-  Badge, Breadcrumbs, Button, EmptyState, ErrorState, LinkButton, LoadingState, PageHeader,
+  Badge, Button, EmptyState, ErrorState, LinkButton, LoadingState, PageHeader,
   Section, Skeleton, StatTile, StatusDot,
 } from '../components/ui';
 import { useConfirm } from '../hooks/useConfirm';
+import { useBreadcrumbs } from '../hooks/useBreadcrumbs';
 import { ApplicationLinkCard } from '../components/job/ApplicationLinkCard';
 import { FunnelBars } from '../components/analytics/FunnelBars';
 import { batchTypeLabel, getBatchStatusVariant, getJobStatusVariant, isBatchLive, jobStatusLabel } from '../utils/status';
@@ -50,6 +51,7 @@ export const JobWorkspace = () => {
     enabled: jobId > 0,
   });
   const funnelQuery = useFunnel(jobId > 0 ? jobId : undefined);
+  useBreadcrumbs([{ label: 'Jobs', to: '/jobs' }, { label: job?.title || 'Job' }]);
   const progress = progressQuery.data;
   // Screening runs re-count already-uploaded resumes; only upload and
   // application batches contribute to the resume totals.
@@ -87,8 +89,6 @@ export const JobWorkspace = () => {
 
   return (
     <div className="mx-auto max-w-6xl">
-      <Breadcrumbs className="mb-4" items={[{ label: 'Jobs', to: '/jobs' }, { label: job.title }]} />
-
       <PageHeader
         className="mb-6"
         title={job.title}

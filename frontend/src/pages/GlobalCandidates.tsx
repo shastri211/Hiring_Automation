@@ -7,9 +7,9 @@ import { queryKeys } from '../api/queryKeys';
 import { useAddToTalentPool } from '../hooks/useTalentPool';
 import { CandidateDrawer } from '../components/CandidateDrawer';
 import { BulkEmailModal, type ResumeGroup } from '../components/BulkEmailModal';
-import { CandidateIdentity, DecisionStatus, EvaluationSummary } from '../components/candidate/ScreeningCells';
+import { CandidateIdentity, DecisionStatus, EvaluationSummary, ScoreCell, SemanticCell } from '../components/candidate/ScreeningCells';
 import {
-  BulkAction, BulkActionBar, DataTable, EmptyState, ErrorState, FilterBar, FilterBarSpacer, FitScore, IconButton, PageHeader,
+  BulkAction, BulkActionBar, DataTable, EmptyState, ErrorState, FilterBar, FilterBarSpacer, IconButton, PageHeader,
   Pagination, Tabs, type Column,
 } from '../components/ui';
 import type { CandidateDecision, GlobalScreeningResultResponse } from '../types';
@@ -97,7 +97,15 @@ export const GlobalCandidates = () => {
       header: 'Fit score',
       skeleton: 'score',
       className: 'w-36',
-      cell: (c) => <FitScore score={c.score} unscoredLabel={c.decision === 'PRE_SCREENED_OUT' ? 'Not scored — pre-screened out' : undefined} />,
+      cell: (c) => <ScoreCell score={c.score} semantic={c.semantic_score} unscoredLabel={c.decision === 'PRE_SCREENED_OUT' ? 'Not scored — pre-screened out' : undefined} />,
+    },
+    {
+      id: 'semantic',
+      header: 'Semantic',
+      align: 'right',
+      hideBelow: 'xl',
+      className: 'w-24',
+      cell: (c) => <SemanticCell value={c.semantic_score} />,
     },
     {
       id: 'evaluation',

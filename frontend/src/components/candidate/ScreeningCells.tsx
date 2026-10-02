@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react';
 import { Loader2, RefreshCw } from 'lucide-react';
-import { StatusDot } from '../ui';
+import { FitScore, StatusDot } from '../ui';
 import { cn } from '../../utils/cn';
 import { getCandidateState, type CandidateStateInput } from '../../utils/decision';
 import { getInitials } from '../../utils/initials';
+import { formatSemantic } from '../../utils/format';
 
 /**
  * Cell building blocks shared by the three screening tables (a job's
@@ -33,6 +34,22 @@ export const CandidateIdentity = ({ name, fallback, sub, muted }: {
       {sub && <p className="text-caption truncate">{sub}</p>}
     </div>
   </div>
+);
+
+/**
+ * The fit-score cell. Semantic match always stays visible: beside the score in
+ * its own column on wide screens (see SemanticCell), and as a caption under the
+ * score below `xl`, where the extra column would not fit.
+ */
+export const ScoreCell = ({ score, semantic, unscoredLabel }: { score?: number | null; semantic?: number | null; unscoredLabel?: string }) => (
+  <div className="space-y-1">
+    <FitScore score={score} unscoredLabel={unscoredLabel} />
+    <p className="text-caption tabular hidden md:block xl:hidden">Semantic {formatSemantic(semantic)}</p>
+  </div>
+);
+
+export const SemanticCell = ({ value }: { value?: number | null }) => (
+  <span className="tabular text-sm text-[var(--text-secondary)]">{formatSemantic(value)}</span>
 );
 
 export const DecisionStatus = ({ candidate }: { candidate: CandidateStateInput }) => {

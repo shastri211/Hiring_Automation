@@ -1,6 +1,6 @@
 import { Menu, LogOut, KeyRound, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { LinkButton } from '../ui';
+import { Breadcrumbs, LinkButton, type Crumb } from '../ui';
 import { ThemeToggle } from './ThemeToggle';
 import { useAuth } from '../../hooks/useAuth';
 import { getInitials } from '../../utils/initials';
@@ -39,16 +39,16 @@ const UserMenu = () => {
 
 export const Header = ({
   section,
-  title,
+  crumbs,
   onMenuClick,
   isMenuOpen = false,
 }: {
   section?: string;
-  title?: string;
+  /** A page-provided trail; replaces the section label when present. */
+  crumbs?: Crumb[] | null;
   onMenuClick: () => void;
   isMenuOpen?: boolean;
 }) => {
-  const showSection = section && section !== title;
   return (
     <header className="z-10 flex h-[var(--header-height)] shrink-0 items-center justify-between border-b border-[var(--border-light)] bg-[var(--bg-surface)] px-4 sm:px-6">
       <div className="flex min-w-0 items-center gap-3">
@@ -62,21 +62,15 @@ export const Header = ({
         >
           <Menu size={20} />
         </button>
-        {title && (
-          <p className="flex min-w-0 items-center gap-2 text-sm">
-            {showSection && (
-              <>
-                <span className="text-eyebrow hidden sm:inline">{section}</span>
-                <span aria-hidden="true" className="hidden text-[var(--text-tertiary)] sm:inline">/</span>
-              </>
-            )}
-            <span className="truncate font-medium text-[var(--text-primary)]">{title}</span>
-          </p>
+        {crumbs && crumbs.length > 0 ? (
+          <Breadcrumbs items={crumbs} className="min-w-0" />
+        ) : (
+          section && <p className="text-eyebrow truncate">{section}</p>
         )}
       </div>
       <div className="flex items-center gap-1.5">
         <ThemeToggle />
-        <LinkButton to="/jobs/new" size="sm" className="hidden sm:inline-flex">
+        <LinkButton to="/jobs/new" size="sm" className="max-sm:hidden">
           <Plus size={14} aria-hidden="true" /> New Job
         </LinkButton>
         <UserMenu />

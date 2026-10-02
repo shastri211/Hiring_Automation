@@ -6,13 +6,14 @@ import { jobsApi } from '../api/jobs';
 import { queryKeys } from '../api/queryKeys';
 import { useDecisionMutation, useRetryEvaluation } from '../hooks/useDecisionMutation';
 import { useAddToTalentPool } from '../hooks/useTalentPool';
+import { useBreadcrumbs } from '../hooks/useBreadcrumbs';
 import { emailQueryKeys } from '../hooks/useEmails';
 import type { CandidateDecision, ScreeningResultResponse } from '../types';
 import { CandidateDrawer } from '../components/CandidateDrawer';
 import { BulkEmailModal } from '../components/BulkEmailModal';
-import { CandidateIdentity, DecisionStatus, EvaluationSummary } from '../components/candidate/ScreeningCells';
+import { CandidateIdentity, DecisionStatus, EvaluationSummary, ScoreCell, SemanticCell } from '../components/candidate/ScreeningCells';
 import {
-  Breadcrumbs, BulkAction, BulkActionBar, DataTable, EmptyState, ErrorState, FilterBar, FilterBarSpacer, FitScore, IconButton,
+  BulkAction, BulkActionBar, DataTable, EmptyState, ErrorState, FilterBar, FilterBarSpacer, IconButton,
   NativeSelect, PageHeader, Pagination, Tabs, type Column,
 } from '../components/ui';
 
@@ -57,6 +58,8 @@ export const JobCandidates = () => {
     queryFn: () => jobsApi.getJob(jobId),
     enabled: jobId > 0,
   });
+
+  useBreadcrumbs([{ label: 'Jobs', to: '/jobs' }, { label: jobMeta?.title || 'Job', to: `/jobs/${id}` }, { label: 'Candidates' }]);
 
   const decisionMutation = useDecisionMutation(jobId);
   const retryEvaluation = useRetryEvaluation(jobId);
@@ -121,7 +124,7 @@ export const JobCandidates = () => {
       skeleton: 'score',
       className: 'w-36',
       cell: (c) => (
-        <FitScore score={c.score} unscoredLabel={c.decision === 'PRE_SCREENED_OUT' ? 'Not scored — pre-screened out' : undefined} />
+        <ScoreCell score={c.score} semantic={c.semantic_score} unscoredLabel={c.decision === 'PRE_SCREENED_OUT' ? 'Not scored — pre-screened out' : undefined} />
       ),
     },
     {
@@ -130,9 +133,7 @@ export const JobCandidates = () => {
       align: 'right',
       hideBelow: 'xl',
       className: 'w-24',
-      cell: (c) => (
-        <span className="tabular text-sm text-[var(--text-secondary)]">{c.semantic_score != null ? c.semantic_score.toFixed(3) : '—'}</span>
-      ),
+      cell: (c) => <SemanticCell value={c.semantic_score} />,
     },
     {
       id: 'evaluation',
@@ -212,11 +213,6 @@ export const JobCandidates = () => {
 
   return (
     <div className="mx-auto max-w-7xl">
-      <Breadcrumbs
-        className="mb-4"
-        items={[{ label: 'Jobs', to: '/jobs' }, { label: jobMeta?.title || 'Job', to: `/jobs/${id}` }, { label: 'Candidates' }]}
-      />
-
       <PageHeader className="mb-6" title="Screening results" subtitle="Review candidates and make shortlisting decisions." />
 
       <Tabs<Segment>

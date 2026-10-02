@@ -5,9 +5,9 @@ import { useShortlistedCandidates } from '../hooks/useShortlistedCandidates';
 import { useAddToTalentPool } from '../hooks/useTalentPool';
 import { CandidateDrawer } from '../components/CandidateDrawer';
 import { BulkEmailModal, type ResumeGroup } from '../components/BulkEmailModal';
-import { CandidateIdentity, EvaluationSummary } from '../components/candidate/ScreeningCells';
+import { CandidateIdentity, EvaluationSummary, ScoreCell, SemanticCell } from '../components/candidate/ScreeningCells';
 import {
-  BulkAction, BulkActionBar, DataTable, EmptyState, ErrorState, FitScore, IconButton, PageHeader, Pagination, type Column,
+  BulkAction, BulkActionBar, DataTable, EmptyState, ErrorState, IconButton, PageHeader, Pagination, type Column,
 } from '../components/ui';
 import type { GlobalScreeningResultResponse } from '../types';
 
@@ -68,14 +68,14 @@ export const Shortlisted = () => {
         </button>
       ),
     },
-    { id: 'score', header: 'Fit score', skeleton: 'score', className: 'w-36', cell: (c) => <FitScore score={c.score} /> },
+    { id: 'score', header: 'Fit score', skeleton: 'score', className: 'w-36', cell: (c) => <ScoreCell score={c.score} semantic={c.semantic_score} /> },
     {
       id: 'semantic',
       header: 'Semantic',
       align: 'right',
       hideBelow: 'xl',
       className: 'w-24',
-      cell: (c) => <span className="tabular text-sm text-[var(--text-secondary)]">{c.semantic_score != null ? c.semantic_score.toFixed(3) : '—'}</span>,
+      cell: (c) => <SemanticCell value={c.semantic_score} />,
     },
     {
       id: 'strengths',

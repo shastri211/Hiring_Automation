@@ -1,192 +1,234 @@
-
-import { CheckCircle2, X, Clock, AlertTriangle, ShieldOff, RefreshCw, Loader2 } from 'lucide-react';
+import { useState } from 'react';
+import { CheckCircle2, Clock, Eraser, Loader2, RefreshCw, Save, ShieldOff, XCircle } from 'lucide-react';
 import type { CandidateDecision, ScreeningResultResponse, CandidateProfileDetail } from '../../types';
+import { useDecisionMutation } from '../../hooks/useDecisionMutation';
+import { cn } from '../../utils/cn';
 import { variantButtonClasses } from '../../utils/decision';
-import { FitScore } from '../ui/FitScore';
+import { Alert, Badge, Button, FitScore, Section, Textarea } from '../ui';
 
+/**
+ * Presentational building blocks shared by the Candidate Drawer (quick review)
+ * and Candidate 360 (full profile). They own no data fetching beyond the
+ * decision/notes mutation; both surfaces feed them the same API responses.
+ */
+
+// -----------------------------------------------------------------------------
+// Fit score
+// -----------------------------------------------------------------------------
 export const ScoreVisualizer = ({ screening }: { screening?: ScreeningResultResponse | null }) => {
   if (!screening) return null;
   const score = screening.score;
-
   if (score === null || score === undefined) return null;
 
   return (
-    <div className="rounded-lg border border-[var(--border-light)] bg-[var(--bg-surface)] p-5">
+    <div>
       <p className="text-eyebrow mb-3">AI fit score</p>
       <FitScore score={score} size="lg" />
-      <p className="text-body mt-4">
-        {screening.evidence && screening.evidence.length > 0
-          ? screening.evidence[0]
-          : 'Based on job requirements analysis.'}
-      </p>
     </div>
   );
 };
 
-export const DecisionControlBar = ({ 
-  decision, 
-  isPending, 
-  onDecision 
-}: { 
-  decision?: CandidateDecision; 
-  isPending: boolean; 
-  onDecision: (d: CandidateDecision | null) => void;
-}) => {
-  return (
-    <div className="flex flex-wrap items-center gap-3 p-4 bg-[var(--bg-app)] rounded-lg border border-[var(--border-light)]">
-      <span className="text-sm font-medium text-[var(--text-secondary)]">Decision:</span>
-      <button
-        type="button"
-        onClick={() => onDecision('SHORTLIST')}
-        disabled={isPending}
-        aria-pressed={decision === 'SHORTLIST'}
-        className={`px-4 py-2 rounded-md text-sm font-medium transition-colors border focus-ring ${
-          decision === 'SHORTLIST'
-            ? `${variantButtonClasses.success} border-transparent`
-            : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-light)] hover:bg-[var(--bg-hover)]'
-        }`}
-      >
-        Shortlist
-      </button>
-      <button
-        type="button"
-        onClick={() => onDecision('REVIEW')}
-        disabled={isPending}
-        aria-pressed={decision === 'REVIEW'}
-        className={`px-4 py-2 rounded-md text-sm font-medium transition-colors border focus-ring ${
-          decision === 'REVIEW'
-            ? `${variantButtonClasses.warning} border-transparent`
-            : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-light)] hover:bg-[var(--bg-hover)]'
-        }`}
-      >
-        Review
-      </button>
-      <button
-        type="button"
-        onClick={() => onDecision('REJECT')}
-        disabled={isPending}
-        aria-pressed={decision === 'REJECT'}
-        className={`px-4 py-2 rounded-md text-sm font-medium transition-colors border focus-ring ${
-          decision === 'REJECT'
-            ? `${variantButtonClasses.danger} border-transparent`
-            : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-light)] hover:bg-[var(--bg-hover)]'
-        }`}
-      >
-        Reject
-      </button>
-      {decision && (
-        <button
-          type="button"
-          onClick={() => onDecision(null)}
-          disabled={isPending}
-          className="ml-auto text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] focus-ring rounded px-2 py-1"
-        >
-          Clear
-        </button>
-      )}
-    </div>
-  );
-};
-
-export const ExtractedSkills = ({ profile }: { profile?: CandidateProfileDetail | null }) => {
-  const skills = Array.isArray(profile?.skills) ? profile?.skills : [];
-  return (
-    <div>
-      <span className="text-xs text-[var(--text-secondary)] font-medium block mb-1">Extracted Skills</span>
-      <div className="flex flex-wrap gap-2">
-        {skills.length > 0
-          ? skills.slice(0, 15).map((s: string, i: number) => (
-            <span key={i} className="bg-[var(--bg-hover)] text-[var(--text-secondary)] px-2 py-1 rounded text-xs font-medium">
-              {s}
-            </span>
-          ))
-          : <span className="text-[var(--text-tertiary)] italic">No skills identified</span>
-        }
-        {skills.length > 15 && (
-          <span className="text-xs text-[var(--text-secondary)] py-1">+{skills.length - 15} more</span>
-        )}
-      </div>
-    </div>
-  );
-};
+// -----------------------------------------------------------------------------
+// Decision controls
+// -----------------------------------------------------------------------------
+const DECISIONS: { value: Exclude<CandidateDecision, null | 'PRE_SCREENED_OUT'>; label: string; short: string; icon: typeof CheckCircle2; tone: 'success' | 'warning' | 'danger' }[] = [
+  { value: 'SHORTLIST', label: 'Shortlist', short: 'Shortlist', icon: CheckCircle2, tone: 'success' },
+  { value: 'REVIEW', label: 'Move to review', short: 'Review', icon: Clock, tone: 'warning' },
+  { value: 'REJECT', label: 'Reject', short: 'Reject', icon: XCircle, tone: 'danger' },
+];
 
 /**
- * EvaluationFailedBanner — shown above the (otherwise empty-looking) score
- * and evaluation panels when every configured LLM provider failed for this
- * one candidate (screener.py's per-candidate fallback path). Without this,
- * ScoreVisualizer renders nothing at all (score is null) and ScreeningAnalysis
- * just shows "None identified" for both strengths and gaps, indistinguishable
- * from a real (if uninformative) outcome.
+ * DecisionControlBar — Shortlist / Review / Reject (+ Clear). The pressed state
+ * uses the same decision colors as everywhere else (variantButtonClasses).
+ * `stacked` is the full-width vertical form used in the Candidate 360 sidebar;
+ * the default is a compact inline group for the drawer.
  */
-export const EvaluationFailedBanner = ({ onRetry, isPending }: { onRetry: () => void; isPending: boolean }) => (
-  <div className="flex items-start justify-between gap-3 rounded-xl border border-[var(--color-danger-border)] bg-[var(--color-danger-subtle-bg)] p-4">
-    <div className="flex items-start gap-3">
-      <AlertTriangle className="w-5 h-5 text-[var(--color-danger-600)] mt-0.5 shrink-0" />
-      <div>
-        <p className="text-sm font-semibold text-[var(--color-danger-subtle-text)]">AI Evaluation Failed</p>
-        <p className="text-xs text-[var(--color-danger-subtle-text)] mt-0.5">
-          Every configured LLM provider failed for this candidate - usually a transient outage, not a resume problem. Retry once it's cleared.
-        </p>
-      </div>
-    </div>
-    <button
-      type="button"
-      onClick={onRetry}
-      disabled={isPending}
-      className="shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium bg-[var(--bg-surface)] border border-[var(--color-danger-border)] text-[var(--color-danger-subtle-text)] hover:bg-[var(--color-danger-subtle-bg)] disabled:opacity-60 transition-colors focus-ring"
-    >
-      {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-      Retry
-    </button>
+export const DecisionControlBar = ({
+  decision,
+  isPending,
+  onDecision,
+  stacked = false,
+}: {
+  decision?: CandidateDecision;
+  isPending: boolean;
+  onDecision: (d: CandidateDecision | null) => void;
+  stacked?: boolean;
+}) => (
+  <div role="group" aria-label="Decision" className={cn(stacked ? 'flex flex-col gap-2' : 'flex flex-wrap items-center gap-2')}>
+    {DECISIONS.map(({ value, label, short, icon: Icon, tone }) => {
+      const active = decision === value;
+      return (
+        <button
+          key={value}
+          type="button"
+          onClick={() => onDecision(value)}
+          disabled={isPending}
+          aria-pressed={active}
+          className={cn(
+            'transition-base focus-ring inline-flex h-9 items-center justify-center gap-2 rounded-md border px-3.5 text-sm font-medium disabled:opacity-50',
+            stacked && 'w-full',
+            active
+              ? `${variantButtonClasses[tone]} border-current`
+              : 'border-[var(--border-strong)] bg-[var(--bg-surface)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
+          )}
+        >
+          <Icon size={15} aria-hidden="true" /> {stacked ? label : short}
+        </button>
+      );
+    })}
+    {decision && (
+      <button
+        type="button"
+        onClick={() => onDecision(null)}
+        disabled={isPending}
+        className={cn(
+          'transition-base focus-ring inline-flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50',
+          !stacked && 'ml-auto'
+        )}
+      >
+        <Eraser size={14} aria-hidden="true" /> {stacked ? 'Clear decision' : 'Clear'}
+      </button>
+    )}
   </div>
 );
 
-export const ScreeningAnalysis = ({ screening }: { screening?: ScreeningResultResponse | null }) => {
-  if (!screening) return null;
+// -----------------------------------------------------------------------------
+// Recruiter notes — saved through the same decision endpoint the drawer always
+// used (decision is re-sent unchanged), so nothing new on the API side.
+// -----------------------------------------------------------------------------
+export const RecruiterNotes = ({
+  jobId, resumeId, savedNotes, decision,
+}: {
+  jobId: number;
+  resumeId: number;
+  savedNotes?: string | null;
+  decision?: CandidateDecision;
+}) => {
+  const mutation = useDecisionMutation(jobId);
+  // null = untouched, so the field always reflects the saved value until edited.
+  const [draft, setDraft] = useState<string | null>(null);
+  const saved = savedNotes || '';
+  const value = draft ?? saved;
+  const dirty = draft !== null && draft !== saved;
+
   return (
-    <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-light)] shadow-sm overflow-hidden mt-6">
-      <div className="px-5 py-3 border-b border-[var(--border-light)] bg-[var(--bg-app)]">
-        <h3 className="text-sm font-semibold text-[var(--text-primary)]">AI Evaluation</h3>
-      </div>
-      <div className="p-5 space-y-5 text-sm">
-        <div>
-          <div className="flex items-center gap-2 mb-2 text-[var(--color-success-subtle-text)] font-medium">
-            <CheckCircle2 className="w-4 h-4" />
-            Key Strengths
-          </div>
-          <ul className="list-disc pl-5 space-y-1 text-[var(--text-secondary)]">
-            {screening.strengths && screening.strengths.length > 0
-              ? screening.strengths.map((s: string, i: number) => <li key={i}>{s}</li>)
-              : <li className="text-[var(--text-tertiary)] italic">None identified</li>
-            }
-          </ul>
-        </div>
-        <div>
-          <div className="flex items-center gap-2 mb-2 text-[var(--color-danger-subtle-text)] font-medium">
-            <X className="w-4 h-4" />
-            Identified Gaps
-          </div>
-          <ul className="list-disc pl-5 space-y-1 text-[var(--text-secondary)]">
-            {screening.gaps && screening.gaps.length > 0
-              ? screening.gaps.map((g: string, i: number) => <li key={i}>{g}</li>)
-              : <li className="text-[var(--text-tertiary)] italic">None identified</li>
-            }
-          </ul>
-        </div>
+    <div>
+      <label htmlFor={`notes-${resumeId}`} className="text-eyebrow mb-2 block">Recruiter notes</label>
+      <Textarea
+        id={`notes-${resumeId}`}
+        rows={3}
+        placeholder="Add private notes about this candidate…"
+        value={value}
+        onChange={(e) => setDraft(e.target.value)}
+      />
+      <div className="mt-2 flex justify-end">
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={mutation.isPending || !dirty}
+          onClick={() =>
+            mutation.mutate({ resumeId, decision: decision || null, notes: value }, { onSuccess: () => setDraft(null) })
+          }
+        >
+          {mutation.isPending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Save size={14} aria-hidden="true" />}
+          Save notes
+        </Button>
       </div>
     </div>
   );
 };
 
+// -----------------------------------------------------------------------------
+// Skills
+// -----------------------------------------------------------------------------
+export const ExtractedSkills = ({ profile, limit = 15 }: { profile?: CandidateProfileDetail | null; limit?: number }) => {
+  const skills: string[] = Array.isArray(profile?.skills) ? profile.skills : [];
+  return skills.length > 0 ? (
+    <div className="flex flex-wrap gap-1.5">
+      {skills.slice(0, limit).map((s, i) => <Badge key={i}>{s}</Badge>)}
+      {skills.length > limit && <span className="py-0.5 text-xs text-[var(--text-secondary)]">+{skills.length - limit} more</span>}
+    </div>
+  ) : (
+    <span className="text-sm italic text-[var(--text-tertiary)]">No skills identified</span>
+  );
+};
+
+// -----------------------------------------------------------------------------
+// Evaluation lists
+// -----------------------------------------------------------------------------
+const BulletList = ({ items, empty, marker }: { items?: string[] | null; empty: string; marker: 'strength' | 'gap' | 'neutral' }) =>
+  items && items.length > 0 ? (
+    <ul className="space-y-2 text-sm">
+      {items.map((text, i) => (
+        <li key={i} className="flex gap-2.5 leading-relaxed text-[var(--text-primary)]">
+          <span
+            aria-hidden="true"
+            className={cn(
+              'mt-[0.55rem] h-1.5 w-1.5 shrink-0 rounded-full',
+              marker === 'strength' ? 'bg-[var(--color-success-500)]' : marker === 'gap' ? 'bg-[var(--color-danger-500)]' : 'bg-[var(--color-neutral-400)]'
+            )}
+          />
+          <span>{text}</span>
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <p className="text-sm italic text-[var(--text-tertiary)]">{empty}</p>
+  );
+
+export const StrengthsList = ({ items }: { items?: string[] | null }) => (
+  <BulletList items={items} marker="strength" empty="None identified" />
+);
+export const GapsList = ({ items }: { items?: string[] | null }) => (
+  <BulletList items={items} marker="gap" empty="None identified" />
+);
+export const EvidenceList = ({ items }: { items?: string[] | null }) => (
+  <BulletList items={items} marker="neutral" empty="No evidence provided" />
+);
+
+/** Strengths and gaps side by side (stacked on narrow containers). */
+export const ScreeningAnalysis = ({ screening }: { screening?: ScreeningResultResponse | null }) => {
+  if (!screening) return null;
+  return (
+    <div className="grid gap-x-10 gap-y-8 sm:grid-cols-2">
+      <Section title="Key strengths"><StrengthsList items={screening.strengths} /></Section>
+      <Section title="Potential gaps"><GapsList items={screening.gaps} /></Section>
+    </div>
+  );
+};
+
+// -----------------------------------------------------------------------------
+// Banners
+// -----------------------------------------------------------------------------
+
 /**
- * CandidateStatusBanner — shown in the drawer when there is no ScreeningResult yet.
- * Covers: PROCESSING/UPLOADED (pending), FAILED, and PRE_SCREENED_OUT.
- * Replaces the blank/empty space that otherwise confuses users.
+ * EvaluationFailedBanner — shown when every configured LLM provider failed for
+ * this one candidate (screener.py's per-candidate fallback path). Without it
+ * the score is simply absent and the evaluation lists read "None identified",
+ * indistinguishable from a genuine (if uninformative) outcome.
+ */
+export const EvaluationFailedBanner = ({ onRetry, isPending }: { onRetry: () => void; isPending: boolean }) => (
+  <Alert
+    variant="danger"
+    title="AI evaluation failed"
+    action={
+      <Button variant="secondary" size="sm" onClick={onRetry} disabled={isPending}>
+        {isPending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <RefreshCw size={14} aria-hidden="true" />}
+        Retry
+      </Button>
+    }
+  >
+    Every configured LLM provider failed for this candidate — usually a transient outage, not a resume problem. Retry once it&apos;s cleared.
+  </Alert>
+);
+
+/**
+ * CandidateStatusBanner — shown when there is no usable screening result yet.
+ * Covers PRE_SCREENED_OUT, FAILED processing, in-flight processing, and
+ * processed-but-not-screened. Replaces blank space that otherwise confuses users.
  */
 export const CandidateStatusBanner = ({
-  resumeStatus,
-  decision,
-  errorMessage,
+  resumeStatus, decision, errorMessage,
 }: {
   resumeStatus?: string | null;
   decision?: string | null;
@@ -195,63 +237,31 @@ export const CandidateStatusBanner = ({
   // PRE_SCREENED_OUT is stored in decision, not resume status
   if (decision === 'PRE_SCREENED_OUT') {
     return (
-      <div className="flex items-start gap-3 rounded-xl border border-[var(--color-warning-border)] bg-[var(--color-warning-subtle-bg)] p-4">
-        <ShieldOff className="w-5 h-5 text-[var(--color-warning-600)] mt-0.5 shrink-0" />
-        <div>
-          <p className="text-sm font-semibold text-[var(--color-warning-subtle-text)]">Pre-screened Out</p>
-          <p className="text-xs text-[var(--color-warning-subtle-text)] mt-0.5">
-            This candidate did not meet the semantic similarity threshold for this job and was automatically filtered before LLM evaluation.
-            The semantic score is preserved; no AI evaluation was consumed.
-          </p>
-        </div>
-      </div>
+      <Alert variant="warning" icon={<ShieldOff size={16} />} title="Pre-screened out">
+        This candidate did not meet the semantic similarity threshold for this job and was filtered before LLM evaluation. The semantic score is preserved; no AI evaluation was consumed.
+      </Alert>
     );
   }
-
   if (resumeStatus === 'FAILED') {
     return (
-      <div className="flex items-start gap-3 rounded-xl border border-[var(--color-danger-border)] bg-[var(--color-danger-subtle-bg)] p-4">
-        <AlertTriangle className="w-5 h-5 text-[var(--color-danger-600)] mt-0.5 shrink-0" />
-        <div>
-          <p className="text-sm font-semibold text-[var(--color-danger-subtle-text)]">Processing Failed</p>
-          <p className="text-xs text-[var(--color-danger-subtle-text)] mt-0.5">
-            {errorMessage || 'An error occurred while processing this resume. It may need to be re-uploaded.'}
-          </p>
-        </div>
-      </div>
+      <Alert variant="danger" title="Processing failed">
+        {errorMessage || 'An error occurred while processing this resume. It may need to be re-uploaded.'}
+      </Alert>
     );
   }
-
   if (resumeStatus === 'PROCESSING' || resumeStatus === 'UPLOADED') {
     return (
-      <div className="flex items-start gap-3 rounded-xl border border-[var(--color-info-border)] bg-[var(--color-info-subtle-bg)] p-4">
-        <Clock className="w-5 h-5 text-[var(--color-info-icon)] mt-0.5 shrink-0 animate-pulse" />
-        <div>
-          <p className="text-sm font-semibold text-[var(--color-info-subtle-text)]">Processing In Progress</p>
-          <p className="text-xs text-[var(--color-info-subtle-text)] mt-0.5">
-            This resume is currently being processed. Screening results will appear here once the pipeline completes.
-            Refresh to check for updates.
-          </p>
-        </div>
-      </div>
+      <Alert variant="info" icon={<Clock size={16} className="animate-pulse" />} title="Processing in progress">
+        This resume is being processed. Screening results appear here once the pipeline completes — refresh to check for updates.
+      </Alert>
     );
   }
-
-  // READY but no screening result yet (awaiting screening run)
   if (resumeStatus === 'READY') {
     return (
-      <div className="flex items-start gap-3 rounded-xl border border-[var(--border-light)] bg-[var(--bg-app)] p-4">
-        <Clock className="w-5 h-5 text-[var(--text-tertiary)] mt-0.5 shrink-0" />
-        <div>
-          <p className="text-sm font-semibold text-[var(--text-secondary)]">Awaiting Screening</p>
-          <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-            This resume has been processed and is queued for AI screening. Results will appear once screening runs.
-          </p>
-        </div>
-      </div>
+      <Alert variant="info" icon={<Clock size={16} />} title="Awaiting screening">
+        This resume has been processed and is waiting for a screening run. Results appear once screening runs.
+      </Alert>
     );
   }
-
   return null;
 };
-

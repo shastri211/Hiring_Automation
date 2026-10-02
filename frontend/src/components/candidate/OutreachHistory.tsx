@@ -1,58 +1,61 @@
-import { useCandidateEmails } from '../../hooks/useEmails';
-import { Loader2, Mail, MailX, CheckCircle2, Clock, XCircle, ShieldOff } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { Mail } from 'lucide-react';
+import { useCandidateEmails } from '../../hooks/useEmails';
+import { Section, Skeleton, StatusDot } from '../ui';
+import { getEmailStatusBadgeVariant } from '../../utils/status';
 
+const STATUS_LABEL: Record<string, string> = {
+  SENT: 'Sent',
+  PENDING: 'Pending',
+  SIMULATED: 'Simulated',
+  FAILED: 'Failed',
+  BLOCKED: 'Blocked',
+};
+
+/**
+ * Outreach history for one candidate: each email's subject, status, time and a
+ * body preview, in the order the API returns them. Renders nothing when there
+ * is no history (callers show their own empty context).
+ */
 export const OutreachHistory = ({ resumeId }: { resumeId: number }) => {
   const { data: emails, isLoading } = useCandidateEmails(resumeId);
 
   if (isLoading) {
     return (
-      <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-light)] p-6 flex justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-[var(--color-info-icon)]" />
-      </div>
+      <Section title="Outreach" icon={<Mail size={13} />}>
+        <div className="space-y-3" aria-hidden="true">
+          <Skeleton className="h-4 w-2/3" />
+          <Skeleton className="h-12 w-full" />
+        </div>
+      </Section>
     );
   }
 
-  if (!emails || emails.length === 0) {
-    return null; // Don't show anything if there's no history
-  }
+  if (!emails || emails.length === 0) return null;
 
   return (
-    <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-light)] shadow-sm p-6" id="outreach">
-      <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-6 flex items-center gap-2">
-        <Mail className="w-5 h-5 text-[var(--color-info-icon)]" /> Outreach History
-      </h2>
-
-      <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-[var(--border-strong)] before:to-transparent">
+    <Section title="Outreach" icon={<Mail size={13} />} id="outreach">
+      <ul className="divide-y divide-[var(--border-light)]">
         {emails.map((email) => (
-          <div key={email.id} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
-            <div className="flex items-center justify-center w-10 h-10 rounded-full border border-[var(--bg-surface)] bg-[var(--bg-hover)] text-[var(--text-secondary)] shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10">
-              {email.status === 'SENT' ? <CheckCircle2 className="w-5 h-5 text-[var(--color-success-500)]" /> :
-               email.status === 'PENDING' ? <Clock className="w-5 h-5 text-[var(--color-warning-500)]" /> :
-               email.status === 'BLOCKED' ? <ShieldOff className="w-5 h-5 text-[var(--text-tertiary)]" /> :
-               email.status === 'SIMULATED' ? <MailX className="w-5 h-5 text-[var(--color-warning-500)]" /> :
-               <XCircle className="w-5 h-5 text-[var(--color-danger-500)]" />}
+          <li key={email.id} className="py-3 first:pt-0 last:pb-0">
+            <div className="flex items-start justify-between gap-3">
+              <p className="min-w-0 text-sm font-medium text-[var(--text-primary)]">{email.subject}</p>
+              <time dateTime={email.created_at} className="text-caption shrink-0 whitespace-nowrap">
+                {formatDistanceToNow(new Date(email.created_at), { addSuffix: true })}
+              </time>
             </div>
-
-            <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-[var(--bg-surface)] p-4 rounded border border-[var(--border-light)] shadow-sm">
-              <div className="flex justify-between items-start mb-1">
-                <div className="font-semibold text-[var(--text-primary)] text-sm">{email.subject}</div>
-                <div className="text-xs text-[var(--text-tertiary)] whitespace-nowrap ml-2">
-                  {formatDistanceToNow(new Date(email.created_at), { addSuffix: true })}
-                </div>
-              </div>
-              <div className="text-xs text-[var(--text-secondary)] bg-[var(--bg-app)] p-2 rounded border border-[var(--border-light)] whitespace-pre-wrap mt-2 overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
-                {email.body_content}
-              </div>
-              {email.error_message && (
-                <div className={`text-xs mt-2 p-2 rounded ${email.status === 'BLOCKED' || email.status === 'SIMULATED' ? 'text-[var(--text-secondary)] bg-[var(--bg-hover)]' : 'text-[var(--color-danger-subtle-text)] bg-[var(--color-danger-subtle-bg)]'}`}>
-                  {email.status === 'BLOCKED' ? 'Blocked: ' : email.status === 'SIMULATED' ? '' : 'Failed: '}{email.error_message}
-                </div>
-              )}
-            </div>
-          </div>
+            <StatusDot variant={getEmailStatusBadgeVariant(email.status)} className="mt-1 text-xs text-[var(--text-secondary)]">
+              {STATUS_LABEL[email.status] ?? email.status}
+            </StatusDot>
+            <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-secondary)]">{email.body_content}</p>
+            {email.error_message && (
+              <p className={`mt-2 text-xs ${email.status === 'FAILED' ? 'text-[var(--color-danger-subtle-text)]' : 'text-[var(--text-secondary)]'}`}>
+                {email.status === 'BLOCKED' ? 'Blocked: ' : email.status === 'FAILED' ? 'Failed: ' : ''}{email.error_message}
+              </p>
+            )}
+          </li>
         ))}
-      </div>
-    </div>
+      </ul>
+    </Section>
   );
 };
