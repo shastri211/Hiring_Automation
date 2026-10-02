@@ -16,11 +16,13 @@ interface StatTileProps {
   footer?: ReactNode;
   isLoading?: boolean;
   to?: string;
+  /** Router state passed along when `to` is followed. */
+  linkState?: unknown;
   tone?: 'default' | 'danger';
   className?: string;
 }
 
-export const StatTile = ({ label, value, hint, footer, isLoading, to, tone = 'default', className }: StatTileProps) => {
+export const StatTile = ({ label, value, hint, footer, isLoading, to, linkState, tone = 'default', className }: StatTileProps) => {
   const body = (
     <>
       <p className="text-eyebrow">{label}</p>
@@ -38,7 +40,7 @@ export const StatTile = ({ label, value, hint, footer, isLoading, to, tone = 'de
   );
   const base = 'block rounded-lg border border-[var(--border-light)] bg-[var(--bg-surface)] p-4';
   return to ? (
-    <Link to={to} className={cn(base, 'transition-base focus-ring hover:border-[var(--border-strong)]', className)}>
+    <Link to={to} state={linkState} className={cn(base, 'transition-base focus-ring hover:border-[var(--border-strong)]', className)}>
       {body}
     </Link>
   ) : (

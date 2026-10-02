@@ -1,373 +1,309 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Briefcase, Plus, Search, Pause, Play, Archive, Trash2 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Archive, Briefcase, Pause, Play, Plus, Search, Trash2 } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { api } from '../api';
+import { jobsApi } from '../api/jobs';
+import { analyticsApi } from '../api/analytics';
 import { queryKeys } from '../api/queryKeys';
-import { Button, Card, CardHeader, CardTitle, CardContent, CardFooter, Badge, EmptyState, PageHeader, SkeletonCard, Input } from '../components/ui';
+import {
+  BulkAction, BulkActionBar, DataTable, EmptyState, ErrorState, FilterBar, FilterBarSpacer, IconButton, LinkButton,
+  PageHeader, SearchInput, StatusDot, Tabs, type Column,
+} from '../components/ui';
 import { useConfirm } from '../hooks/useConfirm';
+import { getJobStatusVariant, isBatchLive, jobStatusLabel } from '../utils/status';
 import type { Job } from '../types';
 
-type BulkAction = 'pause' | 'resume' | 'archive' | 'delete';
+type JobStatus = 'ACTIVE' | 'PAUSED' | 'ARCHIVED';
+type BulkActionKey = 'pause' | 'resume' | 'archive' | 'delete';
 
-const BULK_ACTION_FN: Record<BulkAction, (jobId: number) => Promise<unknown>> = {
+const BULK_ACTION_FN: Record<BulkActionKey, (jobId: number) => Promise<unknown>> = {
   pause: api.jobs.pauseJob,
   resume: api.jobs.resumeJob,
   archive: api.jobs.archiveJob,
   delete: api.jobs.deleteJob,
 };
 
-const BULK_ACTION_LABEL: Record<BulkAction, { verb: string; pastTense: string }> = {
-  pause: { verb: 'Pause', pastTense: 'paused' },
-  resume: { verb: 'Resume', pastTense: 'resumed' },
-  archive: { verb: 'Archive', pastTense: 'archived' },
-  delete: { verb: 'Delete', pastTense: 'deleted' },
+const BULK_ACTION_LABEL: Record<BulkActionKey, string> = {
+  pause: 'paused',
+  resume: 'resumed',
+  archive: 'archived',
+  delete: 'deleted',
 };
+
+const statusOf = (job: Job): JobStatus => (job.status as JobStatus) || 'ACTIVE';
 
 export const JobsList = () => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'ACTIVE' | 'PAUSED' | 'ARCHIVED'>('ACTIVE');
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [statusFilter, setStatusFilter] = useState<JobStatus>('ACTIVE');
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const queryClient = useQueryClient();
   const confirm = useConfirm();
+  const navigate = useNavigate();
 
   const { data: jobs, isLoading, error, refetch } = useQuery({
     queryKey: queryKeys.jobs(),
-    queryFn: () => api.jobs.getJobs()
+    queryFn: () => api.jobs.getJobs(),
   });
 
-  const pauseMutation = useMutation({
-    mutationFn: (jobId: number) => api.jobs.pauseJob(jobId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.jobs() }),
+  // Per-job resume counts and in-flight batches. Both are secondary to the
+  // list itself, so a failure here just leaves those cells as "—".
+  const { data: volume } = useQuery({ queryKey: queryKeys.analyticsJobVolume(), queryFn: analyticsApi.getJobVolume });
+  const { data: batches } = useQuery({
+    queryKey: queryKeys.batchesOverview(),
+    queryFn: jobsApi.getBatchesOverview,
+    refetchInterval: (query) => (query.state.data?.some((b) => isBatchLive(b.batch_status)) ? 5000 : false),
   });
 
-  const resumeMutation = useMutation({
-    mutationFn: (jobId: number) => api.jobs.resumeJob(jobId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.jobs() }),
-  });
+  const resumeCount = useMemo(() => new Map(volume?.items.map((i) => [i.job_id, i.resume_count])), [volume]);
+  const liveBatchByJob = useMemo(() => {
+    const map = new Map<number, { processed: number; failed: number; total: number }>();
+    for (const b of batches ?? []) {
+      if (!isBatchLive(b.batch_status)) continue;
+      const prev = map.get(b.job_id) ?? { processed: 0, failed: 0, total: 0 };
+      map.set(b.job_id, { processed: prev.processed + b.processed, failed: prev.failed + b.failed, total: prev.total + b.total });
+    }
+    return map;
+  }, [batches]);
 
-  const archiveMutation = useMutation({
-    mutationFn: (jobId: number) => api.jobs.archiveJob(jobId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.jobs() }),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (jobId: number) => api.jobs.deleteJob(jobId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.jobs() }),
-  });
+  const invalidateJobs = () => queryClient.invalidateQueries({ queryKey: queryKeys.jobs() });
+  const pauseMutation = useMutation({ mutationFn: (jobId: number) => api.jobs.pauseJob(jobId), onSuccess: invalidateJobs });
+  const resumeMutation = useMutation({ mutationFn: (jobId: number) => api.jobs.resumeJob(jobId), onSuccess: invalidateJobs });
+  const archiveMutation = useMutation({ mutationFn: (jobId: number) => api.jobs.archiveJob(jobId), onSuccess: invalidateJobs });
+  const deleteMutation = useMutation({ mutationFn: (jobId: number) => api.jobs.deleteJob(jobId), onSuccess: invalidateJobs });
 
   const anyPending = pauseMutation.isPending || resumeMutation.isPending || archiveMutation.isPending || deleteMutation.isPending;
 
   const bulkMutation = useMutation({
-    mutationFn: async ({ action, ids }: { action: BulkAction; ids: number[] }) => {
+    mutationFn: async ({ action, ids }: { action: BulkActionKey; ids: number[] }) => {
       const fn = BULK_ACTION_FN[action];
       const results = await Promise.allSettled(ids.map((id) => fn(id)));
       const failed = results.filter((r) => r.status === 'rejected').length;
       return { action, total: ids.length, failed };
     },
     onSuccess: ({ action, total, failed }) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.jobs() });
-      setSelectedIds(new Set());
-      const { pastTense } = BULK_ACTION_LABEL[action];
+      invalidateJobs();
+      setSelectedIds([]);
+      const past = BULK_ACTION_LABEL[action];
       if (failed === 0) {
-        toast.success(`${total} job${total === 1 ? '' : 's'} ${pastTense}.`);
+        toast.success(`${total} job${total === 1 ? '' : 's'} ${past}.`);
       } else {
-        toast.error(`${total - failed} of ${total} jobs ${pastTense}; ${failed} failed.`);
+        toast.error(`${total - failed} of ${total} jobs ${past}; ${failed} failed.`);
       }
     },
     onError: () => toast.error('Bulk action failed. Please try again.'),
   });
 
-  const handleStatusFilterChange = (status: 'ACTIVE' | 'PAUSED' | 'ARCHIVED') => {
+  const handleStatusFilterChange = (status: JobStatus) => {
     setStatusFilter(status);
-    setSelectedIds(new Set()); // selection only makes sense within the currently visible tab
+    setSelectedIds([]); // selection only makes sense within the currently visible tab
   };
 
-  const toggleSelected = (jobId: number) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(jobId)) next.delete(jobId);
-      else next.add(jobId);
-      return next;
-    });
-  };
-
-  const allFilteredSelected = (jobs: Job[]) => jobs.length > 0 && jobs.every((job) => selectedIds.has(job.id));
-
-  const toggleSelectAll = (jobs: Job[]) => {
-    setSelectedIds(allFilteredSelected(jobs) ? new Set() : new Set(jobs.map((job) => job.id)));
-  };
-
-  const handleBulkAction = async (action: BulkAction) => {
-    const ids = Array.from(selectedIds);
-    if (ids.length === 0) return;
+  const handleBulkAction = async (action: BulkActionKey) => {
+    if (selectedIds.length === 0) return;
     if (action === 'delete') {
       const ok = await confirm({
-        title: `Delete ${ids.length} job${ids.length === 1 ? '' : 's'}?`,
-        description: `Delete ${ids.length === 1 ? 'this job' : `these ${ids.length} jobs`} and all associated data? This cannot be undone.`,
+        title: `Delete ${selectedIds.length} job${selectedIds.length === 1 ? '' : 's'}?`,
+        description: `Delete ${selectedIds.length === 1 ? 'this job' : `these ${selectedIds.length} jobs`} and all associated data? This cannot be undone.`,
         confirmLabel: 'Delete',
         danger: true,
       });
       if (!ok) return;
     }
-    bulkMutation.mutate({ action, ids });
+    bulkMutation.mutate({ action, ids: selectedIds });
   };
 
-  const filteredJobs = jobs?.filter(job => {
-    const term = searchTerm.toLowerCase();
-    const matchesSearch = job.title.toLowerCase().includes(term) || job.description.toLowerCase().includes(term);
-    const matchesStatus = (job.status || 'ACTIVE') === statusFilter;
-    return matchesSearch && matchesStatus;
+  const handleDelete = async (job: Job) => {
+    const ok = await confirm({
+      title: 'Delete job?',
+      description: `Delete "${job.title}" and all associated data? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      danger: true,
+    });
+    if (ok) deleteMutation.mutate(job.id);
+  };
+
+  const term = searchTerm.trim().toLowerCase();
+  const filteredJobs = jobs?.filter((job) => {
+    const matchesSearch = !term || job.title.toLowerCase().includes(term) || job.description.toLowerCase().includes(term);
+    return matchesSearch && statusOf(job) === statusFilter;
   });
+  const countFor = (status: JobStatus) => jobs?.filter((j) => statusOf(j) === status).length ?? 0;
 
-  if (isLoading) {
-    return (
-      <div className="max-w-6xl mx-auto">
-        <PageHeader title="Jobs" subtitle="Manage your open positions and screening batches." className="mb-6" />
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" aria-hidden="true">
-          {[0, 1, 2, 3, 4, 5].map((i) => <SkeletonCard key={i} />)}
+  const columns: Column<Job>[] = [
+    {
+      id: 'title',
+      header: 'Job',
+      mobile: 'title',
+      skeleton: 'avatar',
+      cell: (job) => (
+        <div className="min-w-0">
+          <Link
+            to={`/jobs/${job.id}`}
+            onClick={(e) => e.stopPropagation()}
+            className="focus-ring rounded text-sm font-medium text-[var(--text-primary)] hover:underline"
+          >
+            {job.title}
+          </Link>
+          <p className="text-caption mt-0.5 truncate">
+            {[job.department, job.location, job.employment_type].filter(Boolean).join(' · ') || 'No details'}
+          </p>
         </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <EmptyState
-        title="Failed to load jobs"
-        description={(error as any)?.message || 'An unexpected error occurred'}
-        action={<Button variant="secondary" onClick={() => refetch()}>Retry</Button>}
-      />
-    );
-  }
+      ),
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      skeleton: 'badge',
+      cell: (job) => (
+        <StatusDot variant={getJobStatusVariant(job.status)}>{jobStatusLabel(job.status)}</StatusDot>
+      ),
+    },
+    {
+      id: 'resumes',
+      header: 'Resumes',
+      align: 'right',
+      className: 'w-44',
+      skeleton: 'text',
+      cell: (job) => {
+        const live = liveBatchByJob.get(job.id);
+        return (
+          <div className="flex flex-col items-end gap-1">
+            <span className="tabular text-sm text-[var(--text-primary)]">{resumeCount.has(job.id) ? resumeCount.get(job.id) : '—'}</span>
+            {live && (
+              <StatusDot variant="primary" live className="text-xs text-[var(--text-secondary)]">
+                Processing {live.processed + live.failed}/{live.total}
+              </StatusDot>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      id: 'summary',
+      header: 'Summary',
+      hideBelow: 'xl',
+      mobile: 'hidden',
+      className: 'w-[28%]',
+      cell: (job) => <p className="line-clamp-2 text-sm text-[var(--text-secondary)]">{job.role_summary || job.description}</p>,
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'right',
+      mobile: 'actions',
+      className: 'w-36',
+      skeleton: 'actions',
+      cell: (job) => {
+        const status = statusOf(job);
+        return (
+          <div className="flex items-center justify-end gap-0.5">
+            {status === 'ACTIVE' && (
+              <IconButton label="Pause job" tone="warning" icon={<Pause size={15} />} disabled={anyPending} onClick={() => pauseMutation.mutate(job.id)} />
+            )}
+            {status === 'PAUSED' && (
+              <IconButton label="Resume job" tone="success" icon={<Play size={15} />} disabled={anyPending} onClick={() => resumeMutation.mutate(job.id)} />
+            )}
+            {status !== 'ARCHIVED' && (
+              <IconButton label="Archive job" icon={<Archive size={15} />} disabled={anyPending} onClick={() => archiveMutation.mutate(job.id)} />
+            )}
+            <IconButton label="Delete job" tone="danger" icon={<Trash2 size={15} />} disabled={anyPending} onClick={() => handleDelete(job)} />
+          </div>
+        );
+      },
+    },
+  ];
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="mx-auto max-w-6xl">
       <PageHeader
         title="Jobs"
         subtitle="Manage your open positions and screening batches."
         className="mb-6"
         actions={
-          <>
-            <div className="relative">
-              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" />
-              <Input
-                type="text"
-                placeholder="Search jobs..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-64 pl-10"
-              />
-            </div>
-            <Link to="/jobs/new">
-              <Button variant="primary">
-                <Plus size={16} className="mr-2" />
-                Create Job
-              </Button>
-            </Link>
-          </>
+          <LinkButton to="/jobs/new">
+            <Plus size={14} aria-hidden="true" /> Create Job
+          </LinkButton>
         }
       />
 
-      <div className="flex items-center gap-2 border-b border-[var(--border-light)] mb-6 pb-2 overflow-x-auto">
-        {(['ACTIVE', 'PAUSED', 'ARCHIVED'] as const).map(status => (
-          <button
-            key={status}
-            onClick={() => handleStatusFilterChange(status)}
-            className={`transition-base px-4 py-2 text-sm font-medium rounded-t-md border-b-2 ${
-              statusFilter === status
-                ? 'border-[var(--primary)] text-[var(--primary)]'
-                : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)]'
-            }`}
-          >
-            {status.charAt(0) + status.slice(1).toLowerCase()}
-            <span className="ml-2 text-xs py-0.5 px-2 rounded-full bg-[var(--bg-hover)] text-[var(--text-secondary)]">
-              {jobs?.filter(j => (j.status || 'ACTIVE') === status).length || 0}
-            </span>
-          </button>
-        ))}
-      </div>
+      <Tabs
+        aria-label="Job status"
+        value={statusFilter}
+        onChange={handleStatusFilterChange}
+        tabs={[
+          { value: 'ACTIVE', label: 'Active', count: jobs ? countFor('ACTIVE') : null },
+          { value: 'PAUSED', label: 'Paused', count: jobs ? countFor('PAUSED') : null },
+          { value: 'ARCHIVED', label: 'Archived', count: jobs ? countFor('ARCHIVED') : null },
+        ]}
+      />
 
-      {!jobs?.length ? (
-        <EmptyState
-          icon={<Briefcase size={48} />}
-          title="No jobs found"
-          description="Get started by creating a new job."
-          action={
-            <Link to="/jobs/new">
-              <Button variant="secondary">Create First Job</Button>
-            </Link>
-          }
-        />
-      ) : !filteredJobs?.length ? (
-         <EmptyState
-          icon={<Search size={48} />}
-          title="No jobs match your search"
-          description="Try adjusting your search terms or switch tabs."
-          action={
-            <Button variant="ghost" onClick={() => setSearchTerm('')}>Clear Search</Button>
-          }
-        />
+      <FilterBar className="my-4">
+        <SearchInput aria-label="Search jobs" placeholder="Search jobs…" value={searchTerm} onValueChange={setSearchTerm} />
+        <FilterBarSpacer />
+        {jobs && filteredJobs && (
+          <span className="text-caption tabular">
+            {filteredJobs.length} job{filteredJobs.length === 1 ? '' : 's'}
+          </span>
+        )}
+      </FilterBar>
+
+      {error ? (
+        <div className="rounded-lg border border-[var(--border-light)] bg-[var(--bg-surface)]">
+          <ErrorState title="Failed to load jobs" message={(error as { message?: string })?.message || 'An unexpected error occurred'} onRetry={() => refetch()} />
+        </div>
       ) : (
-        <>
-          <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
-            <label className="flex items-center gap-2 text-sm font-medium text-[var(--text-secondary)] cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={allFilteredSelected(filteredJobs)}
-                onChange={() => toggleSelectAll(filteredJobs)}
-                aria-label="Select all jobs"
-                className="rounded border-[var(--border-strong)] text-[var(--color-primary-600)] focus:ring-[var(--color-primary-600)]"
+        <DataTable
+          aria-label="Jobs"
+          rows={filteredJobs ?? []}
+          columns={columns}
+          getRowId={(job) => job.id}
+          isLoading={isLoading}
+          onRowClick={(job) => navigate(`/jobs/${job.id}`)}
+          selection={{ selected: selectedIds, onChange: (ids) => setSelectedIds(ids as number[]) }}
+          empty={
+            !jobs?.length ? (
+              <EmptyState
+                icon={<Briefcase size={20} />}
+                title="No jobs yet"
+                description="Create a job, then upload resumes to start screening."
+                action={<LinkButton to="/jobs/new" variant="secondary">Create first job</LinkButton>}
               />
-              Select all ({filteredJobs.length})
-            </label>
-            {selectedIds.size > 0 && (
-              <div className="flex items-center gap-4">
-                <span className="text-[var(--color-primary-subtle-text)] font-medium text-sm">{selectedIds.size} job{selectedIds.size === 1 ? '' : 's'} selected</span>
-                <button onClick={() => setSelectedIds(new Set())} className="transition-base text-sm text-[var(--color-primary-600)] hover:text-[var(--color-primary-700)]">Clear</button>
-              </div>
-            )}
-          </div>
-          {selectedIds.size > 0 && (
-            <div className="bg-[var(--color-primary-subtle-bg)] border border-[var(--color-primary-200)] p-4 rounded-xl mb-4 flex items-center justify-end flex-wrap gap-3">
-              <div className="flex gap-2 flex-wrap">
-                {statusFilter === 'ACTIVE' && (
-                  <button onClick={() => handleBulkAction('pause')} disabled={bulkMutation.isPending} className="transition-base px-3 py-1.5 bg-[var(--bg-surface)] text-[var(--color-warning-subtle-text)] border border-[var(--border-light)] rounded text-sm hover:bg-[var(--color-warning-subtle-bg)] focus-ring font-medium disabled:opacity-50">Pause</button>
-                )}
-                {statusFilter === 'PAUSED' && (
-                  <button onClick={() => handleBulkAction('resume')} disabled={bulkMutation.isPending} className="transition-base px-3 py-1.5 bg-[var(--bg-surface)] text-[var(--color-success-subtle-text)] border border-[var(--border-light)] rounded text-sm hover:bg-[var(--color-success-subtle-bg)] focus-ring font-medium disabled:opacity-50">Resume</button>
-                )}
-                {statusFilter !== 'ARCHIVED' && (
-                  <button onClick={() => handleBulkAction('archive')} disabled={bulkMutation.isPending} className="transition-base px-3 py-1.5 bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border-light)] rounded text-sm hover:bg-[var(--bg-hover)] focus-ring font-medium disabled:opacity-50">Archive</button>
-                )}
-                <button onClick={() => handleBulkAction('delete')} disabled={bulkMutation.isPending} className="transition-base px-3 py-1.5 bg-[var(--bg-surface)] text-[var(--color-danger-subtle-text)] border border-[var(--border-light)] rounded text-sm hover:bg-[var(--color-danger-subtle-bg)] focus-ring font-medium disabled:opacity-50">Delete</button>
-              </div>
-            </div>
-          )}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredJobs.map(job => (
-              <JobCard
-                key={job.id}
-                job={job}
-                isPending={anyPending}
-                isSelected={selectedIds.has(job.id)}
-                onToggleSelected={() => toggleSelected(job.id)}
-                onPause={() => pauseMutation.mutate(job.id)}
-                onResume={() => resumeMutation.mutate(job.id)}
-                onArchive={() => archiveMutation.mutate(job.id)}
-                onDelete={async () => {
-                  const ok = await confirm({
-                    title: 'Delete job?',
-                    description: `Delete "${job.title}" and all associated data? This cannot be undone.`,
-                    confirmLabel: 'Delete',
-                    danger: true,
-                  });
-                  if (ok) deleteMutation.mutate(job.id);
-                }}
+            ) : term ? (
+              <EmptyState
+                icon={<Search size={20} />}
+                title="No jobs match your search"
+                description="Try different search terms, or switch tabs."
+                action={<button type="button" onClick={() => setSearchTerm('')} className="focus-ring rounded text-sm font-medium text-[var(--color-primary-600)] hover:underline">Clear search</button>}
               />
-            ))}
-          </div>
-        </>
+            ) : (
+              <EmptyState icon={<Briefcase size={20} />} title={`No ${statusFilter.toLowerCase()} jobs`} description="Jobs you move here will show up in this tab." />
+            )
+          }
+        />
       )}
+
+      <BulkActionBar count={selectedIds.length} noun="job" onClear={() => setSelectedIds([])}>
+        {statusFilter === 'ACTIVE' && (
+          <BulkAction onClick={() => handleBulkAction('pause')} disabled={bulkMutation.isPending}>
+            <Pause size={15} aria-hidden="true" /> Pause
+          </BulkAction>
+        )}
+        {statusFilter === 'PAUSED' && (
+          <BulkAction onClick={() => handleBulkAction('resume')} disabled={bulkMutation.isPending}>
+            <Play size={15} aria-hidden="true" /> Resume
+          </BulkAction>
+        )}
+        {statusFilter !== 'ARCHIVED' && (
+          <BulkAction onClick={() => handleBulkAction('archive')} disabled={bulkMutation.isPending}>
+            <Archive size={15} aria-hidden="true" /> Archive
+          </BulkAction>
+        )}
+        <BulkAction onClick={() => handleBulkAction('delete')} disabled={bulkMutation.isPending}>
+          <Trash2 size={15} aria-hidden="true" /> Delete
+        </BulkAction>
+      </BulkActionBar>
     </div>
-  );
-};
-
-// -- Job Card ------------------------------------------------------------------
-
-interface JobCardProps {
-  job: Job;
-  isPending: boolean;
-  isSelected: boolean;
-  onToggleSelected: () => void;
-  onPause: () => void;
-  onResume: () => void;
-  onArchive: () => void;
-  onDelete: () => void;
-}
-
-const JobCard = ({ job, isPending, isSelected, onToggleSelected, onPause, onResume, onArchive, onDelete }: JobCardProps) => {
-  const status = job.status || 'ACTIVE';
-
-  return (
-    <Card className={`transition-base flex flex-col h-full ${isSelected ? 'border-[var(--color-primary-300)] ring-1 ring-[var(--color-primary-200)]' : 'hover:border-[var(--border-focus)]'}`}>
-      <CardHeader>
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-start gap-3 flex-1 min-w-0">
-            <input
-              type="checkbox"
-              checked={isSelected}
-              onChange={onToggleSelected}
-              aria-label={`Select job "${job.title}"`}
-              className="mt-1 rounded border-[var(--border-strong)] text-[var(--color-primary-600)] focus:ring-[var(--color-primary-600)] shrink-0"
-            />
-            <CardTitle className="flex-1 min-w-0">{job.title}</CardTitle>
-          </div>
-          {status === 'PAUSED' && (
-            <Badge variant="warning" className="shrink-0">Paused</Badge>
-          )}
-          {status === 'ARCHIVED' && (
-            <Badge variant="neutral" className="shrink-0">Archived</Badge>
-          )}
-        </div>
-        <div className="flex flex-wrap gap-2 mt-2">
-           {job.department && <Badge>{job.department}</Badge>}
-           {job.location && <Badge variant="neutral">{job.location}</Badge>}
-           {job.employment_type && <Badge variant="primary">{job.employment_type}</Badge>}
-        </div>
-      </CardHeader>
-      <CardContent className="flex-1 py-2">
-        <p className="text-sm text-[var(--text-secondary)] line-clamp-3">
-          {job.role_summary || job.description}
-        </p>
-      </CardContent>
-      <CardFooter className="flex items-center justify-between gap-2 flex-wrap">
-        {/* Lifecycle actions */}
-        <div className="flex items-center gap-1">
-          {status === 'ACTIVE' && (
-            <button
-              onClick={onPause}
-              disabled={isPending}
-              title="Pause job"
-              className="transition-base p-1.5 rounded text-[var(--text-tertiary)] hover:text-[var(--color-warning-subtle-text)] hover:bg-[var(--color-warning-subtle-bg)] disabled:opacity-50"
-            >
-              <Pause size={15} />
-            </button>
-          )}
-          {status === 'PAUSED' && (
-            <button
-              onClick={onResume}
-              disabled={isPending}
-              title="Resume job"
-              className="transition-base p-1.5 rounded text-[var(--text-tertiary)] hover:text-[var(--color-success-subtle-text)] hover:bg-[var(--color-success-subtle-bg)] disabled:opacity-50"
-            >
-              <Play size={15} />
-            </button>
-          )}
-          {status !== 'ARCHIVED' && (
-            <button
-              onClick={onArchive}
-              disabled={isPending}
-              title="Archive job"
-              className="transition-base p-1.5 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-50"
-            >
-              <Archive size={15} />
-            </button>
-          )}
-          <button
-            onClick={onDelete}
-            disabled={isPending}
-            title="Delete job"
-            className="transition-base p-1.5 rounded text-[var(--text-tertiary)] hover:text-[var(--color-danger-subtle-text)] hover:bg-[var(--color-danger-subtle-bg)] disabled:opacity-50"
-          >
-            <Trash2 size={15} />
-          </button>
-        </div>
-        <Link to={`/jobs/${job.id}`} className="focus-ring rounded-md inline-block">
-          <Button variant="secondary" size="sm" tabIndex={-1}>View Workspace</Button>
-        </Link>
-      </CardFooter>
-    </Card>
   );
 };

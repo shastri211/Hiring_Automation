@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import { Link2, Copy, RefreshCw, XCircle } from 'lucide-react';
 import { api } from '../../api';
 import { queryKeys } from '../../api/queryKeys';
-import { Badge, Button } from '../ui';
+import { Button, Section, StatusDot } from '../ui';
 import { useConfirm } from '../../hooks/useConfirm';
 import type { ApiError, Job } from '../../types';
 
@@ -43,13 +43,15 @@ export const ApplicationLinkCard = ({ job }: { job: Job }) => {
   };
 
   return (
-    <section>
-      <h3 className="text-card-title mb-4 pb-2 border-b border-[var(--border-light)] flex items-center gap-2">
-        <Link2 size={16} /> Public Application Link
-        <Badge variant={isOpen ? (jobAccepting ? 'success' : 'warning') : 'neutral'} className="ml-auto">
+    <Section
+      title="Public application link"
+      icon={<Link2 size={13} />}
+      action={
+        <StatusDot variant={isOpen ? (jobAccepting ? 'success' : 'warning') : 'neutral'} className="text-xs">
           {isOpen ? (jobAccepting ? 'Open' : 'Paused') : 'Closed'}
-        </Badge>
-      </h3>
+        </StatusDot>
+      }
+    >
 
       {!isOpen ? (
         <div className="flex flex-col gap-3">
@@ -58,7 +60,7 @@ export const ApplicationLinkCard = ({ job }: { job: Job }) => {
             screened the next time you run screening.
           </p>
           <Button variant="secondary" onClick={() => openMutation.mutate()} disabled={pending} className="self-start">
-            <Link2 size={16} className="mr-2" /> {openMutation.isPending ? 'Opening...' : 'Open applications'}
+            <Link2 size={14} /> {openMutation.isPending ? 'Opening...' : 'Open applications'}
           </Button>
         </div>
       ) : (
@@ -74,7 +76,7 @@ export const ApplicationLinkCard = ({ job }: { job: Job }) => {
               value={url ?? ''}
               onFocus={(e) => e.currentTarget.select()}
               aria-label="Public application link"
-              className="flex-1 min-w-0 rounded-md border border-[var(--border-light)] bg-[var(--bg-app)] px-2 py-1.5 text-xs text-[var(--text-secondary)]"
+              className="flex-1 min-w-0 rounded-md border border-[var(--border-input)] bg-[var(--bg-app)] px-2 py-1.5 text-xs text-[var(--text-secondary)]"
             />
             <Button variant="secondary" size="sm" onClick={copy} disabled={!url} title="Copy link">
               <Copy size={14} />
@@ -94,7 +96,7 @@ export const ApplicationLinkCard = ({ job }: { job: Job }) => {
                 if (ok) rotateMutation.mutate();
               }}
             >
-              <RefreshCw size={14} className="mr-1.5" /> {rotateMutation.isPending ? 'Rotating...' : 'Rotate'}
+              <RefreshCw size={14} /> {rotateMutation.isPending ? 'Rotating...' : 'Rotate'}
             </Button>
             <Button
               variant="ghost"
@@ -111,11 +113,11 @@ export const ApplicationLinkCard = ({ job }: { job: Job }) => {
                 if (ok) closeMutation.mutate();
               }}
             >
-              <XCircle size={14} className="mr-1.5" /> {closeMutation.isPending ? 'Closing...' : 'Close'}
+              <XCircle size={14} /> {closeMutation.isPending ? 'Closing...' : 'Close'}
             </Button>
           </div>
         </div>
       )}
-    </section>
+    </Section>
   );
 };

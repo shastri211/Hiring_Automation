@@ -7,6 +7,7 @@ import { Loader2, BarChart as BarChartIcon } from 'lucide-react';
 import { jobsApi } from '../api/jobs';
 import { queryKeys } from '../api/queryKeys';
 import { useFunnel, useDecisionBreakdown, useThroughput, useJobVolume, useTimeInStage } from '../hooks/useAnalytics';
+import { formatDurationSeconds } from '../utils/format';
 import { Card, CardContent, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../components/ui';
 
 /**
@@ -30,15 +31,6 @@ function useChartColors() {
     };
   }, []);
 }
-
-const formatDurationSeconds = (seconds: number): string => {
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  const minutes = seconds / 60;
-  if (minutes < 60) return `${Math.round(minutes)}m`;
-  const hours = minutes / 60;
-  if (hours < 24) return `${hours.toFixed(1)}h`;
-  return `${(hours / 24).toFixed(1)}d`;
-};
 
 const ChartSection = ({
   title, isLoading, isError, isEmpty, emptyMessage, children,

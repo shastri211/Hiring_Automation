@@ -45,3 +45,40 @@ export function getEmailStatusBadgeVariant(status?: string | null): BadgeVariant
       return 'neutral';
   }
 }
+
+/**
+ * Job.status (ACTIVE | PAUSED | ARCHIVED; absent on older rows = ACTIVE) -> StatusDot/Badge variant.
+ */
+export function getJobStatusVariant(status?: string | null): BadgeVariant {
+  switch (status) {
+    case 'PAUSED':
+      return 'warning';
+    case 'ARCHIVED':
+      return 'neutral';
+    default:
+      return 'success';
+  }
+}
+
+export function jobStatusLabel(status?: string | null): string {
+  const s = status || 'ACTIVE';
+  return s.charAt(0) + s.slice(1).toLowerCase();
+}
+
+/** A batch is still running unless it reached a terminal state. */
+export const isBatchLive = (status: string) => status !== 'COMPLETED' && status !== 'FAILED';
+
+export function getBatchStatusVariant(status: string): BadgeVariant {
+  if (status === 'FAILED') return 'danger';
+  if (status === 'COMPLETED') return 'success';
+  return 'primary';
+}
+
+/** "Upload" | "Screening" | "Application" for JobBatchOverviewItem.batch_type. */
+export function batchTypeLabel(type: string): string {
+  switch (type) {
+    case 'SCREEN': return 'Screening';
+    case 'APPLICATION': return 'Application';
+    default: return 'Upload';
+  }
+}

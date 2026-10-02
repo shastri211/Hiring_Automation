@@ -17,3 +17,6 @@ export * from './Drawer';
 export * from './StatTile';
 export * from './States';
 export * from './Toaster';
+export * from './Sparkline';
+export * from './IconButton';
+export * from './Section';
