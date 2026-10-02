@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { Loader2, Database, Search, ChevronLeft, ChevronRight, Pencil, Check, X, Trash2 } from 'lucide-react';
+import { Check, Database, Pencil, Trash2, X } from 'lucide-react';
 import { useTalentPool, useUpdateTalentPoolEntry, useRemoveFromTalentPool } from '../hooks/useTalentPool';
 import { useConfirm } from '../hooks/useConfirm';
-import { Badge, Button, Input } from '../components/ui';
+import {
+  Badge, DataTable, EmptyState, ErrorState, FilterBar, FilterBarSpacer, IconButton, Input, PageHeader, Pagination, SearchInput,
+  type Column,
+} from '../components/ui';
+import { CandidateIdentity } from '../components/candidate/ScreeningCells';
 import type { TalentPoolEntry } from '../types';
 
 const PAGE_SIZE = 20;
@@ -25,7 +29,7 @@ export const TalentPool = () => {
   }, [qInput]);
 
   const params = { q: q || undefined, tag: tag || undefined, page, page_size: PAGE_SIZE };
-  const { data, isLoading, isError, error, refetch } = useTalentPool(params);
+  const { data, isLoading, isFetching, isError, error, refetch } = useTalentPool(params);
 
   const updateMutation = useUpdateTalentPoolEntry();
   const removeMutation = useRemoveFromTalentPool();
@@ -50,147 +54,125 @@ export const TalentPool = () => {
     if (ok) removeMutation.mutate(entry.id);
   };
 
-  return (
-    <div className="p-8 max-w-6xl mx-auto">
-      <div className="flex items-center space-x-3 mb-8">
-        <div className="w-10 h-10 bg-[var(--color-primary-subtle-bg)] text-[var(--color-primary-subtle-text)] rounded-lg flex items-center justify-center">
-          <Database className="w-6 h-6" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Talent Pool</h1>
-          <p className="text-sm text-[var(--text-secondary)]">Candidates saved for future roles, with tags and notes.</p>
-        </div>
-      </div>
+  const filtered = !!(q || tag);
 
-      <div className="flex flex-wrap gap-3 mb-4">
-        <div className="relative flex-1 min-w-[220px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)]" />
-          <Input
-            value={qInput}
-            onChange={(e) => setQInput(e.target.value)}
-            placeholder="Search by name or email..."
-            className="pl-9"
-          />
-        </div>
-        <div className="w-56">
-          <Input
-            value={tag}
-            onChange={(e) => { setTag(e.target.value); setPage(1); }}
-            placeholder="Filter by tag..."
-          />
-        </div>
-      </div>
-
-      <div className="bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-xl shadow-sm overflow-hidden">
-        {isLoading && !data ? (
-          <div className="flex justify-center items-center h-64">
-            <Loader2 className="w-8 h-8 animate-spin text-[var(--color-primary-500)]" />
-          </div>
-        ) : isError ? (
-          <div className="p-8 text-center text-[var(--color-danger-600)]">
-            <p className="mb-4">Failed to load the Talent Pool{error instanceof Error ? `: ${error.message}` : '.'}</p>
-            <Button variant="secondary" onClick={() => refetch()}>Retry</Button>
-          </div>
-        ) : !data || data.items.length === 0 ? (
-          <div className="text-center py-20">
-            <Database className="w-12 h-12 text-[var(--text-tertiary)] mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-[var(--text-primary)] mb-1">
-              {q || tag ? 'No matching entries' : 'No one in your Talent Pool yet'}
-            </h3>
-            <p className="text-[var(--text-secondary)]">
-              {q || tag ? 'Try a different search or tag filter.' : 'Add candidates from any candidate list using "Add to Talent Pool".'}
-            </p>
+  const columns: Column<TalentPoolEntry>[] = [
+    {
+      id: 'candidate',
+      header: 'Candidate',
+      mobile: 'title',
+      skeleton: 'avatar',
+      className: 'w-60',
+      cell: (e) => <CandidateIdentity name={e.display_name} fallback={`Resume #${e.resume_id}`} sub={e.email || undefined} />,
+    },
+    {
+      id: 'tags',
+      header: 'Tags',
+      mobile: 'body',
+      className: 'min-w-[14rem]',
+      cell: (e) =>
+        editingId === e.id ? (
+          <div className="flex items-center gap-1">
+            <Input
+              autoFocus
+              aria-label="Tags, comma separated"
+              value={editTags}
+              onChange={(ev) => setEditTags(ev.target.value)}
+              onKeyDown={(ev) => { if (ev.key === 'Enter') saveTags(e); if (ev.key === 'Escape') setEditingId(null); }}
+              placeholder="tag1, tag2"
+              className="h-8 text-xs"
+            />
+            <IconButton label="Save tags" tone="success" icon={<Check size={15} />} disabled={updateMutation.isPending} onClick={() => saveTags(e)} />
+            <IconButton label="Cancel editing" icon={<X size={15} />} onClick={() => setEditingId(null)} />
           </div>
         ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-[var(--bg-app)] border-b border-[var(--border-light)] text-[var(--text-secondary)]">
-                  <tr>
-                    <th className="px-6 py-4 font-medium">Candidate</th>
-                    <th className="px-6 py-4 font-medium">Tags</th>
-                    <th className="px-6 py-4 font-medium hidden md:table-cell">Notes</th>
-                    <th className="px-6 py-4 font-medium">Added From</th>
-                    <th className="px-6 py-4 font-medium">Added</th>
-                    <th className="px-6 py-4 text-right font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--border-light)]">
-                  {data.items.map((entry) => (
-                    <tr key={entry.id} className="hover:bg-[var(--bg-hover)] transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="font-medium text-[var(--text-primary)]">{entry.display_name || `Resume #${entry.resume_id}`}</div>
-                        <div className="text-xs text-[var(--text-tertiary)]">{entry.email || '—'}</div>
-                      </td>
-                      <td className="px-6 py-4 max-w-xs">
-                        {editingId === entry.id ? (
-                          <div className="flex items-center gap-2">
-                            <Input
-                              autoFocus
-                              value={editTags}
-                              onChange={(e) => setEditTags(e.target.value)}
-                              placeholder="tag1, tag2"
-                              className="h-8 text-xs"
-                            />
-                            <button onClick={() => saveTags(entry)} disabled={updateMutation.isPending} className="text-[var(--color-success-600)] hover:opacity-75" title="Save tags">
-                              <Check className="w-4 h-4" />
-                            </button>
-                            <button onClick={() => setEditingId(null)} className="text-[var(--text-tertiary)] hover:opacity-75" title="Cancel">
-                              <X className="w-4 h-4" />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {entry.tags.length > 0 ? (
-                              entry.tags.map((t) => <Badge key={t} variant="neutral">{t}</Badge>)
-                            ) : (
-                              <span className="text-[var(--text-tertiary)] italic text-xs">No tags</span>
-                            )}
-                            <button onClick={() => startEdit(entry)} className="text-[var(--text-tertiary)] hover:text-[var(--color-primary-600)]" title="Edit tags">
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 hidden md:table-cell max-w-xs">
-                        <p className="text-xs text-[var(--text-secondary)] line-clamp-2">{entry.notes || '—'}</p>
-                      </td>
-                      <td className="px-6 py-4 text-[var(--text-secondary)]">
-                        {entry.job_title || (entry.job_id ? `Job #${entry.job_id}` : '—')}
-                      </td>
-                      <td className="px-6 py-4 text-xs text-[var(--text-tertiary)]">
-                        {entry.added_at ? formatDistanceToNow(new Date(entry.added_at), { addSuffix: true }) : '—'}
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <button
-                          onClick={() => handleRemove(entry)}
-                          disabled={removeMutation.isPending}
-                          title="Remove from Talent Pool"
-                          className="p-1.5 rounded-full text-[var(--text-tertiary)] hover:bg-[var(--color-danger-subtle-bg)] hover:text-[var(--color-danger-600)] transition-colors disabled:opacity-50"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {e.tags.length > 0 ? e.tags.map((t) => <Badge key={t}>{t}</Badge>) : <span className="text-xs italic text-[var(--text-tertiary)]">No tags</span>}
+            <IconButton label="Edit tags" icon={<Pencil size={13} />} className="h-6 w-6" onClick={() => startEdit(e)} />
+          </div>
+        ),
+    },
+    {
+      id: 'notes',
+      header: 'Notes',
+      hideBelow: 'lg',
+      mobile: 'hidden',
+      className: 'w-[22%]',
+      cell: (e) => <p className="line-clamp-2 text-sm text-[var(--text-secondary)]">{e.notes || '—'}</p>,
+    },
+    {
+      id: 'from',
+      header: 'Added from',
+      cell: (e) => <span className="text-sm text-[var(--text-secondary)]">{e.job_title || (e.job_id ? `Job #${e.job_id}` : '—')}</span>,
+    },
+    {
+      id: 'added',
+      header: 'Added',
+      className: 'w-32',
+      cell: (e) => <span className="text-caption">{e.added_at ? formatDistanceToNow(new Date(e.added_at), { addSuffix: true }) : '—'}</span>,
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'right',
+      mobile: 'actions',
+      className: 'w-14',
+      skeleton: 'actions',
+      cell: (e) => (
+        <IconButton
+          label="Remove from Talent Pool"
+          tone="danger"
+          icon={<Trash2 size={15} />}
+          disabled={removeMutation.isPending}
+          onClick={() => handleRemove(e)}
+        />
+      ),
+    },
+  ];
 
-            <div className="px-6 py-4 border-t border-[var(--border-light)] bg-[var(--bg-app)] flex items-center justify-between text-sm text-[var(--text-secondary)]">
-              <span>Showing {(page - 1) * PAGE_SIZE + 1}-{Math.min(page * PAGE_SIZE, data.total)} of {data.total}</span>
-              <div className="flex gap-1">
-                <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="p-1 rounded hover:bg-[var(--bg-hover)] disabled:opacity-50 text-[var(--text-secondary)] focus-ring">
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
-                <button disabled={page * PAGE_SIZE >= data.total} onClick={() => setPage((p) => p + 1)} className="p-1 rounded hover:bg-[var(--bg-hover)] disabled:opacity-50 text-[var(--text-secondary)] focus-ring">
-                  <ChevronRight className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
+  return (
+    <div className="mx-auto max-w-7xl">
+      <PageHeader className="mb-6" title="Talent pool" subtitle="Candidates saved for future roles, with tags and notes." />
+
+      <FilterBar className="mb-4">
+        <SearchInput aria-label="Search talent pool" placeholder="Search by name or email…" value={qInput} onValueChange={setQInput} className="sm:w-72" />
+        <Input
+          aria-label="Filter by tag"
+          value={tag}
+          onChange={(e) => { setTag(e.target.value); setPage(1); }}
+          placeholder="Filter by tag…"
+          className="w-full sm:w-48"
+        />
+        <FilterBarSpacer />
+        {data && <span className="text-caption tabular" aria-live="polite">{data.total} {data.total === 1 ? 'entry' : 'entries'}</span>}
+      </FilterBar>
+
+      {isError ? (
+        <div className="rounded-lg border border-[var(--border-light)] bg-[var(--bg-surface)]">
+          <ErrorState title="Failed to load the Talent Pool" message={error instanceof Error ? error.message : undefined} onRetry={() => refetch()} />
+        </div>
+      ) : (
+        <>
+          <DataTable
+            aria-label="Talent pool"
+            rows={data?.items ?? []}
+            columns={columns}
+            getRowId={(e) => e.id}
+            isLoading={isLoading && !data}
+            isRefreshing={isFetching && !!data}
+            empty={
+              <EmptyState
+                icon={<Database size={20} />}
+                title={filtered ? 'No matching entries' : 'No one in your Talent Pool yet'}
+                description={filtered ? 'Try a different search or tag filter.' : 'Add candidates from any candidate list using "Add to Talent Pool".'}
+              />
+            }
+          />
+          {data && data.total > 0 && (
+            <Pagination className="mt-4" page={page} pageSize={PAGE_SIZE} total={data.total} onPageChange={setPage} />
+          )}
+        </>
+      )}
     </div>
   );
 };
