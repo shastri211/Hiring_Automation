@@ -20,3 +20,5 @@ export * from './Toaster';
 export * from './Sparkline';
 export * from './IconButton';
 export * from './Section';
+export * from './Dropzone';
+export * from './SegmentedControl';

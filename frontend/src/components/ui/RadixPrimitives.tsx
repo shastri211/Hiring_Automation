@@ -146,11 +146,23 @@ SelectItem.displayName = SelectPrimitive.Item.displayName;
 // -----------------------------------------------------------------------------
 // Progress
 // -----------------------------------------------------------------------------
-export const Progress = forwardRef<React.ElementRef<typeof ProgressPrimitive.Root>, React.ComponentPropsWithoutRef<typeof ProgressPrimitive.Root>>(
-  ({ className, value, ...props }, ref) => (
-    <ProgressPrimitive.Root ref={ref} className={cn("relative h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-neutral-200)]", className)} {...props}>
-      <ProgressPrimitive.Indicator className="h-full w-full flex-1 bg-[var(--accent)] transition-all duration-500 ease-in-out" style={{ transform: `translateX(-${100 - (value || 0)}%)` }} />
-    </ProgressPrimitive.Root>
-  )
-);
+export const Progress = forwardRef<
+  React.ElementRef<typeof ProgressPrimitive.Root>,
+  React.ComponentPropsWithoutRef<typeof ProgressPrimitive.Root> & { tone?: 'default' | 'danger' | 'success' }
+>(({ className, value, tone = 'default', ...props }, ref) => (
+  <ProgressPrimitive.Root
+    ref={ref}
+    value={value}
+    className={cn("relative h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-neutral-200)]", className)}
+    {...props}
+  >
+    <ProgressPrimitive.Indicator
+      className={cn(
+        "h-full w-full flex-1 transition-all duration-500 ease-in-out",
+        tone === 'danger' ? 'bg-[var(--color-danger-500)]' : tone === 'success' ? 'bg-[var(--color-success-500)]' : 'bg-[var(--accent)]'
+      )}
+      style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
+    />
+  </ProgressPrimitive.Root>
+));
 Progress.displayName = ProgressPrimitive.Root.displayName;

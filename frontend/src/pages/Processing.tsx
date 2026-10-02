@@ -1,106 +1,130 @@
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
-import { ListChecks, Loader2 } from 'lucide-react';
+import { ListChecks } from 'lucide-react';
 import { jobsApi } from '../api/jobs';
 import { queryKeys } from '../api/queryKeys';
-import { Badge, Progress } from '../components/ui';
+import { DataTable, EmptyState, ErrorState, LinkButton, PageHeader, Progress, StatTile, StatusDot, type Column } from '../components/ui';
+import { batchTypeLabel, getBatchStatusVariant, isBatchLive } from '../utils/status';
 import type { JobBatchOverviewItem } from '../types';
 
-const isLive = (status: string) => status !== 'COMPLETED' && status !== 'FAILED';
+const statusLabel = (b: JobBatchOverviewItem) =>
+  b.batch_status.charAt(0) + b.batch_status.slice(1).toLowerCase().replace(/_/g, ' ');
 
 export const Processing = () => {
   const navigate = useNavigate();
 
-  const { data, isLoading, isError, error } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: queryKeys.batchesOverview(),
     queryFn: jobsApi.getBatchesOverview,
-    refetchInterval: (query) => (query.state.data?.some((b) => isLive(b.batch_status)) ? 5000 : false),
+    refetchInterval: (query) => (query.state.data?.some((b) => isBatchLive(b.batch_status)) ? 5000 : false),
   });
 
-  return (
-    <div className="p-8 max-w-6xl mx-auto">
-      <div className="flex items-center space-x-3 mb-8">
-        <div className="w-10 h-10 bg-[var(--color-primary-subtle-bg)] text-[var(--color-primary-subtle-text)] rounded-lg flex items-center justify-center">
-          <ListChecks className="w-6 h-6" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Processing</h1>
-          <p className="text-sm text-[var(--text-secondary)]">Resume extraction and screening batches, across every job.</p>
-        </div>
-      </div>
-
-      <div className="bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-xl shadow-sm overflow-hidden">
-        {isLoading ? (
-          <div className="flex justify-center items-center h-64">
-            <Loader2 className="w-8 h-8 animate-spin text-[var(--color-primary-500)]" />
-          </div>
-        ) : isError ? (
-          <div className="p-8 text-center text-[var(--color-danger-600)]">
-            Failed to load processing batches{error instanceof Error ? `: ${error.message}` : '.'}
-          </div>
-        ) : !data || data.length === 0 ? (
-          <div className="text-center py-20">
-            <ListChecks className="w-12 h-12 text-[var(--text-tertiary)] mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-[var(--text-primary)] mb-1">No batches yet</h3>
-            <p className="text-[var(--text-secondary)]">Upload resumes to a job to see processing activity here.</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-[var(--bg-app)] border-b border-[var(--border-light)] text-[var(--text-secondary)]">
-                <tr>
-                  <th className="px-6 py-4 font-medium">Job</th>
-                  <th className="px-6 py-4 font-medium">Batch</th>
-                  <th className="px-6 py-4 font-medium">Status</th>
-                  <th className="px-6 py-4 font-medium w-64">Progress</th>
-                  <th className="px-6 py-4 font-medium">Started</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--border-light)]">
-                {data.map((batch) => (
-                  <BatchRow key={batch.batch_id} batch={batch} onClick={() => navigate(`/jobs/${batch.job_id}/processing`)} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    </div>
+  // Newest first; the API order isn't guaranteed.
+  const batches = useMemo(
+    () => [...(data ?? [])].sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? '') || b.batch_id - a.batch_id),
+    [data]
   );
-};
+  const running = batches.filter((b) => isBatchLive(b.batch_status)).length;
+  const failed = batches.filter((b) => b.batch_status === 'FAILED').length;
 
-const BatchRow = ({ batch, onClick }: { batch: JobBatchOverviewItem; onClick: () => void }) => {
-  const done = batch.processed + batch.failed;
-  const pct = batch.total > 0 ? Math.min(100, Math.round((done / batch.total) * 100)) : 0;
+  const columns: Column<JobBatchOverviewItem>[] = [
+    {
+      id: 'job',
+      header: 'Job',
+      mobile: 'title',
+      skeleton: 'text',
+      cell: (b) => <span className="text-sm font-medium text-[var(--text-primary)]">{b.job_title}</span>,
+    },
+    {
+      id: 'batch',
+      header: 'Batch',
+      className: 'w-40',
+      cell: (b) => <span className="text-sm text-[var(--text-secondary)]">{batchTypeLabel(b.batch_type)} #{b.batch_id}</span>,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      className: 'w-36',
+      skeleton: 'badge',
+      cell: (b) => (
+        <StatusDot variant={getBatchStatusVariant(b.batch_status)} live={isBatchLive(b.batch_status)}>
+          {statusLabel(b)}
+        </StatusDot>
+      ),
+    },
+    {
+      id: 'progress',
+      header: 'Progress',
+      className: 'w-64',
+      skeleton: 'text',
+      cell: (b) => {
+        const done = b.processed + b.failed;
+        const pct = b.total > 0 ? Math.min(100, Math.round((done / b.total) * 100)) : 0;
+        return (
+          <div>
+            <Progress value={pct} tone={b.failed > 0 ? 'danger' : 'default'} aria-label={`${b.job_title} batch ${b.batch_id} progress`} />
+            <div className="text-caption tabular mt-1.5 flex justify-between">
+              <span>{done} / {b.total}{b.failed > 0 ? ` · ${b.failed} failed` : ''}</span>
+              <span>{pct}%</span>
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      id: 'started',
+      header: 'Started',
+      className: 'w-36',
+      cell: (b) => (
+        <span className="text-caption">{b.created_at ? formatDistanceToNow(new Date(b.created_at), { addSuffix: true }) : '—'}</span>
+      ),
+    },
+  ];
 
   return (
-    <tr
-      className="hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
-      onClick={onClick}
-      tabIndex={0}
-      onKeyDown={(e) => e.key === 'Enter' && onClick()}
-    >
-      <td className="px-6 py-4 font-medium text-[var(--text-primary)]">{batch.job_title}</td>
-      <td className="px-6 py-4 text-[var(--text-secondary)]">#{batch.batch_id}</td>
-      <td className="px-6 py-4">
-        <div className="flex items-center gap-2">
-          {isLive(batch.batch_status) && <Loader2 className="w-3.5 h-3.5 text-[var(--color-primary-500)] animate-spin" />}
-          <Badge variant={batch.batch_status === 'FAILED' ? 'danger' : batch.batch_status === 'COMPLETED' ? 'success' : 'neutral'}>
-            {batch.batch_status}
-          </Badge>
+    <div className="mx-auto max-w-6xl">
+      <PageHeader
+        className="mb-6"
+        title="Processing"
+        subtitle="Resume extraction and screening batches, across every job."
+      />
+
+      {data && data.length > 0 && (
+        <section aria-label="Batch summary" className="mb-6 grid grid-cols-3 gap-4">
+          <StatTile label="Running now" value={running} />
+          <StatTile label="Batches" value={batches.length} />
+          <StatTile label="Failed" value={failed} tone={failed > 0 ? 'danger' : 'default'} />
+        </section>
+      )}
+
+      {isError ? (
+        <div className="rounded-lg border border-[var(--border-light)] bg-[var(--bg-surface)]">
+          <ErrorState
+            title="Failed to load processing batches"
+            message={error instanceof Error ? error.message : undefined}
+            onRetry={() => refetch()}
+          />
         </div>
-      </td>
-      <td className="px-6 py-4">
-        <Progress value={pct} className={batch.failed > 0 ? '[&>div]:bg-red-500' : ''} />
-        <div className="flex justify-between mt-1 text-xs text-[var(--text-tertiary)]">
-          <span>{done} / {batch.total}{batch.failed > 0 ? ` (${batch.failed} failed)` : ''}</span>
-          <span>{pct}%</span>
-        </div>
-      </td>
-      <td className="px-6 py-4 text-xs text-[var(--text-tertiary)]">
-        {batch.created_at ? formatDistanceToNow(new Date(batch.created_at), { addSuffix: true }) : '—'}
-      </td>
-    </tr>
+      ) : (
+        <DataTable
+          aria-label="Processing batches"
+          rows={batches}
+          columns={columns}
+          getRowId={(b) => b.batch_id}
+          isLoading={isLoading}
+          onRowClick={(b) => navigate(`/jobs/${b.job_id}/processing`)}
+          empty={
+            <EmptyState
+              icon={<ListChecks size={20} />}
+              title="No batches yet"
+              description="Upload resumes to a job to see processing activity here."
+              action={<LinkButton to="/jobs" variant="secondary">Go to jobs</LinkButton>}
+            />
+          }
+        />
+      )}
+    </div>
   );
 };

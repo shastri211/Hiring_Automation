@@ -1,36 +1,41 @@
-import React from 'react';
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Upload, X, File as FileIcon, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
+import { FileText, Upload, X } from 'lucide-react';
+import { toast } from 'sonner';
 import { jobsApi } from '../api/jobs';
 import { queryKeys } from '../api/queryKeys';
-import { Button } from '../components/ui/Button';
-import { toast } from 'sonner';
+import { useBreadcrumbs } from '../hooks/useBreadcrumbs';
+import {
+  Alert, Badge, Button, DataTable, Dropzone, IconButton, PageHeader, Progress, Section, StatTile, type Column,
+} from '../components/ui';
+
+const sameFile = (a: File, b: File) => a.name === b.name && a.size === b.size;
+const isPdf = (f: File) => f.name.toLowerCase().endsWith('.pdf');
 
 export const JobUpload = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [files, setFiles] = React.useState<File[]>([]);
-  const [uploadProgress, setUploadProgress] = React.useState(0);
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const queryClient = useQueryClient();
 
   const jobId = parseInt(id || '0', 10);
 
   const { data: job } = useQuery({
-    queryKey: ['job', jobId],
+    queryKey: queryKeys.job(jobId),
     queryFn: () => jobsApi.getJob(jobId),
     enabled: jobId > 0,
   });
+  useBreadcrumbs([{ label: 'Jobs', to: '/jobs' }, { label: job?.title || 'Job', to: `/jobs/${id}` }, { label: 'Upload resumes' }]);
 
   const uploadMutation = useMutation({
     mutationFn: async (uploadFiles: File[]) => {
       const formData = new FormData();
-      uploadFiles.forEach(f => formData.append('files', f));
+      uploadFiles.forEach((f) => formData.append('files', f));
       return jobsApi.uploadResumes(jobId, formData, (progressEvent) => {
         if (progressEvent.total) {
-          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-          setUploadProgress(percentCompleted);
+          setUploadProgress(Math.round((progressEvent.loaded * 100) / progressEvent.total));
         }
       });
     },
@@ -46,47 +51,11 @@ export const JobUpload = () => {
     },
     onError: (error: { message?: string }) => {
       toast.error(error.message || 'Upload failed. Check the selected files and try again.');
-    }
+    },
   });
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    const droppedFiles = Array.from(e.dataTransfer.files).filter(
-      f => f.name.toLowerCase().endsWith('.pdf') || f.name.toLowerCase().endsWith('.docx')
-    );
-    setFiles(prev => {
-      const newFiles = [...prev];
-      droppedFiles.forEach(df => {
-        if (!newFiles.find(existing => existing.name === df.name && existing.size === df.size)) {
-          newFiles.push(df);
-        }
-      });
-      return newFiles;
-    });
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const selectedFiles = Array.from(e.target.files);
-      setFiles(prev => {
-        const newFiles = [...prev];
-        selectedFiles.forEach(sf => {
-          if (!newFiles.find(existing => existing.name === sf.name && existing.size === sf.size)) {
-            newFiles.push(sf);
-          }
-        });
-        return newFiles;
-      });
-    }
-  };
-
-  const removeFile = (index: number) => {
-    setFiles(prev => prev.filter((_, i) => i !== index));
-  };
+  const addFiles = (incoming: File[]) =>
+    setFiles((prev) => [...prev, ...incoming.filter((f) => !prev.some((existing) => sameFile(existing, f)))]);
 
   const handleUpload = () => {
     if (files.length > 0) {
@@ -95,164 +64,111 @@ export const JobUpload = () => {
     }
   };
 
-  return (
-    <div className="p-8 max-w-4xl mx-auto">
-      <div className="flex items-center gap-2 text-sm text-slate-500 mb-6">
-        <button onClick={() => navigate('/jobs')} className="hover:text-slate-900 transition-colors">Jobs</button>
-        <span>/</span>
-        <button onClick={() => navigate(`/jobs/${id}`)} className="hover:text-slate-900 transition-colors">{job?.title || 'Job'}</button>
-        <span>/</span>
-        <span className="text-slate-900 font-medium">Upload Resumes</span>
-      </div>
+  const uploading = uploadMutation.isPending;
+  const result = uploadMutation.isSuccess ? uploadMutation.data : null;
 
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-slate-900 mb-1">Upload Resumes</h1>
-        <p className="text-slate-500">Upload PDF or DOCX files for screening.</p>
-      </div>
-
-      <div
-        className="border-2 border-dashed border-slate-200 rounded-xl p-12 mb-8 bg-slate-50 flex flex-col items-center justify-center text-center transition-colors hover:border-[var(--border-focus)] hover:bg-[var(--color-primary-50)] focus-ring"
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
-        style={{ cursor: 'pointer' }}
-        tabIndex={0}
-      >
-        <div className="h-12 w-12 rounded-full bg-[var(--color-primary-100)] flex items-center justify-center mb-4">
-          <Upload className="h-6 w-6 text-[var(--color-primary-600)]" />
-        </div>
-        <h3 className="text-lg font-medium text-slate-900 mb-1">Drop resumes here or click to browse</h3>
-        <p className="text-sm text-slate-500 mb-4">Multiple files allowed • Accepted formats: PDF, DOCX</p>
-        <Button variant="secondary" onClick={(e: any) => { e.stopPropagation(); fileInputRef.current?.click(); }}>
-          Browse Files
-        </Button>
-        <input
-          type="file"
-          ref={fileInputRef}
-          className="hidden"
-          multiple
-          accept=".pdf,.docx"
-          onChange={handleFileSelect}
+  const columns: Column<File>[] = [
+    {
+      id: 'file',
+      header: 'File',
+      mobile: 'title',
+      cell: (f) => (
+        <span className="flex min-w-0 items-center gap-2.5">
+          <FileText size={16} aria-hidden="true" className="shrink-0 text-[var(--text-tertiary)]" />
+          <span className="truncate text-sm font-medium text-[var(--text-primary)]">{f.name}</span>
+        </span>
+      ),
+    },
+    {
+      id: 'size',
+      header: 'Size',
+      align: 'right',
+      className: 'w-28',
+      cell: (f) => <span className="tabular text-sm text-[var(--text-secondary)]">{(f.size / 1024).toFixed(1)} KB</span>,
+    },
+    { id: 'type', header: 'Type', className: 'w-24', cell: (f) => <Badge>{isPdf(f) ? 'PDF' : 'DOCX'}</Badge> },
+    {
+      id: 'remove',
+      header: <span className="sr-only">Remove</span>,
+      align: 'right',
+      mobile: 'actions',
+      className: 'w-14',
+      cell: (f) => (
+        <IconButton
+          label={`Remove ${f.name}`}
+          tone="danger"
+          icon={<X size={15} />}
+          disabled={uploading}
+          onClick={() => setFiles((prev) => prev.filter((x) => !sameFile(x, f)))}
         />
-      </div>
+      ),
+    },
+  ];
 
-      {files.length > 0 && !uploadMutation.isSuccess && (
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden mb-6 shadow-sm">
-          <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
-            <h3 className="font-medium text-slate-900">{files.length} file{files.length !== 1 ? 's' : ''} selected</h3>
-            <div className="flex gap-3">
-              <Button variant="secondary" onClick={() => setFiles([])} disabled={uploadMutation.isPending}>
-                Clear all
-              </Button>
-              <Button onClick={handleUpload} disabled={uploadMutation.isPending}>
-                {uploadMutation.isPending ? (
-                  <>
-                    <Upload className="h-4 w-4 mr-2 animate-bounce" />
-                    Uploading... {uploadProgress}%
-                  </>
-                ) : (
-                  <>
-                    <Upload className="h-4 w-4 mr-2" />
-                    Upload
-                  </>
-                )}
+  return (
+    <div className="mx-auto max-w-4xl">
+      <PageHeader className="mb-6" title="Upload resumes" subtitle="Upload PDF or DOCX files for screening." />
+
+      {!result && (
+        <Dropzone
+          multiple
+          accept={['.pdf', '.docx']}
+          title="Drop resumes here or click to browse"
+          hint="Multiple files allowed · PDF and DOCX"
+          browseLabel="Browse files"
+          disabled={uploading}
+          onFiles={addFiles}
+          className="mb-6"
+        />
+      )}
+
+      {files.length > 0 && !result && (
+        <section aria-label="Selected files" className="mb-6">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-card-title tabular">{files.length} file{files.length === 1 ? '' : 's'} selected</h2>
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={() => setFiles([])} disabled={uploading}>Clear all</Button>
+              <Button onClick={handleUpload} disabled={uploading}>
+                <Upload size={14} aria-hidden="true" className={uploading ? 'animate-bounce' : undefined} />
+                {uploading ? `Uploading… ${uploadProgress}%` : 'Upload'}
               </Button>
             </div>
           </div>
-          <div className="max-h-96 overflow-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="text-xs text-slate-500 bg-slate-50 uppercase sticky top-0">
-                <tr>
-                  <th className="px-6 py-3 font-medium">File</th>
-                  <th className="px-6 py-3 font-medium">Size</th>
-                  <th className="px-6 py-3 font-medium">Type</th>
-                  <th className="px-6 py-3 font-medium"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {files.map((file, i) => {
-                  const isPdf = file.name.toLowerCase().endsWith('.pdf');
-                  return (
-                    <tr key={i} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-3">
-                        <div className="flex items-center gap-3">
-                          {isPdf ? <FileText className="h-5 w-5 text-red-400" /> : <FileIcon className="h-5 w-5 text-blue-400" />}
-                          <span className="font-medium text-slate-900 truncate max-w-xs">{file.name}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-3 text-slate-500">{(file.size / 1024).toFixed(1)} KB</td>
-                      <td className="px-6 py-3">
-                        <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-slate-100 text-slate-600">
-                          {isPdf ? 'PDF' : 'DOCX'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-3 text-right">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); removeFile(i); }}
-                          disabled={uploadMutation.isPending}
-                          className="text-slate-400 hover:text-red-500 transition-colors disabled:opacity-50 p-1 focus-ring rounded"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+          {uploading && (
+            <Progress className="mb-3" value={uploadProgress} aria-label="Upload progress" />
+          )}
+          <DataTable
+            aria-label="Files to upload"
+            rows={files}
+            columns={columns}
+            getRowId={(f) => `${f.name}:${f.size}`}
+            className="max-h-96 overflow-auto"
+          />
+        </section>
       )}
 
       {uploadMutation.isError && (
-        <div className="mb-6 p-4 rounded-lg bg-red-50 border border-red-200 flex items-start gap-3">
-          <AlertCircle className="h-5 w-5 text-red-600 mt-0.5" />
-          <div>
-            <h4 className="font-medium text-red-900">Upload failed</h4>
-            <p className="text-sm text-red-700 mt-1">
-              {uploadMutation.error instanceof Error ? uploadMutation.error.message : 'Please check file formats and try again.'}
-            </p>
-          </div>
-        </div>
+        <Alert variant="danger" className="mb-6" title="Upload failed">
+          {uploadMutation.error instanceof Error ? uploadMutation.error.message : 'Please check file formats and try again.'}
+        </Alert>
       )}
 
-      {uploadMutation.isSuccess && uploadMutation.data && (
-        <div className="mb-6 p-6 rounded-xl bg-emerald-50 border border-emerald-200">
-          <div className="flex items-center gap-3 mb-4">
-            <CheckCircle2 className="h-6 w-6 text-emerald-600" />
-            <h4 className="font-medium text-emerald-900 text-lg">Upload Complete</h4>
+      {result && (
+        <Section title="Upload complete" className="mb-6">
+          <Alert variant="success" className="mb-5">
+            Your resumes are in the processing queue. Extraction and profiling run in the background.
+          </Alert>
+          <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <StatTile label="Accepted" value={result.accepted_files} />
+            <StatTile label="Duplicates skipped" value={result.duplicate_files} />
+            <StatTile label="Invalid" value={result.invalid_files} tone={result.invalid_files > 0 ? 'danger' : 'default'} />
+            {result.failed_files > 0 && <StatTile label="Failed (corrupt)" value={result.failed_files} tone="danger" />}
           </div>
-          
-          <div className="flex gap-8 mb-6 text-sm">
-            <div className="flex flex-col">
-              <span className="text-emerald-800 font-semibold text-xl">{uploadMutation.data.accepted_files}</span>
-              <span className="text-emerald-700">Accepted</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-amber-600 font-semibold text-xl">{uploadMutation.data.duplicate_files}</span>
-              <span className="text-amber-700">Duplicates (Skipped)</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-red-600 font-semibold text-xl">{uploadMutation.data.invalid_files}</span>
-              <span className="text-red-700">Invalid</span>
-            </div>
-            {uploadMutation.data.failed_files > 0 && (
-              <div className="flex flex-col">
-                <span className="text-red-600 font-semibold text-xl">{uploadMutation.data.failed_files}</span>
-                <span className="text-red-700">Failed (corrupt)</span>
-              </div>
-            )}
+          <div className="flex gap-2">
+            <Button onClick={() => navigate(`/jobs/${id}/processing`)}>View processing</Button>
+            <Button variant="secondary" onClick={() => uploadMutation.reset()}>Upload more</Button>
           </div>
-          
-          <div className="flex gap-3">
-            <Button onClick={() => navigate(`/jobs/${id}/processing`)}>
-              View Processing
-            </Button>
-            <Button onClick={() => uploadMutation.reset()} variant="secondary">
-              Upload More
-            </Button>
-          </div>
-        </div>
+        </Section>
       )}
     </div>
   );
