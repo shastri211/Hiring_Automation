@@ -259,6 +259,7 @@ export const JobsList = () => {
           rows={filteredJobs ?? []}
           columns={columns}
           getRowId={(job) => job.id}
+          rowLabel={(job) => job.title}
           isLoading={isLoading}
           onRowClick={(job) => navigate(`/jobs/${job.id}`)}
           selection={{ selected: selectedIds, onChange: (ids) => setSelectedIds(ids as number[]) }}

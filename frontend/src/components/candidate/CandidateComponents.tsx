@@ -2,7 +2,7 @@
 import { CheckCircle2, X, Clock, AlertTriangle, ShieldOff, RefreshCw, Loader2 } from 'lucide-react';
 import type { CandidateDecision, ScreeningResultResponse, CandidateProfileDetail } from '../../types';
 import { variantButtonClasses } from '../../utils/decision';
-import { ScoreRing } from '../ui/ScoreRing';
+import { FitScore } from '../ui/FitScore';
 
 export const ScoreVisualizer = ({ screening }: { screening?: ScreeningResultResponse | null }) => {
   if (!screening) return null;
@@ -11,19 +11,14 @@ export const ScoreVisualizer = ({ screening }: { screening?: ScreeningResultResp
   if (score === null || score === undefined) return null;
 
   return (
-    <div className="bg-[var(--bg-surface)] p-5 rounded-xl border border-[var(--border-light)] shadow-[var(--shadow-sm)] flex items-center gap-5">
-      <ScoreRing score={score} size="lg" />
-      <div>
-        <h3 className="font-semibold text-[var(--text-primary)] mb-1">
-          {score >= 75 ? 'Excellent Match' :
-           score >= 50 ? 'Potential Match' : 'Poor Match'}
-        </h3>
-        <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-          {screening.evidence && screening.evidence.length > 0
-            ? screening.evidence[0]
-            : 'Based on job requirements analysis.'}
-        </p>
-      </div>
+    <div className="rounded-lg border border-[var(--border-light)] bg-[var(--bg-surface)] p-5">
+      <p className="text-eyebrow mb-3">AI fit score</p>
+      <FitScore score={score} size="lg" />
+      <p className="text-body mt-4">
+        {screening.evidence && screening.evidence.length > 0
+          ? screening.evidence[0]
+          : 'Based on job requirements analysis.'}
+      </p>
     </div>
   );
 };

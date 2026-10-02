@@ -48,7 +48,7 @@ export function Tabs<T extends string>({ tabs, value, onChange, className, ...re
     <div
       role="tablist"
       aria-label={rest['aria-label']}
-      className={cn('flex items-end gap-5 overflow-x-auto border-b border-[var(--border-light)]', className)}
+      className={cn('flex items-end gap-5 overflow-x-auto overflow-y-hidden border-b border-[var(--border-light)]', className)}
     >
       {tabs.map((tab, i) => {
         const active = tab.value === value;

@@ -1,39 +1,28 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ExternalLink, Mail, PackagePlus, Star } from 'lucide-react';
 import { useShortlistedCandidates } from '../hooks/useShortlistedCandidates';
 import { useAddToTalentPool } from '../hooks/useTalentPool';
-import { Users, FileText, CheckCircle2, PackagePlus, Mail } from 'lucide-react';
-import { useState } from 'react';
 import { CandidateDrawer } from '../components/CandidateDrawer';
 import { BulkEmailModal, type ResumeGroup } from '../components/BulkEmailModal';
-import { Button, PageHeader, ScoreRing, SkeletonRow } from '../components/ui';
+import { CandidateIdentity, EvaluationSummary } from '../components/candidate/ScreeningCells';
+import {
+  BulkAction, BulkActionBar, DataTable, EmptyState, ErrorState, FitScore, IconButton, PageHeader, Pagination, type Column,
+} from '../components/ui';
 import type { GlobalScreeningResultResponse } from '../types';
 
 export const Shortlisted = () => {
-  const { candidates, isLoading, isError, refetch } = useShortlistedCandidates();
+  const [page, setPage] = useState(1);
+  const { candidates, total, pageSize, isLoading, isError, refetch } = useShortlistedCandidates(page);
   const navigate = useNavigate();
-  const [selectedCandidate, setSelectedCandidate] = useState<{jobId: number, resumeId: number} | null>(null);
+  const [selectedCandidate, setSelectedCandidate] = useState<{ jobId: number; resumeId: number } | null>(null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const addToPool = useAddToTalentPool();
 
-  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.checked) {
-      setSelectedIds(candidates.map((c: GlobalScreeningResultResponse) => c.resume_id));
-    } else {
-      setSelectedIds([]);
-    }
-  };
-
-  const handleSelect = (e: React.ChangeEvent<HTMLInputElement>, resumeId: number) => {
-    if (e.target.checked) {
-      setSelectedIds((prev) => [...prev, resumeId]);
-    } else {
-      setSelectedIds((prev) => prev.filter((id) => id !== resumeId));
-    }
-  };
-
   // Selected rows can span multiple jobs - group by job_id since the
-  // bulk-send endpoint is job-scoped.
+  // bulk-send endpoint is job-scoped. Only the current page's rows are
+  // resolvable, so selection is cleared whenever the page changes.
   const resumeGroups: ResumeGroup[] = Object.values(
     candidates
       .filter((c: GlobalScreeningResultResponse) => selectedIds.includes(c.resume_id))
@@ -45,158 +34,123 @@ export const Shortlisted = () => {
       }, {})
   );
 
-  if (isError) {
-    return (
-      <div className="p-8 text-center text-[var(--color-danger-600)]">
-        <p className="mb-4">Failed to load shortlisted candidates.</p>
-        <Button variant="secondary" onClick={() => refetch()}>Retry</Button>
-      </div>
-    );
-  }
+  const goToPage = (next: number) => {
+    setPage(next);
+    setSelectedIds([]);
+  };
+
+  const columns: Column<GlobalScreeningResultResponse>[] = [
+    {
+      id: 'candidate',
+      header: 'Candidate',
+      mobile: 'title',
+      skeleton: 'avatar',
+      className: 'w-48',
+      cell: (c) => (
+        <CandidateIdentity
+          name={c.display_name}
+          fallback={`Candidate #${c.resume_id}`}
+          sub={c.applications_count && c.applications_count > 1 ? `Applied to ${c.applications_count} jobs` : undefined}
+        />
+      ),
+    },
+    {
+      id: 'job',
+      header: 'Job',
+      className: 'min-w-[10rem]',
+      cell: (c) => (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); navigate(`/jobs/${c.job_id}`); }}
+          className="transition-base focus-ring rounded text-left text-sm text-[var(--color-primary-600)] hover:text-[var(--color-primary-700)] hover:underline"
+        >
+          {c.job_title}
+        </button>
+      ),
+    },
+    { id: 'score', header: 'Fit score', skeleton: 'score', className: 'w-36', cell: (c) => <FitScore score={c.score} /> },
+    {
+      id: 'semantic',
+      header: 'Semantic',
+      align: 'right',
+      hideBelow: 'xl',
+      className: 'w-24',
+      cell: (c) => <span className="tabular text-sm text-[var(--text-secondary)]">{c.semantic_score != null ? c.semantic_score.toFixed(3) : '—'}</span>,
+    },
+    {
+      id: 'strengths',
+      header: 'Key strengths',
+      hideBelow: 'md',
+      mobile: 'hidden',
+      className: 'min-w-[16rem]',
+      cell: (c) => <EvaluationSummary strengths={c.strengths} maxStrengths={2} maxGaps={0} />,
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'right',
+      mobile: 'actions',
+      className: 'w-24',
+      skeleton: 'actions',
+      cell: (c) => (
+        <div className="flex items-center justify-end gap-0.5">
+          <IconButton
+            label="Open full profile"
+            icon={<ExternalLink size={15} />}
+            onClick={() => navigate(`/jobs/${c.job_id}/candidates/${c.resume_id}`, { state: { from: 'shortlisted' } })}
+          />
+          <IconButton
+            label="Add to Talent Pool"
+            tone="primary"
+            icon={<PackagePlus size={16} />}
+            disabled={addToPool.isPending}
+            onClick={() => addToPool.mutate({ resume_id: c.resume_id, added_from_job_id: c.job_id })}
+          />
+        </div>
+      ),
+    },
+  ];
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
+    <div className="mx-auto max-w-7xl">
       <PageHeader
-        className="mb-8"
-        eyebrow={
-          <div className="w-10 h-10 bg-[var(--color-success-subtle-bg)] text-[var(--color-success-subtle-text)] rounded-lg flex items-center justify-center mb-2">
-            <CheckCircle2 className="w-6 h-6" />
-          </div>
-        }
-        title="Shortlisted Candidates"
+        className="mb-6"
+        title="Shortlisted candidates"
         subtitle="Candidates marked for moving forward across all jobs."
       />
 
-      {!isLoading && candidates.length === 0 ? (
-        <div className="text-center py-20 bg-[var(--bg-surface)] rounded-xl border border-[var(--border-light)]">
-          <Users className="w-12 h-12 text-[var(--text-tertiary)] mx-auto mb-4" />
-          <h3 className="text-card-title mb-1">No shortlisted candidates yet</h3>
-          <p className="text-body">Review candidate results and mark them as shortlisted to see them here.</p>
+      {isError ? (
+        <div className="rounded-lg border border-[var(--border-light)] bg-[var(--bg-surface)]">
+          <ErrorState title="Failed to load shortlisted candidates" onRetry={() => refetch()} />
         </div>
       ) : (
-        <div className="bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-xl shadow-[var(--shadow-sm)] overflow-hidden">
-          {selectedIds.length > 0 && (
-            <div className="bg-[var(--color-primary-subtle-bg)] border-b border-[var(--color-primary-200)] p-4 flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <span className="text-[var(--color-primary-subtle-text)] font-medium text-sm">{selectedIds.length} candidates selected</span>
-                <div className="h-4 w-px bg-[var(--color-primary-200)]"></div>
-                <button onClick={() => setSelectedIds([])} className="transition-base text-sm text-[var(--color-primary-600)] hover:text-[var(--color-primary-700)]">Clear</button>
-              </div>
-              <button
-                onClick={() => setShowEmailModal(true)}
-                className="transition-base px-3 py-1.5 bg-[var(--bg-surface)] text-[var(--color-primary-subtle-text)] border border-[var(--color-primary-200)] rounded text-sm hover:bg-[var(--color-primary-subtle-bg)] focus-ring font-medium flex items-center gap-1.5"
-              >
-                <Mail className="w-4 h-4" /> Email
-              </button>
-            </div>
-          )}
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-[var(--text-secondary)]">
-              <thead className="bg-[var(--bg-app)] border-b border-[var(--border-light)] text-[var(--text-secondary)]">
-                <tr>
-                  <th className="px-6 py-4 w-12">
-                    <input
-                      type="checkbox"
-                      checked={candidates.length > 0 && selectedIds.length === candidates.length}
-                      onChange={handleSelectAll}
-                      className="rounded border-[var(--border-strong)] text-[var(--color-primary-600)] focus:ring-[var(--color-primary-600)]"
-                    />
-                  </th>
-                  <th className="px-6 py-4 font-medium">Candidate</th>
-                  <th className="px-6 py-4 font-medium">Job</th>
-                  <th className="px-6 py-4 font-medium">Fit Score</th>
-                  <th className="px-6 py-4 font-medium hidden md:table-cell">Key Strengths</th>
-                  <th className="px-6 py-4 text-right font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--border-light)]">
-                {isLoading ? (
-                  Array.from({ length: 6 }).map((_, i) => (
-                    <SkeletonRow key={i} columns={['checkbox', 'avatar', 'score', 'text', 'actions']} />
-                  ))
-                ) : candidates.map((candidate: GlobalScreeningResultResponse) => (
-                  <tr
-                    key={`${candidate.job_id}-${candidate.resume_id}`}
-                    className={`transition-base group cursor-pointer ${selectedIds.includes(candidate.resume_id) ? 'bg-[var(--color-primary-subtle-bg)]' : 'hover:bg-[var(--bg-app)]'}`}
-                    onClick={() => setSelectedCandidate({ jobId: candidate.job_id, resumeId: candidate.resume_id })}
-                    tabIndex={0}
-                    onKeyDown={(e) => e.key === 'Enter' && setSelectedCandidate({ jobId: candidate.job_id, resumeId: candidate.resume_id })}
-                  >
-                    <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.includes(candidate.resume_id)}
-                        onChange={(e) => handleSelect(e, candidate.resume_id)}
-                        className="rounded border-[var(--border-strong)] text-[var(--color-primary-600)] focus:ring-[var(--color-primary-600)]"
-                      />
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 bg-[var(--color-primary-subtle-bg)] text-[var(--color-primary-subtle-text)] rounded flex items-center justify-center">
-                          <FileText className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <div className="font-medium text-[var(--text-primary)]">{candidate.display_name || `Candidate #${candidate.resume_id}`}</div>
-                          <div className="text-xs text-[var(--text-tertiary)]">ID: {candidate.id}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/jobs/${candidate.job_id}`);
-                        }}
-                        className="transition-base text-[var(--color-primary-600)] hover:text-[var(--color-primary-700)] hover:underline font-medium"
-                      >
-                        {candidate.job_title}
-                      </button>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center space-x-2">
-                        <ScoreRing score={candidate.score} size="md" />
-                        <div className="text-xs text-[var(--text-tertiary)]">
-                          Semantic: {candidate.semantic_score != null ? `${Math.round(candidate.semantic_score * 100)}%` : '—'}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 hidden md:table-cell max-w-xs">
-                      {candidate.strengths && candidate.strengths.length > 0 ? (
-                        <ul className="text-xs list-disc list-inside space-y-1 text-[var(--text-secondary)]">
-                          {candidate.strengths.slice(0, 2).map((s: string, i: number) => (
-                            <li key={i} className="truncate">{s}</li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <span className="text-[var(--text-tertiary)] italic">No strengths listed</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-3">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); addToPool.mutate({ resume_id: candidate.resume_id, added_from_job_id: candidate.job_id }); }}
-                          disabled={addToPool.isPending}
-                          aria-label={`Add resume ${candidate.resume_id} to Talent Pool`}
-                          title="Add to Talent Pool"
-                          className="transition-base p-1.5 rounded-full text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--color-primary-600)] disabled:opacity-50"
-                        >
-                          <PackagePlus className="w-4 h-4" />
-                        </button>
-                        <span className="transition-base text-sm font-medium text-[var(--color-primary-600)] opacity-0 group-hover:opacity-100">
-                          View 360 &rarr;
-                        </span>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="px-6 py-4 border-t border-[var(--border-light)] bg-[var(--bg-app)] flex items-center justify-between text-sm text-[var(--text-secondary)]">
-            <span>Total Shortlisted: {isLoading ? '—' : candidates.length}</span>
-          </div>
-        </div>
+        <>
+          <DataTable
+            aria-label="Shortlisted candidates"
+            rows={candidates}
+            columns={columns}
+            getRowId={(c) => c.resume_id}
+            rowLabel={(c) => c.display_name || `resume ${c.resume_id}`}
+            isLoading={isLoading}
+            onRowClick={(c) => setSelectedCandidate({ jobId: c.job_id, resumeId: c.resume_id })}
+            selection={{ selected: selectedIds, onChange: (ids) => setSelectedIds(ids as number[]) }}
+            empty={
+              <EmptyState
+                icon={<Star size={20} />}
+                title="No shortlisted candidates yet"
+                description="Review candidate results and mark them as shortlisted to see them here."
+              />
+            }
+          />
+          <Pagination className="mt-4" page={page} pageSize={pageSize} total={total} onPageChange={goToPage} />
+        </>
       )}
+
+      <BulkActionBar count={selectedIds.length} noun="candidate" onClear={() => setSelectedIds([])}>
+        <BulkAction onClick={() => setShowEmailModal(true)}>
+          <Mail size={15} aria-hidden="true" /> Email
+        </BulkAction>
+      </BulkActionBar>
 
       {selectedCandidate && (
         <CandidateDrawer

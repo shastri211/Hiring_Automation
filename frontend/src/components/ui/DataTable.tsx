@@ -13,6 +13,7 @@ import { SkeletonCell, type SkeletonColumnKind } from './Skeleton';
  *
  * Mobile mapping (`Column.mobile`):
  *   'title'   → the card's headline (usually the identity column)
+ *   'body'    → full-width content under the title, no label (long text)
  *   'detail'  → a "Label  value" line using the column header (default)
  *   'actions' → a trailing action row
  *   'hidden'  → omitted on mobile
@@ -26,7 +27,7 @@ export interface Column<T> {
   className?: string;
   /** Hide this column in the table view below the given breakpoint. */
   hideBelow?: 'md' | 'lg' | 'xl';
-  mobile?: 'title' | 'detail' | 'actions' | 'hidden';
+  mobile?: 'title' | 'body' | 'detail' | 'actions' | 'hidden';
   /** Placeholder shape while loading. */
   skeleton?: SkeletonColumnKind;
 }
@@ -46,6 +47,8 @@ export interface DataTableProps<T> {
   skeletonRows?: number;
   /** Rendered instead of the table when not loading and `rows` is empty. */
   empty?: ReactNode;
+  /** Accessible name for a row's checkbox, e.g. the candidate's name. */
+  rowLabel?: (row: T) => string;
   rowClassName?: (row: T) => string | undefined;
   /** Dim the table while a background refetch is in flight. */
   isRefreshing?: boolean;
@@ -60,7 +63,7 @@ const HIDE = {
 const ALIGN = { left: 'text-left', right: 'text-right', center: 'text-center' };
 
 export function DataTable<T>({
-  rows, columns, getRowId, onRowClick, selection, isLoading, skeletonRows = 8, empty, rowClassName, isRefreshing, className, ...rest
+  rows, columns, getRowId, onRowClick, selection, isLoading, skeletonRows = 8, empty, rowLabel, rowClassName, isRefreshing, className, ...rest
 }: DataTableProps<T>) {
   const label = rest['aria-label'];
 
@@ -95,6 +98,7 @@ export function DataTable<T>({
   );
 
   const titleCols = columns.filter((c) => c.mobile === 'title');
+  const bodyCols = columns.filter((c) => c.mobile === 'body');
   const actionCols = columns.filter((c) => c.mobile === 'actions');
   const detailCols = columns.filter((c) => (c.mobile ?? 'detail') === 'detail');
 
@@ -148,7 +152,7 @@ export function DataTable<T>({
                     >
                       {selection && (
                         <td className="px-4 py-3 align-top" onClick={(e) => e.stopPropagation()}>
-                          {checkbox(id, 'Select row')}
+                          {checkbox(id, `Select ${rowLabel?.(row) ?? 'row'}`)}
                         </td>
                       )}
                       {columns.map((col) => (
@@ -184,7 +188,7 @@ export function DataTable<T>({
                   key={id}
                   className={cn('flex gap-3 p-4', isSelected && 'bg-[var(--color-primary-subtle-bg)]', rowClassName?.(row))}
                 >
-                  {selection && <div className="pt-0.5">{checkbox(id, 'Select row')}</div>}
+                  {selection && <div className="pt-0.5">{checkbox(id, `Select ${rowLabel?.(row) ?? 'row'}`)}</div>}
                   <div className="min-w-0 flex-1 space-y-2.5">
                     <div
                       className={cn('space-y-1', onRowClick && 'cursor-pointer')}
@@ -195,6 +199,7 @@ export function DataTable<T>({
                     >
                       {titleCols.map((col) => <div key={col.id}>{col.cell(row)}</div>)}
                     </div>
+                    {bodyCols.map((col) => <div key={col.id}>{col.cell(row)}</div>)}
                     {detailCols.length > 0 && (
                       <dl className="space-y-1.5">
                         {detailCols.map((col) => (

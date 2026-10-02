@@ -2,7 +2,7 @@ export * from './Button';
 export * from './styles';
 export * from './Primitives';
 export * from './RadixPrimitives';
-export * from './ScoreRing';
+export * from './FitScore';
 export * from './PageHeader';
 export * from './Skeleton';
 export * from './StatusDot';

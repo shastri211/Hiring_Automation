@@ -39,3 +39,27 @@ export const variantButtonClasses: Record<BadgeVariant, string> = {
   neutral: 'bg-[var(--color-neutral-subtle-bg)] text-[var(--color-neutral-subtle-text)]',
   primary: 'bg-[var(--color-primary-subtle-bg)] text-[var(--color-primary-subtle-text)]',
 };
+
+/**
+ * What to show as a candidate row's "state": resume-processing problems take
+ * precedence over a decision, then the decision itself, then "awaiting".
+ * Display-only - it reads fields the API already returns and changes nothing.
+ */
+export interface CandidateStateInput {
+  status?: string | null;
+  decision?: CandidateDecision | string | null;
+  evaluation_failed?: boolean;
+}
+
+export function getCandidateState(c: CandidateStateInput): { label: string; variant: BadgeVariant; live?: boolean } {
+  if (c.status === 'FAILED') return { label: 'Processing failed', variant: 'danger' };
+  if (c.status === 'PROCESSING' || c.status === 'UPLOADED') return { label: 'Processing', variant: 'primary', live: true };
+  if (c.decision === 'PRE_SCREENED_OUT') return { label: 'Pre-screened out', variant: 'neutral' };
+  if (c.evaluation_failed) return { label: 'Evaluation failed', variant: 'danger' };
+  switch (c.decision) {
+    case 'SHORTLIST': return { label: 'Shortlisted', variant: 'success' };
+    case 'REVIEW': return { label: 'Review', variant: 'warning' };
+    case 'REJECT': return { label: 'Rejected', variant: 'danger' };
+    default: return { label: 'Awaiting decision', variant: 'neutral' };
+  }
+}
