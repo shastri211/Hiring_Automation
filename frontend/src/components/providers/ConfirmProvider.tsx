@@ -32,10 +32,7 @@ export const ConfirmProvider = ({ children }: { children: ReactNode }) => {
             <Button variant="secondary" onClick={() => settle(false)}>
               {opts?.cancelLabel || 'Cancel'}
             </Button>
-            <Button
-              onClick={() => settle(true)}
-              className={opts?.danger ? 'bg-[var(--color-danger-600)] hover:not-disabled:bg-red-700 border-transparent' : undefined}
-            >
+            <Button variant={opts?.danger ? 'danger' : 'primary'} onClick={() => settle(true)}>
               {opts?.confirmLabel || 'Confirm'}
             </Button>
           </div>

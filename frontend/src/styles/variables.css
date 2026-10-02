@@ -1,53 +1,72 @@
+/* Design tokens — "editorial enterprise" system.
+
+   Names are stable (components reference them everywhere); the VALUES are the
+   design. Dark mode below re-maps the same names, so a component that only uses
+   tokens is correct in both themes without a `dark:` variant.
+
+   Accent scale: a restrained slate-blue. In dark mode the whole scale is
+   inverted (50 = deepest tint ... 900 = lightest) so `bg-primary-50` stays a
+   quiet tint, and `text-primary-600/700` stays readable as accent text. Filled
+   accent surfaces use `--accent` / `--accent-fg`, never a hardcoded `text-white`. */
 :root {
-  /* Colors: Indigo Accent for AI SaaS vibe */
-  --color-primary-50: #eef2ff;
-  --color-primary-100: #e0e7ff;
-  --color-primary-200: #c7d2fe;
-  --color-primary-500: #6366f1;
-  --color-primary-600: #4f46e5;
-  --color-primary-700: #4338ca;
-  --color-primary-900: #312e81;
-  
-  /* Slate Neutrals */
-  --color-neutral-50: #f8fafc;
-  --color-neutral-100: #f1f5f9;
-  --color-neutral-200: #e2e8f0;
-  --color-neutral-300: #cbd5e1;
-  --color-neutral-400: #94a3b8;
-  --color-neutral-500: #64748b;
-  --color-neutral-600: #475569;
-  --color-neutral-700: #334155;
-  --color-neutral-800: #1e293b;
-  --color-neutral-900: #0f172a;
+  /* Accent (slate blue) */
+  --color-primary-50: #f1f4f9;
+  --color-primary-100: #e3e9f2;
+  --color-primary-200: #c8d3e4;
+  --color-primary-300: #a3b3cf;
+  --color-primary-500: #6f84a8;
+  --color-primary-600: #55698f;
+  --color-primary-700: #435577;
+  --color-primary-900: #26324a;
 
-  /* Semantic */
-  --color-danger-50: #fef2f2;
-  --color-danger-500: #ef4444;
-  --color-danger-600: #dc2626;
+  /* Neutrals (cool zinc) */
+  --color-neutral-50: #fafafa;
+  --color-neutral-100: #f4f4f5;
+  --color-neutral-200: #e4e4e7;
+  --color-neutral-300: #d4d4d8;
+  --color-neutral-400: #9a9aa4;
+  --color-neutral-500: #71717a;
+  --color-neutral-600: #52525b;
+  --color-neutral-700: #3f3f46;
+  --color-neutral-800: #27272a;
+  --color-neutral-900: #18181b;
 
-  --color-warning-50: #fffbeb;
-  --color-warning-500: #f59e0b;
-  --color-warning-600: #d97706;
+  /* Semantic (muted) */
+  --color-danger-50: #fdf3f2;
+  --color-danger-500: #d4504c;
+  --color-danger-600: #b83a3a;
 
-  --color-success-50: #f0fdf4;
-  --color-success-500: #22c55e;
-  --color-success-600: #16a34a;
+  --color-warning-50: #fdf8ec;
+  --color-warning-500: #d4962a;
+  --color-warning-600: #a5691a;
+
+  --color-success-50: #f0f8f3;
+  --color-success-500: #3a9a6e;
+  --color-success-600: #2e7d5b;
+
+  /* Filled accent surface (primary buttons, count badges) */
+  --accent: var(--color-primary-600);
+  --accent-hover: var(--color-primary-700);
+  --accent-fg: #ffffff;
 
   /* Surface */
-  --bg-app: var(--color-neutral-50);
+  --bg-app: #fafafa;
   --bg-surface: #ffffff;
-  --bg-hover: var(--color-neutral-100);
+  --bg-hover: #f4f4f5;
+  --bg-overlay: rgb(24 24 27 / 0.45);
 
   /* Text */
-  --text-primary: var(--color-neutral-900);
-  --text-secondary: var(--color-neutral-600);
-  --text-tertiary: var(--color-neutral-400);
+  --text-primary: #18181b;
+  --text-secondary: #52525b;
+  --text-tertiary: #71717a;
   --text-inverse: #ffffff;
 
-  /* Borders */
-  --border-light: var(--color-neutral-200);
-  --border-strong: var(--color-neutral-300);
-  --border-focus: var(--color-primary-500);
+  /* Borders. --border-input is the form-control edge: it must clear 3:1
+     against the surface (WCAG 1.4.11), unlike the decorative hairlines. */
+  --border-light: #e4e4e7;
+  --border-strong: #cfcfd6;
+  --border-input: #8f8f99;
+  --border-focus: var(--color-primary-600);
 
   /* Spacing */
   --space-1: 0.25rem;
@@ -59,24 +78,23 @@
   --space-8: 2rem;
   --space-12: 3rem;
 
-  /* Radii */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
+  /* Radii — restrained. These also override Tailwind's rounded-* scale
+     (utilities read var(--radius-*) at runtime). */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
   --radius-full: 9999px;
 
-  /* Shadows - Refined for premium feel */
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.05), 0 4px 6px -4px rgb(0 0 0 / 0.05);
+  /* Shadows — near-flat; structure comes from 1px borders. */
+  --shadow-sm: 0 1px 0 0 rgb(24 24 27 / 0.04);
+  --shadow-md: 0 2px 8px -2px rgb(24 24 27 / 0.08);
+  --shadow-lg: 0 8px 24px -6px rgb(24 24 27 / 0.14);
   --shadow-focus: 0 0 0 2px var(--bg-surface), 0 0 0 4px var(--border-focus);
 
-  /* Type scale — single source of truth for text sizing across the app.
-     Five semantic levels (page title / section heading / card title / body /
-     caption) are built from these in global.css so pages stop picking
-     text-sm/text-lg/text-2xl ad hoc. Values match Tailwind's own scale so
-     nothing visually shifts where these replace existing text-* utilities. */
+  /* Type scale */
+  --font-size-2xs: 0.6875rem;
+  --line-height-2xs: 1rem;
   --font-size-xs: 0.75rem;
   --line-height-xs: 1rem;
   --font-size-sm: 0.875rem;
@@ -89,97 +107,111 @@
   --line-height-xl: 1.75rem;
   --font-size-2xl: 1.5rem;
   --line-height-2xl: 2rem;
-  --font-size-3xl: 1.875rem;
+  --font-size-3xl: 1.75rem;
   --line-height-3xl: 2.25rem;
 
-  /* Motion — one standard easing/duration for hover/focus transitions,
-     instead of each component picking its own. */
+  /* Motion */
   --transition-base: 150ms cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* Subtle badge tokens — light values chosen to exactly match Badge's
-     previous literal Tailwind classes, so light mode is pixel-identical. */
+  /* Layout */
+  --sidebar-width: 15rem;
+  --header-height: 3.5rem;
+
+  /* Subtle badge / banner tokens */
   --color-success-subtle-bg: var(--color-success-50);
-  --color-success-subtle-text: #15803d; /* green-700 */
+  --color-success-subtle-text: #25694a;
   --color-warning-subtle-bg: var(--color-warning-50);
-  --color-warning-subtle-text: #b45309; /* amber-700 */
+  --color-warning-subtle-text: #8a5a14;
   --color-danger-subtle-bg: var(--color-danger-50);
-  --color-danger-subtle-text: #b91c1c; /* red-700 */
+  --color-danger-subtle-text: #9c2f2f;
   --color-primary-subtle-bg: var(--color-primary-50);
   --color-primary-subtle-text: var(--color-primary-700);
   --color-neutral-subtle-bg: var(--color-neutral-100);
   --color-neutral-subtle-text: var(--color-neutral-700);
-  --color-info-subtle-bg: #eff6ff; /* blue-50 */
-  --color-info-subtle-text: #1d4ed8; /* blue-700 */
-  --color-info-border: #bfdbfe; /* blue-200 */
-  --color-info-icon: #3b82f6; /* blue-500 */
-  --color-success-border: #bbf7d0; /* green-200 */
-  --color-warning-border: #fde68a; /* amber-200 */
-  --color-danger-border: #fecaca; /* red-200 */
+  --color-info-subtle-bg: #f0f5fb;
+  --color-info-subtle-text: #2c4f7c;
+  --color-info-border: #c5d6ea;
+  --color-info-icon: #4a74a8;
+  --color-success-border: #c3e1d1;
+  --color-warning-border: #ecd9a8;
+  --color-danger-border: #ecc5c3;
+
+  color-scheme: light;
 }
 
-/* Dark mode via system preference — applies only when the user hasn't made an
-   explicit choice. ThemeProvider (src/hooks/useTheme.tsx) always stamps
-   data-theme to a concrete resolved value ("light" or "dark"), so in normal
-   operation this block is a defensive fallback for the instant before
-   hydration / no-JS, not the primary mechanism — the explicit-choice block
-   below is what actually drives the toggle. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg-app: #0f172a;
-    --bg-surface: #1e293b;
-    --bg-hover: #334155;
-    --text-primary: #f1f5f9;
-    --text-secondary: #94a3b8;
-    --text-tertiary: #64748b;
-    --border-light: #334155;
-    --border-strong: #475569;
-
-    --color-success-subtle-bg: rgba(34, 197, 94, 0.15);
-    --color-success-subtle-text: #4ade80;
-    --color-warning-subtle-bg: rgba(245, 158, 11, 0.15);
-    --color-warning-subtle-text: #fbbf24;
-    --color-danger-subtle-bg: rgba(239, 68, 68, 0.15);
-    --color-danger-subtle-text: #f87171;
-    --color-primary-subtle-bg: rgba(99, 102, 241, 0.18);
-    --color-primary-subtle-text: #a5b4fc;
-    --color-neutral-subtle-bg: rgba(148, 163, 184, 0.15);
-    --color-neutral-subtle-text: #cbd5e1;
-    --color-info-subtle-bg: rgba(59, 130, 246, 0.15);
-    --color-info-subtle-text: #93c5fd;
-    --color-info-border: rgba(59, 130, 246, 0.3);
-    --color-info-icon: #60a5fa;
-    --color-success-border: rgba(34, 197, 94, 0.3);
-    --color-warning-border: rgba(245, 158, 11, 0.3);
-    --color-danger-border: rgba(239, 68, 68, 0.3);
-  }
-}
-
-/* Dark mode via explicit user choice — always wins over system preference. */
+/* Dark mode — explicit choice. index.html's inline script always stamps
+   data-theme to a concrete "light" | "dark" before first paint, so there is
+   no separate prefers-color-scheme block to keep in sync. */
 :root[data-theme="dark"] {
-  --bg-app: #0f172a;
-  --bg-surface: #1e293b;
-  --bg-hover: #334155;
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-tertiary: #64748b;
-  --border-light: #334155;
-  --border-strong: #475569;
+  --color-primary-50: #1b2230;
+  --color-primary-100: #232c3f;
+  --color-primary-200: #33405b;
+  --color-primary-300: #4a5b80;
+  --color-primary-500: #7b90b6;
+  --color-primary-600: #8da2c8;
+  --color-primary-700: #a9b9d6;
+  --color-primary-900: #dbe3f2;
 
-  --color-success-subtle-bg: rgba(34, 197, 94, 0.15);
-  --color-success-subtle-text: #4ade80;
-  --color-warning-subtle-bg: rgba(245, 158, 11, 0.15);
-  --color-warning-subtle-text: #fbbf24;
-  --color-danger-subtle-bg: rgba(239, 68, 68, 0.15);
-  --color-danger-subtle-text: #f87171;
-  --color-primary-subtle-bg: rgba(99, 102, 241, 0.18);
-  --color-primary-subtle-text: #a5b4fc;
-  --color-neutral-subtle-bg: rgba(148, 163, 184, 0.15);
-  --color-neutral-subtle-text: #cbd5e1;
-  --color-info-subtle-bg: rgba(59, 130, 246, 0.15);
-  --color-info-subtle-text: #93c5fd;
-  --color-info-border: rgba(59, 130, 246, 0.3);
-  --color-info-icon: #60a5fa;
-  --color-success-border: rgba(34, 197, 94, 0.3);
-  --color-warning-border: rgba(245, 158, 11, 0.3);
-  --color-danger-border: rgba(239, 68, 68, 0.3);
+  --color-neutral-50: #121316;
+  --color-neutral-100: #1a1b1f;
+  --color-neutral-200: #2c2e34;
+  --color-neutral-300: #3d4047;
+  --color-neutral-400: #868a94;
+  --color-neutral-500: #9ea2ab;
+  --color-neutral-600: #b4b7bf;
+  --color-neutral-700: #cdd0d6;
+  --color-neutral-800: #e2e4e8;
+  --color-neutral-900: #f1f2f4;
+
+  --color-danger-50: #2a1819;
+  --color-danger-500: #e0625e;
+  --color-danger-600: #f08a85;
+  --color-warning-50: #2a2112;
+  --color-warning-500: #e0aa44;
+  --color-warning-600: #e3b55c;
+  --color-success-50: #14241c;
+  --color-success-500: #4fb583;
+  --color-success-600: #6cc99a;
+
+  --accent: var(--color-primary-600);
+  --accent-hover: var(--color-primary-700);
+  --accent-fg: #10141c;
+
+  --bg-app: #121316;
+  --bg-surface: #1a1b1f;
+  --bg-hover: #24262b;
+  --bg-overlay: rgb(0 0 0 / 0.6);
+
+  --text-primary: #ececee;
+  --text-secondary: #a8abb3;
+  --text-tertiary: #868a94;
+  --text-inverse: #10141c;
+
+  --border-light: #2c2e34;
+  --border-strong: #3d4047;
+  --border-input: #6a6e79;
+
+  --shadow-sm: 0 1px 0 0 rgb(0 0 0 / 0.3);
+  --shadow-md: 0 2px 8px -2px rgb(0 0 0 / 0.5);
+  --shadow-lg: 0 8px 24px -6px rgb(0 0 0 / 0.6);
+
+  --color-success-subtle-bg: rgba(79, 181, 131, 0.14);
+  --color-success-subtle-text: #7bd0a6;
+  --color-warning-subtle-bg: rgba(224, 170, 68, 0.14);
+  --color-warning-subtle-text: #e8bd6c;
+  --color-danger-subtle-bg: rgba(224, 98, 94, 0.14);
+  --color-danger-subtle-text: #f29b97;
+  --color-primary-subtle-bg: rgba(141, 162, 200, 0.14);
+  --color-primary-subtle-text: #b6c4de;
+  --color-neutral-subtle-bg: rgba(168, 171, 179, 0.14);
+  --color-neutral-subtle-text: #cdd0d6;
+  --color-info-subtle-bg: rgba(110, 150, 200, 0.14);
+  --color-info-subtle-text: #a5c0e4;
+  --color-info-border: rgba(110, 150, 200, 0.32);
+  --color-info-icon: #7ea6d6;
+  --color-success-border: rgba(79, 181, 131, 0.32);
+  --color-warning-border: rgba(224, 170, 68, 0.32);
+  --color-danger-border: rgba(224, 98, 94, 0.32);
+
+  color-scheme: dark;
 }

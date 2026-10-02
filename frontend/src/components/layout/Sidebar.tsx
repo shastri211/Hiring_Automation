@@ -1,31 +1,14 @@
 import { NavLink } from 'react-router-dom';
-import {
-  LayoutDashboard, Briefcase, Star, X,
-  Users, Calendar, Database, Mail,
-  FileText, Brain, MessageSquare, BarChart,
-  Puzzle, Settings, ListChecks, Users2
-} from 'lucide-react';
+import { X } from 'lucide-react';
 import clsx from 'clsx';
 import { useMatchSuggestions } from '../../hooks/useCandidateIdentity';
 import { useAuth } from '../../hooks/useAuth';
+import { NAV_GROUPS } from './navigation';
 
-type NavItem = {
-  to: string;
-  label: string;
-  icon: any;
-  exact?: boolean;
-  badge?: number;
-};
-
-type NavGroup = {
-  title: string;
-  items: NavItem[];
-};
-
-export const Sidebar = ({ 
-  isMobileOpen, 
-  setMobileOpen 
-}: { 
+export const Sidebar = ({
+  isMobileOpen,
+  setMobileOpen,
+}: {
   isMobileOpen: boolean;
   setMobileOpen: (open: boolean) => void;
 }) => {
@@ -38,113 +21,99 @@ export const Sidebar = ({
   const pendingCount = pendingSuggestions?.length ?? 0;
   const { user, isPlatformAdmin } = useAuth();
 
-  const navGroups: NavGroup[] = [
-    {
-      title: 'DASHBOARD',
-      items: [
-        { to: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
-      ]
-    },
-    {
-      title: 'RECRUITING',
-      items: [
-        { to: '/jobs', label: 'Jobs', icon: Briefcase },
-        { to: '/processing', label: 'Processing', icon: ListChecks },
-        { to: '/candidates', label: 'Candidates', icon: Users },
-        { to: '/candidates/duplicates', label: 'Duplicate Candidates', icon: Users2, badge: pendingCount },
-        { to: '/shortlisted', label: 'Shortlisted', icon: Star },
-        { to: '/interviews', label: 'Interviews', icon: Calendar },
-        { to: '/talent-pool', label: 'Talent Pool', icon: Database },
-      ]
-    },
-    {
-      title: 'COMMUNICATION',
-      items: [
-        { to: '/outreach', label: 'Email / Outreach', icon: Mail },
-        { to: '/templates', label: 'Templates', icon: FileText },
-      ]
-    },
-    {
-      title: 'INTELLIGENCE',
-      items: [
-        { to: '/ai-screening', label: 'AI Screening', icon: Brain },
-        { to: '/interview-analysis', label: 'Interview Analysis', icon: MessageSquare },
-        { to: '/analytics', label: 'Analytics', icon: BarChart },
-      ]
-    },
-    {
-      title: 'SYSTEM',
-      items: [
-        // Platform-level (shared provider config) - platform admins only.
-        ...(isPlatformAdmin ? [{ to: '/integrations', label: 'Integrations', icon: Puzzle }] : []),
-        { to: '/settings', label: 'Settings', icon: Settings },
-      ]
-    }
-  ];
+  const badgeFor = (to: string) => (to === '/candidates/duplicates' ? pendingCount : 0);
 
   return (
     <>
       {isMobileOpen && (
         <button
           type="button"
-          className="fixed inset-0 z-30 cursor-default bg-slate-900/50 md:hidden"
+          className="fixed inset-0 z-30 cursor-default bg-[var(--bg-overlay)] md:hidden"
           onClick={() => setMobileOpen(false)}
           aria-label="Close navigation"
         />
       )}
-      <aside className={clsx(
-        'w-64 bg-[var(--bg-surface)] border-r border-[var(--border-light)] flex flex-col z-40 transition-transform duration-300 md:relative md:translate-x-0 fixed inset-y-0 left-0',
-        isMobileOpen ? 'translate-x-0' : '-translate-x-full'
-      )}>
-        <div className="h-16 flex items-center justify-between px-4 border-b border-[var(--border-light)]">
-          <div className="flex items-center gap-2 font-bold text-lg text-[var(--color-primary-700)]">
-            <Briefcase size={24} className="text-[var(--color-primary-600)]" />
-            <span>RecruitPro</span>
+      <aside
+        className={clsx(
+          'fixed inset-y-0 left-0 z-40 flex w-[var(--sidebar-width)] flex-col border-r border-[var(--border-light)] bg-[var(--bg-surface)] transition-transform duration-200 md:relative md:translate-x-0',
+          isMobileOpen ? 'translate-x-0' : '-translate-x-full'
+        )}
+      >
+        <div className="flex h-[var(--header-height)] shrink-0 items-center justify-between border-b border-[var(--border-light)] px-4">
+          <div className="flex items-center gap-2.5">
+            <span
+              aria-hidden="true"
+              className="flex h-6 w-6 items-center justify-center rounded bg-[var(--accent)] text-[13px] font-bold text-[var(--accent-fg)]"
+            >
+              R
+            </span>
+            <span className="text-[15px] font-semibold tracking-tight text-[var(--text-primary)]">RecruitPro</span>
           </div>
-          <button className="md:hidden text-slate-500 hover:text-slate-700 focus-ring rounded" onClick={() => setMobileOpen(false)}>
-            <X size={20} />
+          <button
+            type="button"
+            className="focus-ring rounded p-1 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] md:hidden"
+            onClick={() => setMobileOpen(false)}
+            aria-label="Close navigation"
+          >
+            <X size={18} />
           </button>
         </div>
+
         {user?.organization && (
-          <div className="px-4 pt-3 -mb-2" title="Your organization">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">Organization</p>
-            <p className="text-sm font-medium text-[var(--text-primary)] truncate">{user.organization.name}</p>
+          <div className="border-b border-[var(--border-light)] px-4 py-3" title="Your organization">
+            <p className="text-eyebrow">Organization</p>
+            <p className="mt-0.5 truncate text-sm font-medium text-[var(--text-primary)]">{user.organization.name}</p>
           </div>
         )}
-        <nav id="main-navigation" aria-label="Primary navigation" className="flex-1 p-4 flex flex-col gap-6 overflow-y-auto">
-          {navGroups.map((group, i) => (
-            <div key={i} className="flex flex-col gap-1">
-              <h3 className="px-3 mb-1 text-xs font-semibold text-[var(--text-tertiary)] tracking-wider uppercase">
-                {group.title}
-              </h3>
-              {group.items.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.exact}
-                  onClick={() => setMobileOpen(false)}
-                  className={({ isActive }) => clsx(
-                    'flex items-center gap-3 px-3 py-2.5 rounded-md font-medium transition-colors focus-ring',
-                    isActive
-                      // Theme-aware token (has a dark-mode value) - the
-                      // hardcoded --color-primary-50 this replaced stayed
-                      // near-white in dark mode, same bug fixed on
-                      // JobCandidates.tsx's row hover.
-                      ? 'bg-[var(--color-primary-subtle-bg)] text-[var(--color-primary-700)]'
-                      : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
-                  )}
-                >
-                  <item.icon size={20} />
-                  <span className="flex-1">{item.label}</span>
-                  {!!item.badge && (
-                    <span className="min-w-[1.25rem] px-1.5 py-0.5 rounded-full text-xs font-semibold text-center bg-[var(--color-primary-600)] text-white">
-                      {item.badge}
-                    </span>
-                  )}
-                </NavLink>
-              ))}
-            </div>
-          ))}
+
+        <nav id="main-navigation" aria-label="Primary navigation" className="flex flex-1 flex-col gap-5 overflow-y-auto px-3 py-4">
+          {NAV_GROUPS.map((group) => {
+            const items = group.items.filter((item) => !item.platformAdminOnly || isPlatformAdmin);
+            if (items.length === 0) return null;
+            return (
+              <div key={group.title} className="flex flex-col gap-0.5">
+                <h3 className="text-eyebrow mb-1 px-2">{group.title}</h3>
+                {items.map((item) => {
+                  const badge = badgeFor(item.to);
+                  return (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      end={item.exact}
+                      onClick={() => setMobileOpen(false)}
+                      className={({ isActive }) =>
+                        clsx(
+                          'focus-ring transition-base flex h-8 items-center gap-2.5 rounded-md px-2 text-sm',
+                          isActive
+                            ? 'bg-[var(--bg-hover)] font-medium text-[var(--text-primary)]'
+                            : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
+                        )
+                      }
+                    >
+                      {({ isActive }) => (
+                        <>
+                          <item.icon
+                            size={16}
+                            aria-hidden="true"
+                            className={isActive ? 'text-[var(--color-primary-600)]' : 'text-[var(--text-tertiary)]'}
+                          />
+                          <span className="flex-1 truncate">{item.label}</span>
+                          {badge > 0 && (
+                            <span
+                              className="tabular min-w-[1.25rem] rounded-full bg-[var(--accent)] px-1.5 py-px text-center text-[11px] font-semibold text-[var(--accent-fg)]"
+                              aria-label={`${badge} pending`}
+                            >
+                              {badge}
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </NavLink>
+                  );
+                })}
+              </div>
+            );
+          })}
         </nav>
       </aside>
     </>

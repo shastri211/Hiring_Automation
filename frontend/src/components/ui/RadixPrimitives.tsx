@@ -17,7 +17,7 @@ export const DialogOverlay = forwardRef<React.ElementRef<typeof DialogPrimitive.
   ({ className, ...props }, ref) => (
     <DialogPrimitive.Overlay
       ref={ref}
-      className={cn("fixed inset-0 z-50 bg-black/50 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0", className)}
+      className={cn("fixed inset-0 z-50 bg-[var(--bg-overlay)] overlay-in", className)}
       {...props}
     />
   )
@@ -31,13 +31,13 @@ export const DialogContent = forwardRef<React.ElementRef<typeof DialogPrimitive.
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-[var(--border-light)] bg-[var(--bg-surface)] p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-xl",
+          "fixed left-[50%] top-[50%] z-50 grid w-[calc(100%-2rem)] max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-[var(--border-light)] bg-[var(--bg-surface)] p-6 shadow-[var(--shadow-lg)] rounded-lg dialog-in",
           className
         )}
         {...props}
       >
         {children}
-        <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus-ring focus-visible:outline-none disabled:pointer-events-none data-[state=open]:bg-[var(--bg-hover)] data-[state=open]:text-[var(--text-secondary)]">
+        <DialogPrimitive.Close className="absolute right-4 top-4 rounded p-1 text-[var(--text-tertiary)] transition-base hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] focus-ring disabled:pointer-events-none">
           <X className="h-4 w-4" />
           <span className="sr-only">Close</span>
         </DialogPrimitive.Close>
@@ -54,7 +54,7 @@ DialogHeader.displayName = "DialogHeader";
 
 export const DialogTitle = forwardRef<React.ElementRef<typeof DialogPrimitive.Title>, React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>>(
   ({ className, ...props }, ref) => (
-    <DialogPrimitive.Title ref={ref} className={cn("text-lg font-semibold leading-none tracking-tight", className)} {...props} />
+    <DialogPrimitive.Title ref={ref} className={cn("text-section-heading", className)} {...props} />
   )
 );
 DialogTitle.displayName = DialogPrimitive.Title.displayName;
@@ -78,7 +78,7 @@ export const SelectTrigger = forwardRef<React.ElementRef<typeof SelectPrimitive.
     <SelectPrimitive.Trigger
       ref={ref}
       className={cn(
-        "flex h-10 w-full items-center justify-between rounded-md border border-[var(--border-strong)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus-ring disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
+        "flex h-9 w-full items-center justify-between rounded-md border border-[var(--border-input)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus-ring disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
         className
       )}
       {...props}
@@ -100,7 +100,7 @@ export const SelectContent = forwardRef<React.ElementRef<typeof SelectPrimitive.
         position={position}
         sideOffset={4}
         className={cn(
-          "relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-md border border-[var(--border-light)] bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+          "relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-md border border-[var(--border-strong)] bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-[var(--shadow-md)]",
           position === 'popper' && "data-[side=bottom]:translate-y-1 data-[side=top]:-translate-y-1",
           className
         )}
@@ -148,8 +148,8 @@ SelectItem.displayName = SelectPrimitive.Item.displayName;
 // -----------------------------------------------------------------------------
 export const Progress = forwardRef<React.ElementRef<typeof ProgressPrimitive.Root>, React.ComponentPropsWithoutRef<typeof ProgressPrimitive.Root>>(
   ({ className, value, ...props }, ref) => (
-    <ProgressPrimitive.Root ref={ref} className={cn("relative h-2 w-full overflow-hidden rounded-full bg-[var(--bg-hover)]", className)} {...props}>
-      <ProgressPrimitive.Indicator className="h-full w-full flex-1 bg-indigo-600 transition-all duration-500 ease-in-out" style={{ transform: `translateX(-${100 - (value || 0)}%)` }} />
+    <ProgressPrimitive.Root ref={ref} className={cn("relative h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-neutral-200)]", className)} {...props}>
+      <ProgressPrimitive.Indicator className="h-full w-full flex-1 bg-[var(--accent)] transition-all duration-500 ease-in-out" style={{ transform: `translateX(-${100 - (value || 0)}%)` }} />
     </ProgressPrimitive.Root>
   )
 );

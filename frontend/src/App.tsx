@@ -1,9 +1,9 @@
 
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './api/queryClient';
-import { Toaster } from 'sonner';
 import { AppRoutes } from './routes';
 import { ThemeProvider } from './components/providers/ThemeProvider';
+import { Toaster } from './components/ui/Toaster';
 import { ConfirmProvider } from './components/providers/ConfirmProvider';
 import { AuthProvider } from './components/providers/AuthProvider';
 import './styles/global.css';
@@ -19,7 +19,7 @@ function App() {
         <QueryClientProvider client={queryClient}>
           <ConfirmProvider>
             <AppRoutes />
-            <Toaster position="top-right" richColors closeButton />
+            <Toaster />
           </ConfirmProvider>
         </QueryClientProvider>
       </ThemeProvider>

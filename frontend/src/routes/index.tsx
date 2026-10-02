@@ -4,7 +4,7 @@ import { AppLayout } from '../components/layout/AppLayout';
 import { Login } from '../pages/Login';
 import { RequireAuth } from '../components/auth/RequireAuth';
 import { RequirePlatformAdmin } from '../components/auth/RequirePlatformAdmin';
-import { Spinner } from '../components/ui';
+import { Spinner, buttonClasses } from '../components/ui';
 
 // Each page is its own chunk, fetched on first navigation to it, so the
 // initial bundle carries only the app shell (and e.g. recharts loads only
@@ -24,12 +24,12 @@ const RouteError = () => {
   const detail = isRouteErrorResponse(error) ? error.statusText : 'The page could not be displayed.';
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
-      <section className="max-w-md rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-        <p className="text-sm font-semibold uppercase tracking-wide text-[var(--color-primary-600)]">Something went wrong</p>
-        <h1 className="mt-2 text-2xl font-semibold text-slate-900">We could not load this page</h1>
-        <p className="mt-3 text-sm leading-6 text-slate-500">{detail}</p>
-        <a className="focus-ring mt-6 inline-flex rounded-md bg-[var(--color-primary-600)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--color-primary-700)]" href="/">
+    <main className="flex min-h-screen items-center justify-center bg-[var(--bg-app)] p-6">
+      <section className="max-w-md rounded-lg border border-[var(--border-light)] bg-[var(--bg-surface)] p-8 text-center">
+        <p className="text-eyebrow text-[var(--color-primary-600)]">Something went wrong</p>
+        <h1 className="text-section-heading mt-2">We could not load this page</h1>
+        <p className="text-body mt-3">{detail}</p>
+        <a className={buttonClasses('primary', 'md', 'mt-6')} href="/">
           Return to dashboard
         </a>
       </section>

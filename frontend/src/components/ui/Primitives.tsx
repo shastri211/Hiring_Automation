@@ -1,46 +1,50 @@
 import React, { forwardRef } from 'react';
 import { cn } from '../../utils/cn';
+import { controlClasses } from './styles';
 
 // -----------------------------------------------------------------------------
-// Card
+// Card — a bordered surface. Flat by design: structure comes from the 1px
+// border, not a shadow. Prefer plain sections with rules for long-form content
+// (see Candidate 360); reach for Card only for genuinely discrete panels.
 // -----------------------------------------------------------------------------
 export const Card = forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn("bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-xl shadow-[var(--shadow-sm)] overflow-hidden", className)} {...props} />
+    <div ref={ref} className={cn('bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-lg overflow-hidden', className)} {...props} />
   )
 );
-Card.displayName = "Card";
+Card.displayName = 'Card';
 
 export const CardHeader = forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn("px-6 py-4 border-b border-[var(--border-light)] flex flex-col gap-1", className)} {...props} />
+    <div ref={ref} className={cn('px-5 py-4 border-b border-[var(--border-light)] flex flex-col gap-1', className)} {...props} />
   )
 );
-CardHeader.displayName = "CardHeader";
+CardHeader.displayName = 'CardHeader';
 
 export const CardTitle = forwardRef<HTMLHeadingElement, React.HTMLAttributes<HTMLHeadingElement>>(
   ({ className, ...props }, ref) => (
-    <h3 ref={ref} className={cn("text-lg font-semibold text-[var(--text-primary)] leading-none tracking-tight", className)} {...props} />
+    <h3 ref={ref} className={cn('text-card-title', className)} {...props} />
   )
 );
-CardTitle.displayName = "CardTitle";
+CardTitle.displayName = 'CardTitle';
 
 export const CardContent = forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn("p-6", className)} {...props} />
+    <div ref={ref} className={cn('p-5', className)} {...props} />
   )
 );
-CardContent.displayName = "CardContent";
+CardContent.displayName = 'CardContent';
 
 export const CardFooter = forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn("px-6 py-4 bg-[var(--bg-app)] border-t border-[var(--border-light)] flex items-center", className)} {...props} />
+    <div ref={ref} className={cn('px-5 py-3 bg-[var(--bg-app)] border-t border-[var(--border-light)] flex items-center', className)} {...props} />
   )
 );
-CardFooter.displayName = "CardFooter";
+CardFooter.displayName = 'CardFooter';
 
 // -----------------------------------------------------------------------------
-// Badge
+// Badge — a compact label. Square-ish (not a pill). For a state that reads as a
+// status (with a leading dot) use StatusDot instead.
 // -----------------------------------------------------------------------------
 export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
   variant?: 'neutral' | 'success' | 'warning' | 'danger' | 'primary';
@@ -48,66 +52,65 @@ export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
 export const Badge = forwardRef<HTMLSpanElement, BadgeProps>(
   ({ className, variant = 'neutral', ...props }, ref) => {
     const variantClasses = {
-      neutral: 'bg-[var(--color-neutral-subtle-bg)] text-[var(--color-neutral-subtle-text)] border-transparent',
-      success: 'bg-[var(--color-success-subtle-bg)] text-[var(--color-success-subtle-text)] border-transparent',
-      warning: 'bg-[var(--color-warning-subtle-bg)] text-[var(--color-warning-subtle-text)] border-transparent',
-      danger: 'bg-[var(--color-danger-subtle-bg)] text-[var(--color-danger-subtle-text)] border-transparent',
-      primary: 'bg-[var(--color-primary-subtle-bg)] text-[var(--color-primary-subtle-text)] border-transparent',
+      neutral: 'bg-[var(--color-neutral-subtle-bg)] text-[var(--color-neutral-subtle-text)]',
+      success: 'bg-[var(--color-success-subtle-bg)] text-[var(--color-success-subtle-text)]',
+      warning: 'bg-[var(--color-warning-subtle-bg)] text-[var(--color-warning-subtle-text)]',
+      danger: 'bg-[var(--color-danger-subtle-bg)] text-[var(--color-danger-subtle-text)]',
+      primary: 'bg-[var(--color-primary-subtle-bg)] text-[var(--color-primary-subtle-text)]',
     };
     return (
-      <span ref={ref} className={cn('inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border', variantClasses[variant], className)} {...props} />
+      <span
+        ref={ref}
+        className={cn('inline-flex items-center px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap', variantClasses[variant], className)}
+        {...props}
+      />
     );
   }
 );
-Badge.displayName = "Badge";
+Badge.displayName = 'Badge';
 
 // -----------------------------------------------------------------------------
-// Form Elements
+// Form elements — control edges use --border-input (>= 3:1 against the surface).
 // -----------------------------------------------------------------------------
 export const Input = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
   ({ className, ...props }, ref) => (
-    <input
-      ref={ref}
-      className={cn(
-        "flex h-10 w-full rounded-md border border-[var(--border-strong)] bg-[var(--bg-surface)] text-[var(--text-primary)] px-3 py-2 text-sm placeholder:text-[var(--text-tertiary)] focus-ring disabled:cursor-not-allowed disabled:opacity-50 transition-shadow",
-        className
-      )}
-      {...props}
-    />
+    <input ref={ref} className={cn('flex h-9 px-3 py-2', controlClasses, className)} {...props} />
   )
 );
-Input.displayName = "Input";
+Input.displayName = 'Input';
 
 export const Textarea = forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttributes<HTMLTextAreaElement>>(
   ({ className, ...props }, ref) => (
-    <textarea
-      ref={ref}
-      className={cn(
-        "flex min-h-[80px] w-full rounded-md border border-[var(--border-strong)] bg-[var(--bg-surface)] text-[var(--text-primary)] px-3 py-2 text-sm placeholder:text-[var(--text-tertiary)] focus-ring disabled:cursor-not-allowed disabled:opacity-50 transition-shadow",
-        className
-      )}
-      {...props}
-    />
+    <textarea ref={ref} className={cn('flex min-h-[80px] px-3 py-2', controlClasses, className)} {...props} />
   )
 );
-Textarea.displayName = "Textarea";
+Textarea.displayName = 'Textarea';
+
+/** Native <select> with the shared control styling — the right choice for
+ * compact toolbar filters (full keyboard/mobile support for free). */
+export const NativeSelect = forwardRef<HTMLSelectElement, React.SelectHTMLAttributes<HTMLSelectElement>>(
+  ({ className, ...props }, ref) => (
+    <select ref={ref} className={cn('h-9 pl-3 pr-8 py-0 cursor-pointer', controlClasses, 'w-auto', className)} {...props} />
+  )
+);
+NativeSelect.displayName = 'NativeSelect';
 
 export const Label = forwardRef<HTMLLabelElement, React.LabelHTMLAttributes<HTMLLabelElement>>(
   ({ className, ...props }, ref) => (
-    <label ref={ref} className={cn("text-sm font-medium leading-none text-[var(--text-secondary)] peer-disabled:cursor-not-allowed peer-disabled:opacity-70", className)} {...props} />
+    <label ref={ref} className={cn('text-sm font-medium leading-none text-[var(--text-secondary)] peer-disabled:cursor-not-allowed peer-disabled:opacity-70', className)} {...props} />
   )
 );
-Label.displayName = "Label";
+Label.displayName = 'Label';
 
 // -----------------------------------------------------------------------------
 // Utilities
 // -----------------------------------------------------------------------------
 export const Skeleton = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("animate-pulse rounded-md bg-[var(--bg-hover)]", className)} {...props} />
+  <div className={cn('animate-pulse rounded bg-[var(--bg-hover)]', className)} {...props} />
 );
 
 export const Spinner = ({ className, size = 24 }: { className?: string, size?: number }) => (
-  <svg className={cn('animate-spin text-[var(--text-tertiary)]', className)} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg role="status" aria-label="Loading" className={cn('animate-spin text-[var(--text-tertiary)]', className)} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <line x1="12" y1="2" x2="12" y2="6"></line>
     <line x1="12" y1="18" x2="12" y2="22"></line>
     <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
@@ -119,11 +122,11 @@ export const Spinner = ({ className, size = 24 }: { className?: string, size?: n
   </svg>
 );
 
-export const EmptyState = ({ icon, title, description, action }: { icon?: React.ReactNode, title: string, description?: string, action?: React.ReactNode }) => (
-  <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-    {icon && <div className="mb-4 text-[var(--text-tertiary)] bg-[var(--bg-hover)] p-4 rounded-full">{icon}</div>}
-    <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-1">{title}</h3>
-    {description && <p className="text-[var(--text-secondary)] mb-6 max-w-sm">{description}</p>}
+export const EmptyState = ({ icon, title, description, action, className }: { icon?: React.ReactNode, title: string, description?: string, action?: React.ReactNode, className?: string }) => (
+  <div className={cn('flex flex-col items-center justify-center py-16 px-4 text-center', className)}>
+    {icon && <div className="mb-4 text-[var(--text-tertiary)] border border-[var(--border-light)] bg-[var(--bg-surface)] p-3 rounded-lg">{icon}</div>}
+    <h3 className="text-card-title mb-1">{title}</h3>
+    {description && <p className="text-body mb-5 max-w-sm">{description}</p>}
     {action && <div>{action}</div>}
   </div>
 );

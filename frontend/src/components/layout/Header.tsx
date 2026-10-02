@@ -1,43 +1,36 @@
-
-import { Menu, LogOut, KeyRound } from 'lucide-react';
+import { Menu, LogOut, KeyRound, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { Button } from '../ui';
+import { LinkButton } from '../ui';
 import { ThemeToggle } from './ThemeToggle';
 import { useAuth } from '../../hooks/useAuth';
 import { getInitials } from '../../utils/initials';
+
+const iconButton =
+  'focus-ring transition-base rounded-md p-1.5 text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]';
 
 const UserMenu = () => {
   const { user, logout } = useAuth();
   if (!user) return null;
 
   return (
-    <div className="flex items-center gap-2 pl-2 ml-1 border-l border-[var(--border-light)]">
+    <div className="ml-1 flex items-center gap-2 border-l border-[var(--border-light)] pl-3">
       <div
-        className="w-8 h-8 rounded-full bg-[var(--color-primary-subtle-bg)] text-[var(--color-primary-subtle-text)] flex items-center justify-center text-xs font-semibold shrink-0"
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-subtle-bg)] text-[11px] font-semibold text-[var(--color-primary-subtle-text)]"
         title={user.email}
+        aria-hidden="true"
       >
         {getInitials(user.name)}
       </div>
-      <span className="hidden sm:flex flex-col leading-tight max-w-[12rem] min-w-0">
-        <span className="text-sm font-medium text-[var(--text-primary)] truncate">{user.name}</span>
-        <span className="text-xs text-[var(--text-tertiary)] truncate" title={user.organization.name}>
+      <span className="hidden min-w-0 max-w-[12rem] flex-col leading-tight sm:flex">
+        <span className="truncate text-sm font-medium text-[var(--text-primary)]">{user.name}</span>
+        <span className="text-caption truncate" title={user.organization.name}>
           {user.organization.name}{user.role === 'admin' ? ' · Admin' : ''}
         </span>
       </span>
-      <Link
-        to="/change-password"
-        className="focus-ring rounded p-1.5 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-app)] transition-colors"
-        title="Change password"
-        aria-label="Change password"
-      >
+      <Link to="/change-password" className={iconButton} title="Change password" aria-label="Change password">
         <KeyRound size={16} />
       </Link>
-      <button
-        onClick={() => logout()}
-        className="focus-ring rounded p-1.5 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-app)] transition-colors"
-        title="Log out"
-        aria-label="Log out"
-      >
+      <button type="button" onClick={() => logout()} className={iconButton} title="Log out" aria-label="Log out">
         <LogOut size={16} />
       </button>
     </div>
@@ -45,35 +38,47 @@ const UserMenu = () => {
 };
 
 export const Header = ({
+  section,
   title,
   onMenuClick,
   isMenuOpen = false,
 }: {
+  section?: string;
   title?: string;
   onMenuClick: () => void;
   isMenuOpen?: boolean;
 }) => {
+  const showSection = section && section !== title;
   return (
-    <header className="h-16 bg-[var(--bg-surface)] border-b border-[var(--border-light)] flex items-center justify-between px-4 sm:px-6 shrink-0 shadow-sm z-10">
-      <div className="flex items-center gap-4">
+    <header className="z-10 flex h-[var(--header-height)] shrink-0 items-center justify-between border-b border-[var(--border-light)] bg-[var(--bg-surface)] px-4 sm:px-6">
+      <div className="flex min-w-0 items-center gap-3">
         <button
-          className="focus-ring -ml-1 rounded p-1 text-slate-500 hover:text-slate-700 md:hidden"
+          type="button"
+          className={`${iconButton} -ml-1.5 md:hidden`}
           onClick={onMenuClick}
           aria-label="Open navigation"
           aria-expanded={isMenuOpen}
           aria-controls="main-navigation"
         >
-          <Menu size={24} />
+          <Menu size={20} />
         </button>
-        {title && <h1 className="text-xl font-semibold text-[var(--text-primary)] tracking-tight">{title}</h1>}
+        {title && (
+          <p className="flex min-w-0 items-center gap-2 text-sm">
+            {showSection && (
+              <>
+                <span className="text-eyebrow hidden sm:inline">{section}</span>
+                <span aria-hidden="true" className="hidden text-[var(--text-tertiary)] sm:inline">/</span>
+              </>
+            )}
+            <span className="truncate font-medium text-[var(--text-primary)]">{title}</span>
+          </p>
+        )}
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
         <ThemeToggle />
-        <Link to="/jobs/new" className="focus-ring rounded-md inline-block">
-          <Button variant="primary" size="sm" tabIndex={-1}>
-            + New Job
-          </Button>
-        </Link>
+        <LinkButton to="/jobs/new" size="sm" className="hidden sm:inline-flex">
+          <Plus size={14} aria-hidden="true" /> New Job
+        </LinkButton>
         <UserMenu />
       </div>
     </header>

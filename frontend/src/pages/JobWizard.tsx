@@ -71,7 +71,7 @@ export const JobWizard = () => {
 
   return (
     <div className="max-w-3xl mx-auto py-8">
-      <h2 className="text-2xl font-semibold text-slate-900 mb-8 tracking-tight">Create New Job</h2>
+      <h1 className="text-page-title mb-8">Create New Job</h1>
       
       <Card>
         <form onSubmit={handleSubmit}>
