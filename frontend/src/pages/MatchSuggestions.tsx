@@ -9,6 +9,7 @@ import {
 } from '../hooks/useCandidateIdentity';
 import { useConfirm } from '../hooks/useConfirm';
 import { Badge, Button, EmptyState, ErrorState, PageHeader, Skeleton, StatusDot, Tabs } from '../components/ui';
+import { getErrorMessage } from '../utils/errors';
 import type { BadgeVariant } from '../utils/decision';
 import type { CandidateMatchSuggestion, CandidateSummary, MatchSuggestionStatus } from '../types';
 
@@ -168,7 +169,7 @@ export const MatchSuggestions = () => {
         <div className="rounded-lg border border-[var(--border-light)] bg-[var(--bg-surface)]">
           <ErrorState
             title="Failed to load suggestions"
-            message={error instanceof Error ? error.message : undefined}
+            message={getErrorMessage(error)}
             onRetry={() => refetch()}
           />
         </div>

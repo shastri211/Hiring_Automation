@@ -9,6 +9,7 @@ import {
   Alert, Button, EmptyState, ErrorState, LinkButton, PageHeader, Progress, Skeleton, StatusDot,
 } from '../components/ui';
 import { batchTypeLabel, isBatchLive } from '../utils/status';
+import { getErrorMessage } from '../utils/errors';
 import type { BadgeVariant } from '../utils/decision';
 import type { BatchProgressDetail } from '../types';
 
@@ -53,7 +54,7 @@ export const JobProcessing = () => {
   });
 
   const batches = progressData?.batches || [];
-  const unScreenedCount = progressData?.unscreened ?? 0;
+  const unScreenedCount = isError ? 0 : progressData?.unscreened ?? 0;
   const hasRunningBatch = batches.some((b) => b.status === 'PROCESSING');
   const screening = hasRunningBatch || screenMutation.isPending;
 
@@ -62,7 +63,7 @@ export const JobProcessing = () => {
       <PageHeader
         className="mb-6"
         title="Processing"
-        subtitle={job?.title ? `Extraction and screening progress for ${job.title}.` : 'Monitor extraction and screening progress.'}
+        subtitle={job?.title ? `Extraction and screening progress for ${job.title.trim()}.` : 'Monitor extraction and screening progress.'}
         actions={
           <>
             <LinkButton to={`/jobs/${id}/upload`} variant="secondary">
@@ -87,7 +88,7 @@ export const JobProcessing = () => {
         </div>
       ) : isError ? (
         <div className="rounded-lg border border-[var(--border-light)] bg-[var(--bg-surface)]">
-          <ErrorState title="Error loading progress" message={error instanceof Error ? error.message : undefined} onRetry={() => refetch()} />
+          <ErrorState title="Error loading progress" message={getErrorMessage(error)} onRetry={() => refetch()} />
         </div>
       ) : batches.length === 0 ? (
         <div className="rounded-lg border border-[var(--border-light)] bg-[var(--bg-surface)]">

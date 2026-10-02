@@ -8,6 +8,7 @@ import {
   type Column,
 } from '../components/ui';
 import { CandidateIdentity } from '../components/candidate/ScreeningCells';
+import { getErrorMessage } from '../utils/errors';
 import type { TalentPoolEntry } from '../types';
 
 const PAGE_SIZE = 20;
@@ -69,7 +70,7 @@ export const TalentPool = () => {
       id: 'tags',
       header: 'Tags',
       mobile: 'body',
-      className: 'min-w-[14rem]',
+      className: 'min-w-[17rem]',
       cell: (e) =>
         editingId === e.id ? (
           <div className="flex items-center gap-1">
@@ -96,7 +97,7 @@ export const TalentPool = () => {
       id: 'notes',
       header: 'Notes',
       hideBelow: 'lg',
-      mobile: 'hidden',
+      mobile: 'body',
       className: 'w-[22%]',
       cell: (e) => <p className="line-clamp-2 text-sm text-[var(--text-secondary)]">{e.notes || '—'}</p>,
     },
@@ -108,8 +109,8 @@ export const TalentPool = () => {
     {
       id: 'added',
       header: 'Added',
-      className: 'w-32',
-      cell: (e) => <span className="text-caption">{e.added_at ? formatDistanceToNow(new Date(e.added_at), { addSuffix: true }) : '—'}</span>,
+      className: 'w-36',
+      cell: (e) => <span className="text-caption whitespace-nowrap">{e.added_at ? formatDistanceToNow(new Date(e.added_at), { addSuffix: true }) : '—'}</span>,
     },
     {
       id: 'actions',
@@ -149,7 +150,7 @@ export const TalentPool = () => {
 
       {isError ? (
         <div className="rounded-lg border border-[var(--border-light)] bg-[var(--bg-surface)]">
-          <ErrorState title="Failed to load the Talent Pool" message={error instanceof Error ? error.message : undefined} onRetry={() => refetch()} />
+          <ErrorState title="Failed to load the Talent Pool" message={getErrorMessage(error)} onRetry={() => refetch()} />
         </div>
       ) : (
         <>

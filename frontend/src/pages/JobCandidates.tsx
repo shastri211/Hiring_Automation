@@ -8,6 +8,7 @@ import { useDecisionMutation, useRetryEvaluation } from '../hooks/useDecisionMut
 import { useAddToTalentPool } from '../hooks/useTalentPool';
 import { useBreadcrumbs } from '../hooks/useBreadcrumbs';
 import { emailQueryKeys } from '../hooks/useEmails';
+import { getErrorMessage } from '../utils/errors';
 import type { CandidateDecision, ScreeningResultResponse } from '../types';
 import { CandidateDrawer } from '../components/CandidateDrawer';
 import { BulkEmailModal } from '../components/BulkEmailModal';
@@ -259,7 +260,7 @@ export const JobCandidates = () => {
         <div className="rounded-lg border border-[var(--border-light)] bg-[var(--bg-surface)]">
           <ErrorState
             title="Couldn't load candidates"
-            message={error instanceof Error ? error.message : undefined}
+            message={getErrorMessage(error)}
             onRetry={() => refetch()}
           />
         </div>

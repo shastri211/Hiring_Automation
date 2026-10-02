@@ -1,4 +1,4 @@
-import clsx from 'clsx';
+import { cn } from '../../utils/cn';
 import type { ButtonProps } from './Button';
 
 /** Class-name builders shared by components and by plain elements (e.g. a
@@ -24,7 +24,7 @@ const variantClasses = {
 };
 
 export const buttonClasses = (variant: NonNullable<ButtonProps['variant']> = 'primary', size: NonNullable<ButtonProps['size']> = 'md', className?: string) =>
-  clsx(baseClasses, sizeClasses[size], variantClasses[variant], className);
+  cn(baseClasses, sizeClasses[size], variantClasses[variant], className);
 
 
 /** Shared edge/background/focus treatment for form controls. Edges use

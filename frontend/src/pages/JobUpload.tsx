@@ -5,6 +5,7 @@ import { FileText, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { jobsApi } from '../api/jobs';
 import { queryKeys } from '../api/queryKeys';
+import { getErrorMessage } from '../utils/errors';
 import { useBreadcrumbs } from '../hooks/useBreadcrumbs';
 import {
   Alert, Badge, Button, DataTable, Dropzone, IconButton, PageHeader, Progress, Section, StatTile, type Column,
@@ -67,41 +68,51 @@ export const JobUpload = () => {
   const uploading = uploadMutation.isPending;
   const result = uploadMutation.isSuccess ? uploadMutation.data : null;
 
+  const removeButton = (f: File) => (
+    <IconButton
+      label={`Remove ${f.name}`}
+      tone="danger"
+      icon={<X size={15} />}
+      disabled={uploading}
+      onClick={() => setFiles((prev) => prev.filter((x) => !sameFile(x, f)))}
+    />
+  );
+
   const columns: Column<File>[] = [
     {
       id: 'file',
       header: 'File',
       mobile: 'title',
       cell: (f) => (
-        <span className="flex min-w-0 items-center gap-2.5">
-          <FileText size={16} aria-hidden="true" className="shrink-0 text-[var(--text-tertiary)]" />
-          <span className="truncate text-sm font-medium text-[var(--text-primary)]">{f.name}</span>
-        </span>
+        <div className="flex items-center justify-between gap-3">
+          <span className="flex min-w-0 items-center gap-2.5">
+            <FileText size={16} aria-hidden="true" className="shrink-0 text-[var(--text-tertiary)]" />
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-medium text-[var(--text-primary)]">{f.name}</span>
+              {/* Size and type live under the name on mobile; separate columns from md up. */}
+              <span className="text-caption tabular md:hidden">{(f.size / 1024).toFixed(1)} KB · {isPdf(f) ? 'PDF' : 'DOCX'}</span>
+            </span>
+          </span>
+          <span className="md:hidden">{removeButton(f)}</span>
+        </div>
       ),
     },
     {
       id: 'size',
       header: 'Size',
       align: 'right',
+      mobile: 'hidden',
       className: 'w-28',
       cell: (f) => <span className="tabular text-sm text-[var(--text-secondary)]">{(f.size / 1024).toFixed(1)} KB</span>,
     },
-    { id: 'type', header: 'Type', className: 'w-24', cell: (f) => <Badge>{isPdf(f) ? 'PDF' : 'DOCX'}</Badge> },
+    { id: 'type', header: 'Type', mobile: 'hidden', className: 'w-24', cell: (f) => <Badge>{isPdf(f) ? 'PDF' : 'DOCX'}</Badge> },
     {
       id: 'remove',
       header: <span className="sr-only">Remove</span>,
       align: 'right',
-      mobile: 'actions',
+      mobile: 'hidden',
       className: 'w-14',
-      cell: (f) => (
-        <IconButton
-          label={`Remove ${f.name}`}
-          tone="danger"
-          icon={<X size={15} />}
-          disabled={uploading}
-          onClick={() => setFiles((prev) => prev.filter((x) => !sameFile(x, f)))}
-        />
-      ),
+      cell: (f) => removeButton(f),
     },
   ];
 
@@ -149,7 +160,7 @@ export const JobUpload = () => {
 
       {uploadMutation.isError && (
         <Alert variant="danger" className="mb-6" title="Upload failed">
-          {uploadMutation.error instanceof Error ? uploadMutation.error.message : 'Please check file formats and try again.'}
+          {getErrorMessage(uploadMutation.error, 'Please check file formats and try again.')}
         </Alert>
       )}
 

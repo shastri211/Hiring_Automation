@@ -7,6 +7,7 @@ import { jobsApi } from '../api/jobs';
 import { queryKeys } from '../api/queryKeys';
 import { DataTable, EmptyState, ErrorState, LinkButton, PageHeader, Progress, StatTile, StatusDot, type Column } from '../components/ui';
 import { batchTypeLabel, getBatchStatusVariant, isBatchLive } from '../utils/status';
+import { getErrorMessage } from '../utils/errors';
 import type { JobBatchOverviewItem } from '../types';
 
 const statusLabel = (b: JobBatchOverviewItem) =>
@@ -103,7 +104,7 @@ export const Processing = () => {
         <div className="rounded-lg border border-[var(--border-light)] bg-[var(--bg-surface)]">
           <ErrorState
             title="Failed to load processing batches"
-            message={error instanceof Error ? error.message : undefined}
+            message={getErrorMessage(error)}
             onRetry={() => refetch()}
           />
         </div>

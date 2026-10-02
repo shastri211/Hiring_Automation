@@ -51,7 +51,7 @@ export function SegmentedControl<T extends string>({ options, value, onChange, d
             className={cn(
               'transition-base focus-ring rounded px-3.5 py-1.5 text-sm font-medium disabled:opacity-50',
               active
-                ? 'border border-[var(--border-strong)] bg-[var(--bg-surface)] text-[var(--text-primary)]'
+                ? 'border border-[color:var(--border-input)] bg-[var(--bg-surface)] font-semibold text-[var(--text-primary)]'
                 : 'border border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
             )}
           >

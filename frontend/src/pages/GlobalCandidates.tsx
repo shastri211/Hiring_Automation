@@ -12,6 +12,7 @@ import {
   BulkAction, BulkActionBar, DataTable, EmptyState, ErrorState, FilterBar, FilterBarSpacer, IconButton, PageHeader,
   Pagination, Tabs, type Column,
 } from '../components/ui';
+import { getErrorMessage } from '../utils/errors';
 import type { CandidateDecision, GlobalScreeningResultResponse } from '../types';
 
 const PAGE_SIZE = 20;
@@ -183,7 +184,7 @@ export const GlobalCandidates = () => {
 
       {isError ? (
         <div className="rounded-lg border border-[var(--border-light)] bg-[var(--bg-surface)]">
-          <ErrorState title="Failed to load candidates" message={error instanceof Error ? error.message : undefined} onRetry={() => refetch()} />
+          <ErrorState title="Failed to load candidates" message={getErrorMessage(error)} onRetry={() => refetch()} />
         </div>
       ) : (
         <>

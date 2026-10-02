@@ -10,15 +10,15 @@ export interface Crumb {
 }
 
 /**
- * Single-line trail. Below `sm` only the last two crumbs are shown (parent →
- * current) so a deep trail never wraps; the earlier ones return from `sm` up.
+ * Single-line trail. Below `sm` only the current (last) crumb is shown so a
+ * deep trail never wraps; the full trail returns from `sm` up.
  */
 export const Breadcrumbs = ({ items, className }: { items: Crumb[]; className?: string }) => (
   <nav aria-label="Breadcrumb" className={cn('min-w-0', className)}>
     <ol className="flex min-w-0 flex-nowrap items-center gap-1.5 overflow-hidden text-sm">
       {items.map((item, i) => {
         const last = i === items.length - 1;
-        const hiddenOnMobile = i < items.length - 2;
+        const hiddenOnMobile = i < items.length - 1;
         return (
           <Fragment key={`${item.label}-${i}`}>
             <li className={cn('min-w-0', last ? 'shrink' : 'shrink-0 max-w-[10rem] truncate sm:max-w-[14rem]', hiddenOnMobile && 'hidden sm:block')}>
