@@ -2,15 +2,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { Mail } from 'lucide-react';
 import { useCandidateEmails } from '../../hooks/useEmails';
 import { Section, Skeleton, StatusDot } from '../ui';
-import { getEmailStatusBadgeVariant } from '../../utils/status';
-
-const STATUS_LABEL: Record<string, string> = {
-  SENT: 'Sent',
-  PENDING: 'Pending',
-  SIMULATED: 'Simulated',
-  FAILED: 'Failed',
-  BLOCKED: 'Blocked',
-};
+import { emailStatusLabel, getEmailStatusBadgeVariant } from '../../utils/status';
 
 /**
  * Outreach history for one candidate: each email's subject, status, time and a
@@ -45,9 +37,9 @@ export const OutreachHistory = ({ resumeId }: { resumeId: number }) => {
               </time>
             </div>
             <StatusDot variant={getEmailStatusBadgeVariant(email.status)} className="mt-1 text-xs text-[var(--text-secondary)]">
-              {STATUS_LABEL[email.status] ?? email.status}
+              {emailStatusLabel(email.status)}
             </StatusDot>
-            <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-secondary)]">{email.body_content}</p>
+            <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-[var(--text-secondary)]">{email.body_content}</p>
             {email.error_message && (
               <p className={`mt-2 text-xs ${email.status === 'FAILED' ? 'text-[var(--color-danger-subtle-text)]' : 'text-[var(--text-secondary)]'}`}>
                 {email.status === 'BLOCKED' ? 'Blocked: ' : email.status === 'FAILED' ? 'Failed: ' : ''}{email.error_message}

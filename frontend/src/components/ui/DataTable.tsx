@@ -151,14 +151,14 @@ export function DataTable<T>({
                       )}
                     >
                       {selection && (
-                        <td className="px-4 py-3 align-top" onClick={(e) => e.stopPropagation()}>
+                        <td className="px-4 py-3 align-middle" onClick={(e) => e.stopPropagation()}>
                           {checkbox(id, `Select ${rowLabel?.(row) ?? 'row'}`)}
                         </td>
                       )}
                       {columns.map((col) => (
                         <td
                           key={col.id}
-                          className={cn('px-4 py-3 align-top', ALIGN[col.align ?? 'left'], col.hideBelow && HIDE[col.hideBelow])}
+                          className={cn('px-4 py-3 align-middle', ALIGN[col.align ?? 'left'], col.hideBelow && HIDE[col.hideBelow])}
                           onClick={col.mobile === 'actions' ? (e) => e.stopPropagation() : undefined}
                         >
                           {col.cell(row)}

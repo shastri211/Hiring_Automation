@@ -1,12 +1,19 @@
 import { useState } from 'react';
+import { formatDistanceToNow } from 'date-fns';
+import { Mail, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useEmailTemplates, useCreateTemplate, useUpdateTemplate, useDeleteTemplate } from '../hooks/useEmails';
 import { useConfirm } from '../hooks/useConfirm';
-import { Loader2, Plus, Mail, Pencil, Trash2 } from 'lucide-react';
-import { Button } from '../components/ui/Button';
+import {
+  Alert, Badge, Button, DataTable, EmptyState, ErrorState, IconButton, Input, Label, PageHeader, Spinner, Textarea, type Column,
+} from '../components/ui';
+import { getErrorMessage } from '../utils/errors';
 import type { EmailTemplate } from '../types';
 
+const EMPTY_FORM = { name: '', subject: '', body_content: '' };
+const VARIABLES = ['{{candidate_name}}', '{{job_title}}', '{{interview_link}}'];
+
 export const EmailTemplates = () => {
-  const { data: templates, isLoading, isError, refetch } = useEmailTemplates();
+  const { data: templates, isLoading, isError, error, refetch } = useEmailTemplates();
   const createMutation = useCreateTemplate();
   const updateMutation = useUpdateTemplate();
   const deleteMutation = useDeleteTemplate();
@@ -14,12 +21,18 @@ export const EmailTemplates = () => {
 
   const [isCreating, setIsCreating] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [formData, setFormData] = useState({ name: '', subject: '', body_content: '' });
+  const [formData, setFormData] = useState(EMPTY_FORM);
 
   const resetFormAndClose = () => {
     setIsCreating(false);
     setEditingId(null);
-    setFormData({ name: '', subject: '', body_content: '' });
+    setFormData(EMPTY_FORM);
+  };
+
+  const startCreate = () => {
+    setEditingId(null);
+    setFormData(EMPTY_FORM);
+    setIsCreating(true);
   };
 
   const startEdit = (template: EmailTemplate) => {
@@ -49,126 +62,142 @@ export const EmailTemplates = () => {
 
   const isSaving = createMutation.isPending || updateMutation.isPending;
   const isBusy = isSaving || deleteMutation.isPending;
+  const saveError = getErrorMessage(createMutation.error) || getErrorMessage(updateMutation.error) || 'Failed to save template.';
+
+  const columns: Column<EmailTemplate>[] = [
+    {
+      id: 'name',
+      header: 'Template',
+      mobile: 'title',
+      className: 'w-[22%]',
+      skeleton: 'text',
+      cell: (t) => <span className="text-sm font-medium text-[var(--text-primary)]">{t.name}</span>,
+    },
+    {
+      id: 'subject',
+      header: 'Subject',
+      className: 'w-[26%]',
+      cell: (t) => <span className="line-clamp-2 text-sm text-[var(--text-secondary)]">{t.subject}</span>,
+    },
+    {
+      id: 'body',
+      header: 'Body',
+      hideBelow: 'lg',
+      mobile: 'body',
+      cell: (t) => <p className="line-clamp-2 text-sm text-[var(--text-secondary)]">{t.body_content}</p>,
+    },
+    {
+      id: 'updated',
+      header: 'Updated',
+      hideBelow: 'xl',
+      mobile: 'hidden',
+      className: 'w-32',
+      cell: (t) => {
+        const at = t.updated_at || t.created_at;
+        return <span className="text-caption whitespace-nowrap">{at ? formatDistanceToNow(new Date(at), { addSuffix: true }) : '—'}</span>;
+      },
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'right',
+      mobile: 'actions',
+      className: 'w-20',
+      skeleton: 'actions',
+      cell: (t) => (
+        <div className="flex justify-end gap-0.5">
+          <IconButton label={`Edit template ${t.name}`} icon={<Pencil size={15} />} disabled={isBusy} onClick={() => startEdit(t)} />
+          <IconButton label={`Delete template ${t.name}`} tone="danger" icon={<Trash2 size={15} />} disabled={isBusy} onClick={() => handleDelete(t)} />
+        </div>
+      ),
+    },
+  ];
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <Mail className="w-6 h-6 text-blue-600" /> Email Templates
-          </h1>
-          <p className="text-slate-500 text-sm mt-1">Manage reusable templates for candidate outreach.</p>
-        </div>
-        <Button
-          onClick={() => { setEditingId(null); setFormData({ name: '', subject: '', body_content: '' }); setIsCreating(true); }}
-          className="flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" /> New Template
-        </Button>
-      </div>
+    <div className="mx-auto max-w-6xl">
+      <PageHeader
+        className="mb-6"
+        title="Email templates"
+        subtitle="Manage reusable templates for candidate outreach."
+        actions={
+          <Button onClick={startCreate} disabled={isCreating && editingId == null}>
+            <Plus size={14} aria-hidden="true" /> New template
+          </Button>
+        }
+      />
 
       {isCreating && (
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-8">
-          <h2 className="text-lg font-semibold text-slate-800 mb-4">{editingId != null ? 'Edit Template' : 'Create Template'}</h2>
+        <section aria-label={editingId != null ? 'Edit template' : 'Create template'} className="mb-6 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-surface)] p-5">
+          <h2 className="text-section-heading mb-4">{editingId != null ? 'Edit template' : 'Create template'}</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Template Name</label>
-              <input 
+              <Label htmlFor="tpl-name" className="mb-1.5 block">Template name</Label>
+              <Input
+                id="tpl-name"
                 required
-                type="text" 
+                autoFocus
                 value={formData.name}
-                onChange={e => setFormData(f => ({ ...f, name: e.target.value }))}
-                className="w-full border-slate-300 rounded-md shadow-sm text-sm bg-white text-slate-900 placeholder-slate-400 focus-ring"
+                onChange={(e) => setFormData((f) => ({ ...f, name: e.target.value }))}
                 placeholder="e.g., Interview Invitation"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Subject</label>
-              <input 
+              <Label htmlFor="tpl-subject" className="mb-1.5 block">Subject</Label>
+              <Input
+                id="tpl-subject"
                 required
-                type="text" 
                 value={formData.subject}
-                onChange={e => setFormData(f => ({ ...f, subject: e.target.value }))}
-                className="w-full border-slate-300 rounded-md shadow-sm text-sm bg-white text-slate-900 placeholder-slate-400 focus-ring"
+                onChange={(e) => setFormData((f) => ({ ...f, subject: e.target.value }))}
                 placeholder="Invitation to interview for {{job_title}}"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Body Content</label>
-              <p className="text-xs text-slate-500 mb-2">Available variables: {'{{candidate_name}}'}, {'{{job_title}}'}, {'{{interview_link}}'}</p>
-              <textarea 
+              <Label htmlFor="tpl-body" className="mb-1.5 block">Body</Label>
+              <p className="text-caption mb-2 flex flex-wrap items-center gap-1.5">
+                Available variables:
+                {VARIABLES.map((v) => <Badge key={v} className="font-mono">{v}</Badge>)}
+              </p>
+              <Textarea
+                id="tpl-body"
                 required
-                rows={6}
+                rows={7}
                 value={formData.body_content}
-                onChange={e => setFormData(f => ({ ...f, body_content: e.target.value }))}
-                className="w-full border-slate-300 rounded-md shadow-sm text-sm bg-white text-slate-900 placeholder-slate-400 focus-ring"
+                onChange={(e) => setFormData((f) => ({ ...f, body_content: e.target.value }))}
                 placeholder="Hi {{candidate_name}}, we'd like to invite you..."
               />
             </div>
-            <div className="flex justify-end gap-3 pt-2">
-              <Button type="button" variant="secondary" onClick={resetFormAndClose}>Cancel</Button>
+            {(createMutation.isError || updateMutation.isError) && <Alert variant="danger">{saveError}</Alert>}
+            <div className="flex justify-end gap-2 border-t border-[var(--border-light)] pt-4">
+              <Button type="button" variant="secondary" onClick={resetFormAndClose} disabled={isSaving}>Cancel</Button>
               <Button type="submit" disabled={isSaving}>
-                {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Template'}
+                {isSaving ? <><Spinner size={14} className="text-current" /> Saving…</> : 'Save template'}
               </Button>
             </div>
-            {(createMutation.isError || updateMutation.isError) && (
-              <p className="text-red-500 text-sm mt-2">
-                {(createMutation.error as { message?: string } | null)?.message
-                  || (updateMutation.error as { message?: string } | null)?.message
-                  || 'Failed to save template.'}
-              </p>
-            )}
           </form>
-        </div>
+        </section>
       )}
 
-      {isLoading ? (
-        <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div>
-      ) : isError ? (
-        <div className="text-center py-20 bg-white rounded-xl border border-slate-200">
-          <p className="text-red-500 mb-4">Failed to load email templates.</p>
-          <Button variant="secondary" onClick={() => refetch()}>Retry</Button>
-        </div>
-      ) : templates && templates.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {templates.map(t => (
-            <div key={t.id} className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 hover:shadow-md transition-shadow flex flex-col h-full">
-              <div className="flex justify-between items-start mb-4">
-                <h3 className="font-semibold text-slate-800 text-lg">{t.name}</h3>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => startEdit(t)}
-                    disabled={isBusy}
-                    title="Edit template"
-                    aria-label={`Edit template ${t.name}`}
-                    className="text-slate-400 hover:text-blue-600 disabled:opacity-50"
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(t)}
-                    disabled={isBusy}
-                    title="Delete template"
-                    aria-label={`Delete template ${t.name}`}
-                    className="text-slate-400 hover:text-red-600 disabled:opacity-50"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-              <div className="text-sm font-medium text-slate-600 mb-2 truncate">Subj: {t.subject}</div>
-              <div className="text-sm text-slate-500 bg-slate-50 p-3 rounded-lg border border-slate-100 flex-1 whitespace-pre-wrap overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical' }}>
-                {t.body_content}
-              </div>
-            </div>
-          ))}
+      {isError ? (
+        <div className="rounded-lg border border-[var(--border-light)] bg-[var(--bg-surface)]">
+          <ErrorState title="Failed to load email templates" message={getErrorMessage(error)} onRetry={() => refetch()} />
         </div>
       ) : (
-        <div className="text-center py-20 bg-white rounded-xl border border-slate-200">
-          <Mail className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-slate-800 mb-1">No templates yet</h3>
-          <p className="text-slate-500">Create your first email template to speed up outreach.</p>
-        </div>
+        <DataTable
+          aria-label="Email templates"
+          rows={templates ?? []}
+          columns={columns}
+          getRowId={(t) => t.id}
+          isLoading={isLoading}
+          skeletonRows={4}
+          empty={
+            <EmptyState
+              icon={<Mail size={20} />}
+              title="No templates yet"
+              description="Create your first email template to speed up outreach."
+              action={!isCreating ? <Button variant="secondary" onClick={startCreate}><Plus size={14} aria-hidden="true" /> New template</Button> : undefined}
+            />
+          }
+        />
       )}
     </div>
   );

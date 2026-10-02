@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Mail, AlertTriangle } from 'lucide-react';
+import { Loader2, Mail } from 'lucide-react';
 import { useEmailTemplates, emailQueryKeys } from '../hooks/useEmails';
 import { emailsApi } from '../api/emails';
 import {
+  Alert,
   Button,
   Dialog,
   DialogContent,
@@ -135,7 +136,7 @@ export const BulkEmailModal = ({
           Send Email
         </DialogTitle>
         <DialogDescription>
-          You are about to send an email to <span className="font-bold text-slate-700">{totalResumes} candidate(s)</span>
+          You are about to send an email to <span className="font-semibold text-[var(--text-primary)]">{totalResumes} candidate(s)</span>
           {resumeGroups.length > 1 ? ` across ${resumeGroups.length} jobs` : ''}.
         </DialogDescription>
 
@@ -165,30 +166,24 @@ export const BulkEmailModal = ({
           </p>
 
           {sendMutation.isError && (
-            <div className="mt-4 p-3 bg-red-50 text-red-600 rounded-md text-sm">
+            <Alert variant="danger" className="mt-4">
               Failed to queue emails. Please try again or check the template.
-            </div>
+            </Alert>
           )}
 
           {hasPartialFailure && (
-            <div className="mt-4 p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-md text-sm space-y-2">
-              <div className="flex items-center gap-2 font-medium">
-                <AlertTriangle className="w-4 h-4" />
-                Queued {queuedThisAttempt} of {attemptedThisAttempt} in this attempt
-              </div>
-              <div>
-                Not fully queued for these job(s):
-                <ul className="list-disc list-inside mt-1">
-                  {lastOutcome!.failed.map(({ group, queued, requestError }) => (
-                    <li key={group.jobId}>
-                      {groupLabel(group)} - {requestError
-                        ? 'request failed'
-                        : `${queued} of ${group.resumeIds.length} queued (others skipped: no email on file, no live interview link if the template needs one, or already sent)`}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
+            <Alert variant="warning" className="mt-4" title={`Queued ${queuedThisAttempt} of ${attemptedThisAttempt} in this attempt`}>
+              <p>Not fully queued for these job(s):</p>
+              <ul className="mt-1 list-inside list-disc">
+                {lastOutcome!.failed.map(({ group, queued, requestError }) => (
+                  <li key={group.jobId}>
+                    {groupLabel(group)} - {requestError
+                      ? 'request failed'
+                      : `${queued} of ${group.resumeIds.length} queued (others skipped: no email on file, no live interview link if the template needs one, or already sent)`}
+                  </li>
+                ))}
+              </ul>
+            </Alert>
           )}
         </div>
 

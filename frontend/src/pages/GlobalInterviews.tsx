@@ -2,13 +2,19 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
-import { Loader2, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar } from 'lucide-react';
 import { jobsApi } from '../api/jobs';
 import { queryKeys } from '../api/queryKeys';
 import { useGlobalInterviews } from '../hooks/useGlobalInterviews';
-import { Badge, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../components/ui';
-import { getInterviewStatusBadgeVariant } from '../utils/status';
+import {
+  Badge, DataTable, EmptyState, ErrorState, FilterBar, FilterBarSpacer, NativeSelect, PageHeader, Pagination, StatusDot,
+  type Column,
+} from '../components/ui';
+import { CandidateIdentity } from '../components/candidate/ScreeningCells';
+import { getInterviewStatusBadgeVariant, interviewStatusLabel } from '../utils/status';
 import { parseRecommendation } from '../utils/interviewEvaluation';
+import { getErrorMessage } from '../utils/errors';
+import type { GlobalInterviewResponse } from '../types';
 
 const PAGE_SIZE = 20;
 
@@ -26,126 +32,109 @@ export const GlobalInterviews = () => {
   const { data: jobs } = useQuery({ queryKey: queryKeys.jobs(), queryFn: jobsApi.getJobs });
 
   const params = { status, job_id: jobId, page, page_size: PAGE_SIZE };
-  const { data, isLoading, isError, error } = useGlobalInterviews(params);
+  const { data, isLoading, isFetching, isError, error, refetch } = useGlobalInterviews(params);
+
+  const filtered = !!(status || jobId);
+
+  const columns: Column<GlobalInterviewResponse>[] = [
+    {
+      id: 'candidate',
+      header: 'Candidate',
+      mobile: 'title',
+      skeleton: 'avatar',
+      className: 'w-64',
+      cell: (r) => <CandidateIdentity name={r.candidate_name} fallback={r.resume_filename || `Resume #${r.resume_id}`} />,
+    },
+    { id: 'job', header: 'Job', cell: (r) => <span className="text-sm text-[var(--text-secondary)]">{r.job_title}</span> },
+    {
+      id: 'status',
+      header: 'Status',
+      className: 'w-44',
+      skeleton: 'badge',
+      cell: (r) => (
+        <StatusDot variant={getInterviewStatusBadgeVariant(r.status)} live={r.status === 'IN_PROGRESS'}>
+          {interviewStatusLabel(r.status)}
+        </StatusDot>
+      ),
+    },
+    {
+      id: 'recommendation',
+      header: 'Recommendation',
+      className: 'w-44',
+      cell: (r) => {
+        const rec = parseRecommendation(r.evaluation?.interview_recommendation);
+        return rec ? (
+          <Badge variant={rec.variant} title={rec.reason || undefined}>{rec.label}</Badge>
+        ) : (
+          <span className="text-sm text-[var(--text-tertiary)]">—</span>
+        );
+      },
+    },
+    {
+      id: 'updated',
+      header: 'Updated',
+      className: 'w-36',
+      cell: (r) => (
+        <span className="text-caption whitespace-nowrap">{r.updated_at ? formatDistanceToNow(new Date(r.updated_at), { addSuffix: true }) : '—'}</span>
+      ),
+    },
+  ];
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
-      <div className="flex items-center space-x-3 mb-8">
-        <div className="w-10 h-10 bg-[var(--color-primary-subtle-bg)] text-[var(--color-primary-subtle-text)] rounded-lg flex items-center justify-center">
-          <Calendar className="w-6 h-6" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">All Interviews</h1>
-          <p className="text-sm text-[var(--text-secondary)]">Every candidate interview scheduled or completed across all jobs.</p>
-        </div>
-      </div>
+    <div className="mx-auto max-w-6xl">
+      <PageHeader
+        className="mb-6"
+        title="All interviews"
+        subtitle="Every candidate interview scheduled or completed across all jobs."
+      />
 
-      <div className="flex flex-wrap justify-end gap-3 mb-4">
-        <div className="w-48">
-          <Select
-            value={status || 'all'}
-            onValueChange={(value) => { setStatus(value === 'all' ? undefined : value); setPage(1); }}
-          >
-            <SelectTrigger><SelectValue placeholder="All Statuses" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
-              {STATUS_OPTIONS.map((s) => (
-                <SelectItem key={s} value={s}>{s.replace(/_/g, ' ')}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="w-56">
-          <Select
-            value={jobId ? String(jobId) : 'all'}
-            onValueChange={(value) => { setJobId(value === 'all' ? undefined : Number(value)); setPage(1); }}
-          >
-            <SelectTrigger><SelectValue placeholder="All Jobs" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Jobs</SelectItem>
-              {jobs?.map((job) => (
-                <SelectItem key={job.id} value={String(job.id)}>{job.title}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      <FilterBar className="mb-4">
+        <NativeSelect
+          aria-label="Filter by status"
+          value={status ?? ''}
+          onChange={(e) => { setStatus(e.target.value || undefined); setPage(1); }}
+        >
+          <option value="">All statuses</option>
+          {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{interviewStatusLabel(s)}</option>)}
+        </NativeSelect>
+        <NativeSelect
+          aria-label="Filter by job"
+          value={jobId ?? ''}
+          onChange={(e) => { setJobId(e.target.value ? Number(e.target.value) : undefined); setPage(1); }}
+          className="max-w-[16rem]"
+        >
+          <option value="">All jobs</option>
+          {jobs?.map((job) => <option key={job.id} value={job.id}>{job.title}</option>)}
+        </NativeSelect>
+        <FilterBarSpacer />
+        {data && <span className="text-caption tabular" aria-live="polite">{data.total} interview{data.total === 1 ? '' : 's'}</span>}
+      </FilterBar>
 
-      <div className="bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-xl shadow-sm overflow-hidden">
-        {isLoading && !data ? (
-          <div className="flex justify-center items-center h-64">
-            <Loader2 className="w-8 h-8 animate-spin text-[var(--color-primary-500)]" />
-          </div>
-        ) : isError ? (
-          <div className="p-8 text-center text-[var(--color-danger-600)]">
-            Failed to load interviews{error instanceof Error ? `: ${error.message}` : '.'}
-          </div>
-        ) : !data || data.items.length === 0 ? (
-          <div className="text-center py-20">
-            <Calendar className="w-12 h-12 text-[var(--text-tertiary)] mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-[var(--text-primary)] mb-1">No interviews yet</h3>
-            <p className="text-[var(--text-secondary)]">Trigger an interview from a candidate's profile to see it appear here.</p>
-          </div>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-[var(--bg-app)] border-b border-[var(--border-light)] text-[var(--text-secondary)]">
-                  <tr>
-                    <th className="px-6 py-4 font-medium">Candidate</th>
-                    <th className="px-6 py-4 font-medium">Job</th>
-                    <th className="px-6 py-4 font-medium">Status</th>
-                    <th className="px-6 py-4 font-medium">Recommendation</th>
-                    <th className="px-6 py-4 font-medium">Updated</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--border-light)]">
-                  {data.items.map((row) => {
-                    const recommendation = parseRecommendation(row.evaluation?.interview_recommendation);
-                    return (
-                      <tr
-                        key={row.id}
-                        className="hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
-                        onClick={() => navigate(`/interview/${row.job_id}/${row.resume_id}`)}
-                      >
-                        <td className="px-6 py-4 font-medium text-[var(--text-primary)]">
-                          {row.candidate_name || row.resume_filename || `Resume #${row.resume_id}`}
-                        </td>
-                        <td className="px-6 py-4 text-[var(--text-secondary)]">{row.job_title}</td>
-                        <td className="px-6 py-4">
-                          <Badge variant={getInterviewStatusBadgeVariant(row.status)}>{row.status.replace(/_/g, ' ')}</Badge>
-                        </td>
-                        <td className="px-6 py-4">
-                          {recommendation ? (
-                            <Badge variant={recommendation.variant} title={recommendation.reason || undefined}>{recommendation.label}</Badge>
-                          ) : (
-                            <span className="text-[var(--text-tertiary)] text-xs">—</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 text-[var(--text-tertiary)] text-xs">
-                          {row.updated_at ? formatDistanceToNow(new Date(row.updated_at), { addSuffix: true }) : '—'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="px-6 py-4 border-t border-[var(--border-light)] bg-[var(--bg-app)] flex items-center justify-between text-sm text-[var(--text-secondary)]">
-              <span>Showing {(page - 1) * PAGE_SIZE + 1}-{Math.min(page * PAGE_SIZE, data.total)} of {data.total}</span>
-              <div className="flex gap-1">
-                <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="p-1 rounded hover:bg-[var(--bg-hover)] disabled:opacity-50 text-[var(--text-secondary)] focus-ring">
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
-                <button disabled={page * PAGE_SIZE >= data.total} onClick={() => setPage((p) => p + 1)} className="p-1 rounded hover:bg-[var(--bg-hover)] disabled:opacity-50 text-[var(--text-secondary)] focus-ring">
-                  <ChevronRight className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
+      {isError ? (
+        <div className="rounded-lg border border-[var(--border-light)] bg-[var(--bg-surface)]">
+          <ErrorState title="Failed to load interviews" message={getErrorMessage(error)} onRetry={() => refetch()} />
+        </div>
+      ) : (
+        <>
+          <DataTable
+            aria-label="Interviews"
+            rows={data?.items ?? []}
+            columns={columns}
+            getRowId={(r) => r.id}
+            isLoading={isLoading && !data}
+            isRefreshing={isFetching && !!data}
+            onRowClick={(r) => navigate(`/interview/${r.job_id}/${r.resume_id}`)}
+            empty={
+              <EmptyState
+                icon={<Calendar size={20} />}
+                title={filtered ? 'No interviews match these filters' : 'No interviews yet'}
+                description={filtered ? 'Try a different status or job.' : "Trigger an interview from a candidate's profile to see it appear here."}
+              />
+            }
+          />
+          {data && data.total > 0 && <Pagination className="mt-4" page={page} pageSize={PAGE_SIZE} total={data.total} onPageChange={setPage} />}
+        </>
+      )}
     </div>
   );
 };

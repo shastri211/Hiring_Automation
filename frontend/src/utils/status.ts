@@ -82,3 +82,21 @@ export function batchTypeLabel(type: string): string {
     default: return 'Upload';
   }
 }
+
+/** "RESCHEDULE_PENDING" -> "Reschedule pending". */
+export function interviewStatusLabel(status?: string | null): string {
+  if (!status) return 'Not scheduled';
+  return status.charAt(0) + status.slice(1).toLowerCase().replace(/_/g, ' ');
+}
+
+/** EmailMessage.status -> the label used everywhere outreach is shown. */
+export function emailStatusLabel(status?: string | null): string {
+  switch (status) {
+    case 'SENT': return 'Sent';
+    case 'PENDING': return 'Pending';
+    case 'SIMULATED': return 'Not delivered (no SMTP)';
+    case 'FAILED': return 'Failed';
+    case 'BLOCKED': return 'Blocked';
+    default: return status ?? '—';
+  }
+}
