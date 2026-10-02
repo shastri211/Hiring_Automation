@@ -52,6 +52,7 @@ class EmailProviderAdapter:
         """
         if not self.host:
             logger.warning(f"SMTP_HOST not configured. Simulating email to {to_email}")
+            logger.info(f"--- SIMULATED EMAIL BODY ---\n{html_body}\n----------------------------")
             # Simulate a successful response for development if no SMTP server is set
             return {"id": f"simulated_msg_{int(datetime.utcnow().timestamp())}", "status": "simulated"}
 

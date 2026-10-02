@@ -18,6 +18,11 @@ not forced to change the password (they chose it themselves).
 """
 import argparse
 import asyncio
+import sys
+
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 import getpass
 import sys
 from datetime import datetime, timezone
@@ -73,7 +78,7 @@ async def create_user(
         )
 
 
-def main() -> None:
+async def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
         "--platform-admin", action="store_true",
@@ -81,7 +86,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    orgs = asyncio.run(_list_organizations())
+    orgs = await _list_organizations()
     organization_id: int | None = None
     new_org_name: str | None = None
     if orgs:
@@ -120,11 +125,11 @@ def main() -> None:
         print("Passwords do not match.", file=sys.stderr)
         sys.exit(1)
 
-    asyncio.run(create_user(
+    await create_user(
         email=email, name=name, password=password, organization_id=organization_id,
         new_org_name=new_org_name, platform_admin=args.platform_admin,
-    ))
+    )
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
