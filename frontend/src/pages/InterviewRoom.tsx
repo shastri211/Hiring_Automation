@@ -3,7 +3,8 @@ import { useParams } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Loader2, AlertCircle, CheckCircle2, Mic } from 'lucide-react';
 import { publicInterviewApi } from '../api/publicInterview';
-import { Button } from '../components/ui/Button';
+import { Button } from '../components/ui';
+import { AuthState } from '../components/auth/AuthState';
 import { PublicPageShell } from '../components/layout/PublicPageShell';
 import type { PublicInterviewErrorReason } from '../types';
 
@@ -106,9 +107,9 @@ export const InterviewRoom = () => {
   if (isLoading) {
     return (
       <PublicPageShell>
-        <div className="flex flex-col items-center py-8 gap-3 text-[var(--text-secondary)]">
-          <Loader2 className="w-6 h-6 animate-spin" />
-          <p className="text-sm">Loading your interview...</p>
+        <div role="status" className="flex flex-col items-center gap-3 py-8 text-[var(--text-secondary)]">
+          <Loader2 className="h-6 w-6 animate-spin" aria-hidden="true" />
+          <p className="text-sm">Loading your interview…</p>
         </div>
       </PublicPageShell>
     );
@@ -120,11 +121,7 @@ export const InterviewRoom = () => {
     const copy = ERROR_COPY[reason] || ERROR_COPY.not_found;
     return (
       <PublicPageShell>
-        <div className="flex flex-col items-center text-center py-4 gap-3">
-          <AlertCircle className="w-10 h-10 text-[var(--color-danger-600)]" />
-          <h1 className="text-lg font-semibold text-[var(--text-primary)]">{copy.title}</h1>
-          <p className="text-sm text-[var(--text-secondary)] max-w-sm">{copy.description}</p>
-        </div>
+        <AuthState tone="danger" icon={<AlertCircle size={20} />} title={copy.title}>{copy.description}</AuthState>
       </PublicPageShell>
     );
   }
@@ -135,28 +132,28 @@ export const InterviewRoom = () => {
     <PublicPageShell>
       <div className="flex flex-col gap-4">
         <div className="text-center">
-          <h1 className="text-lg font-semibold text-[var(--text-primary)]">Hi {data.candidate_name},</h1>
-          <p className="text-sm text-[var(--text-secondary)] mt-1">
-            You&apos;re about to start your interview for <strong>{data.job_title}</strong>.
+          <h1 className="text-section-heading">Hi {data.candidate_name},</h1>
+          <p className="text-body mt-1">
+            You&apos;re about to start your interview for <strong className="text-[var(--text-primary)]">{data.job_title}</strong>.
           </p>
         </div>
 
         {phase === 'idle' && (
           <div className="flex flex-col items-center gap-4 py-4">
-            <p className="text-xs text-[var(--text-tertiary)] text-center max-w-xs">
+            <p className="text-caption max-w-xs text-center">
               This interview happens right here in your browser. When you&apos;re ready, make sure your
               microphone is enabled, then click below to begin.
             </p>
             <Button onClick={handleStart} className="w-full justify-center">
-              <Mic className="w-4 h-4 mr-2" /> Start Interview
+              <Mic size={14} aria-hidden="true" /> Start interview
             </Button>
           </div>
         )}
 
         {phase === 'connecting' && (
-          <div className="flex flex-col items-center gap-3 py-6 text-[var(--text-secondary)]">
-            <Loader2 className="w-6 h-6 animate-spin" />
-            <p className="text-sm">Connecting...</p>
+          <div role="status" className="flex flex-col items-center gap-3 py-6 text-[var(--text-secondary)]">
+            <Loader2 className="h-6 w-6 animate-spin" aria-hidden="true" />
+            <p className="text-sm">Connecting…</p>
           </div>
         )}
 
@@ -166,26 +163,22 @@ export const InterviewRoom = () => {
         )}
 
         {phase === 'ended' && (
-          <div className="flex flex-col items-center text-center gap-3 py-6">
-            <CheckCircle2 className="w-10 h-10 text-[var(--color-success-600)]" />
-            <h2 className="text-base font-medium text-[var(--text-primary)]">Thanks for your time!</h2>
-            <p className="text-sm text-[var(--text-secondary)] max-w-sm">
-              Your interview has ended. The hiring team will review it and follow up with you soon. You can
-              safely close this window now.
-            </p>
-          </div>
+          <AuthState tone="success" icon={<CheckCircle2 size={20} />} title="Thanks for your time!">
+            Your interview has ended. The hiring team will review it and follow up with you soon. You can
+            safely close this window now.
+          </AuthState>
         )}
 
         {phase === 'widget_error' && (
-          <div className="flex flex-col items-center text-center gap-3 py-6">
-            <AlertCircle className="w-10 h-10 text-[var(--color-danger-600)]" />
-            <h2 className="text-base font-medium text-[var(--text-primary)]">We couldn&apos;t start the interview</h2>
-            <p className="text-sm text-[var(--text-secondary)] max-w-sm">
-              Something went wrong connecting to the interview service. Please refresh the page to try again,
-              or contact the recruiter if the problem continues.
-            </p>
-            <Button variant="secondary" onClick={() => window.location.reload()}>Retry</Button>
-          </div>
+          <AuthState
+            tone="danger"
+            icon={<AlertCircle size={20} />}
+            title="We couldn't start the interview"
+            action={<Button variant="secondary" onClick={() => window.location.reload()}>Retry</Button>}
+          >
+            Something went wrong connecting to the interview service. Please refresh the page to try again,
+            or contact the recruiter if the problem continues.
+          </AuthState>
         )}
       </div>
     </PublicPageShell>

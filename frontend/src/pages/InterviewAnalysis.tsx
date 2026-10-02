@@ -1,12 +1,19 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { Loader2, MessageSquare, ChevronLeft, ChevronRight } from 'lucide-react';
+import { MessageSquare } from 'lucide-react';
 import { jobsApi } from '../api/jobs';
 import { queryKeys } from '../api/queryKeys';
 import { useInterviewAnalysisSummary, useInterviewAnalysisList } from '../hooks/useInterviewAnalysis';
-import { Card, CardContent, Badge, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../components/ui';
+import {
+  Badge, Card, DataTable, EmptyState, ErrorState, FilterBar, FilterBarSpacer, NativeSelect, PageHeader, PanelBody, PanelHeader,
+  Pagination, StatTile, type Column,
+} from '../components/ui';
+import { CandidateIdentity } from '../components/candidate/ScreeningCells';
+import { chart } from '../components/charts/chartTheme';
 import { parseRecommendation } from '../utils/interviewEvaluation';
+import { getErrorMessage } from '../utils/errors';
+import type { InterviewAnalysisItem } from '../types';
 
 const PAGE_SIZE = 20;
 
@@ -31,144 +38,134 @@ export const InterviewAnalysis = () => {
     return Object.entries(breakdown).map(([disposition, count]) => ({ disposition, count }));
   }, [summaryQuery.data]);
 
-  return (
-    <div className="p-8 max-w-6xl mx-auto">
-      <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-[var(--color-primary-subtle-bg)] text-[var(--color-primary-subtle-text)] rounded-lg flex items-center justify-center">
-            <MessageSquare className="w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-[var(--text-primary)]">Interview Analysis</h1>
-            <p className="text-sm text-[var(--text-secondary)]">Outcomes and dispositions from completed candidate interviews.</p>
-          </div>
-        </div>
-        <div className="w-56">
-          <Select value={jobId ? String(jobId) : 'all'} onValueChange={(v) => { setJobId(v === 'all' ? undefined : Number(v)); setPage(1); }}>
-            <SelectTrigger><SelectValue placeholder="All Jobs" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Jobs</SelectItem>
-              {jobs?.map((job) => <SelectItem key={job.id} value={String(job.id)}>{job.title}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+  const summary = summaryQuery.data;
 
-      {summaryQuery.isLoading ? (
-        <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-[var(--color-primary-500)]" /></div>
-      ) : summaryQuery.isError ? (
-        <div className="p-6 text-center text-[var(--color-danger-600)] bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-xl mb-8">
-          Failed to load interview analysis summary.
+  const columns: Column<InterviewAnalysisItem>[] = [
+    {
+      id: 'candidate',
+      header: 'Candidate',
+      mobile: 'title',
+      skeleton: 'avatar',
+      className: 'w-64',
+      cell: (i) => <CandidateIdentity name={i.candidate_name} fallback={`Resume #${i.resume_id}`} />,
+    },
+    { id: 'job', header: 'Job', cell: (i) => <span className="text-sm text-[var(--text-secondary)]">{i.job_title}</span> },
+    { id: 'disposition', header: 'Disposition', skeleton: 'badge', cell: (i) => <Badge>{i.call_disposition || 'unspecified'}</Badge> },
+    {
+      id: 'recommendation',
+      header: 'Recommendation',
+      cell: (i) => {
+        const rec = parseRecommendation(i.interview_recommendation);
+        return rec ? <Badge variant={rec.variant} title={rec.reason || undefined}>{rec.label}</Badge> : <span className="text-sm text-[var(--text-tertiary)]">—</span>;
+      },
+    },
+    {
+      id: 'duration',
+      header: 'Duration',
+      align: 'right',
+      className: 'w-28',
+      cell: (i) => <span className="tabular text-sm text-[var(--text-secondary)]">{formatDuration(i.cost_info?.call_duration_seconds)}</span>,
+    },
+    {
+      id: 'date',
+      header: 'Date',
+      className: 'w-32',
+      cell: (i) => <span className="text-caption whitespace-nowrap">{i.created_at ? new Date(i.created_at).toLocaleDateString() : '—'}</span>,
+    },
+  ];
+
+  return (
+    <div className="mx-auto max-w-6xl">
+      <PageHeader className="mb-6" title="Interview analysis" subtitle="Outcomes and dispositions from completed candidate interviews." />
+
+      <FilterBar className="mb-6">
+        <NativeSelect
+          aria-label="Filter by job"
+          value={jobId ?? ''}
+          onChange={(e) => { setJobId(e.target.value ? Number(e.target.value) : undefined); setPage(1); }}
+          className="max-w-[18rem]"
+        >
+          <option value="">All jobs</option>
+          {jobs?.map((job) => <option key={job.id} value={job.id}>{job.title}</option>)}
+        </NativeSelect>
+        <FilterBarSpacer />
+      </FilterBar>
+
+      {summaryQuery.isError ? (
+        <div className="mb-6 rounded-lg border border-[var(--border-light)] bg-[var(--bg-surface)]">
+          <ErrorState title="Failed to load the interview summary" message={getErrorMessage(summaryQuery.error)} onRetry={() => summaryQuery.refetch()} />
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <Card><CardContent className="p-5">
-              <div className="text-sm text-[var(--text-secondary)] mb-1">Completion Rate</div>
-              <div className="text-2xl font-bold text-[var(--text-primary)]">{Math.round((summaryQuery.data?.completion_rate ?? 0) * 100)}%</div>
-            </CardContent></Card>
-            <Card><CardContent className="p-5">
-              <div className="text-sm text-[var(--text-secondary)] mb-1">Avg Call Duration</div>
-              <div className="text-2xl font-bold text-[var(--text-primary)]">{formatDuration(summaryQuery.data?.avg_call_duration_seconds)}</div>
-            </CardContent></Card>
-            <Card><CardContent className="p-5">
-              <div className="text-sm text-[var(--text-secondary)] mb-1">Total Interviews</div>
-              <div className="text-2xl font-bold text-[var(--text-primary)]">{summaryQuery.data?.total_interviews ?? 0}</div>
-              <div className="text-xs text-[var(--text-tertiary)] mt-1">{summaryQuery.data?.completed_interviews ?? 0} completed</div>
-            </CardContent></Card>
-          </div>
+          <section aria-label="Interview summary" className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+            <StatTile
+              label="Completion rate"
+              isLoading={summaryQuery.isLoading}
+              value={summary ? `${Math.round((summary.completion_rate ?? 0) * 100)}%` : undefined}
+            />
+            <StatTile label="Avg call duration" isLoading={summaryQuery.isLoading} value={summary ? formatDuration(summary.avg_call_duration_seconds) : undefined} />
+            <StatTile
+              label="Total interviews"
+              isLoading={summaryQuery.isLoading}
+              value={summary?.total_interviews ?? 0}
+              hint={`${summary?.completed_interviews ?? 0} completed`}
+            />
+          </section>
 
-          <Card className="mb-8">
-            <CardContent className="p-6">
-              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-4">Disposition Breakdown</h3>
-              {dispositionData.length === 0 ? (
-                <p className="text-sm text-[var(--text-tertiary)] italic py-8 text-center">
-                  No completed interviews with recorded dispositions yet.
-                </p>
-              ) : (
-                <div style={{ width: '100%', height: 260 }}>
+          <Card className="mb-6">
+            <PanelHeader title="Disposition breakdown" />
+            <PanelBody
+              isLoading={summaryQuery.isLoading}
+              isError={false}
+              onRetry={() => summaryQuery.refetch()}
+              isEmpty={dispositionData.length === 0}
+              empty={<p className="text-body px-5 py-10 text-center">No completed interviews with recorded dispositions yet.</p>}
+              rows={4}
+            >
+              <div className="p-5" role="img" aria-label={`Dispositions: ${dispositionData.map((d) => `${d.disposition} ${d.count}`).join(', ')}`}>
+                <div style={{ width: '100%', height: 240 }}>
                   <ResponsiveContainer>
                     <BarChart data={dispositionData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border-light)" />
-                      <XAxis dataKey="disposition" tick={{ fontSize: 12 }} />
-                      <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
-                      <Tooltip />
-                      <Bar dataKey="count" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                      <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
+                      <XAxis dataKey="disposition" tick={chart.axis} axisLine={chart.axisLine} tickLine={false} />
+                      <YAxis allowDecimals={false} tick={chart.axis} axisLine={false} tickLine={false} />
+                      <Tooltip {...chart.tooltip} />
+                      <Bar dataKey="count" fill={chart.primary} radius={[3, 3, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-              )}
-            </CardContent>
+              </div>
+            </PanelBody>
           </Card>
         </>
       )}
 
-      <div className="bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-xl shadow-sm overflow-hidden">
-        {listQuery.isLoading && !listQuery.data ? (
-          <div className="flex justify-center items-center h-64">
-            <Loader2 className="w-8 h-8 animate-spin text-[var(--color-primary-500)]" />
-          </div>
-        ) : listQuery.isError ? (
-          <div className="p-8 text-center text-[var(--color-danger-600)]">Failed to load interview analysis records.</div>
-        ) : !listQuery.data || listQuery.data.items.length === 0 ? (
-          <div className="text-center py-20">
-            <MessageSquare className="w-12 h-12 text-[var(--text-tertiary)] mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-[var(--text-primary)] mb-1">No interview records yet</h3>
-            <p className="text-[var(--text-secondary)]">Completed interviews with evaluation data will appear here.</p>
-          </div>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-[var(--bg-app)] border-b border-[var(--border-light)] text-[var(--text-secondary)]">
-                  <tr>
-                    <th className="px-6 py-4 font-medium">Candidate</th>
-                    <th className="px-6 py-4 font-medium">Job</th>
-                    <th className="px-6 py-4 font-medium">Disposition</th>
-                    <th className="px-6 py-4 font-medium">Recommendation</th>
-                    <th className="px-6 py-4 font-medium">Duration</th>
-                    <th className="px-6 py-4 font-medium">Date</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--border-light)]">
-                  {listQuery.data.items.map((item) => {
-                    const recommendation = parseRecommendation(item.interview_recommendation);
-                    return (
-                      <tr key={item.id} className="hover:bg-[var(--bg-hover)] transition-colors">
-                        <td className="px-6 py-4 font-medium text-[var(--text-primary)]">{item.candidate_name || `Resume #${item.resume_id}`}</td>
-                        <td className="px-6 py-4 text-[var(--text-secondary)]">{item.job_title}</td>
-                        <td className="px-6 py-4"><Badge variant="neutral">{item.call_disposition || 'unspecified'}</Badge></td>
-                        <td className="px-6 py-4">
-                          {recommendation ? (
-                            <Badge variant={recommendation.variant} title={recommendation.reason || undefined}>{recommendation.label}</Badge>
-                          ) : (
-                            <span className="text-[var(--text-tertiary)] text-xs">—</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 text-[var(--text-secondary)]">{formatDuration(item.cost_info?.call_duration_seconds)}</td>
-                        <td className="px-6 py-4 text-xs text-[var(--text-tertiary)]">
-                          {item.created_at ? new Date(item.created_at).toLocaleDateString() : '—'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <div className="px-6 py-4 border-t border-[var(--border-light)] bg-[var(--bg-app)] flex items-center justify-between text-sm text-[var(--text-secondary)]">
-              <span>Showing {(page - 1) * PAGE_SIZE + 1}-{Math.min(page * PAGE_SIZE, listQuery.data.total)} of {listQuery.data.total}</span>
-              <div className="flex gap-1">
-                <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="p-1 rounded hover:bg-[var(--bg-hover)] disabled:opacity-50 text-[var(--text-secondary)] focus-ring">
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
-                <button disabled={page * PAGE_SIZE >= listQuery.data.total} onClick={() => setPage((p) => p + 1)} className="p-1 rounded hover:bg-[var(--bg-hover)] disabled:opacity-50 text-[var(--text-secondary)] focus-ring">
-                  <ChevronRight className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
+      {listQuery.isError ? (
+        <div className="rounded-lg border border-[var(--border-light)] bg-[var(--bg-surface)]">
+          <ErrorState title="Failed to load interview records" message={getErrorMessage(listQuery.error)} onRetry={() => listQuery.refetch()} />
+        </div>
+      ) : (
+        <>
+          <DataTable
+            aria-label="Interview records"
+            rows={listQuery.data?.items ?? []}
+            columns={columns}
+            getRowId={(i) => i.id}
+            isLoading={listQuery.isLoading && !listQuery.data}
+            isRefreshing={listQuery.isFetching && !!listQuery.data}
+            empty={
+              <EmptyState
+                icon={<MessageSquare size={20} />}
+                title="No interview records yet"
+                description="Completed interviews with evaluation data will appear here."
+              />
+            }
+          />
+          {listQuery.data && listQuery.data.total > 0 && (
+            <Pagination className="mt-4" page={page} pageSize={PAGE_SIZE} total={listQuery.data.total} onPageChange={setPage} />
+          )}
+        </>
+      )}
     </div>
   );
 };

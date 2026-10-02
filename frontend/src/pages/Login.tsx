@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { AlertCircle, Loader2, MailWarning } from 'lucide-react';
+import { Loader2, MailWarning } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { PublicPageShell } from '../components/layout/PublicPageShell';
-import { Button, Input, Label } from '../components/ui';
+import { Alert, Button, Input, Label } from '../components/ui';
+import { authLinkClass } from '../components/auth/authStyles';
 import { ResendVerificationForm } from '../components/auth/ResendVerificationForm';
 import type { ApiError } from '../types';
 
@@ -45,7 +46,7 @@ export const Login = () => {
       footer={
         <>
           New company?{' '}
-          <Link to="/signup" className="text-[var(--color-primary-600)] hover:underline">Create a company account</Link>
+          <Link to="/signup" className={authLinkClass}>Create a company account</Link>
           . Joining an existing team? Ask your admin to add you.
         </>
       }
@@ -55,23 +56,13 @@ export const Login = () => {
         <p className="text-sm text-[var(--text-secondary)]">Use your HR account to access RecruitPro.</p>
       </div>
 
-      {error && (
-        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 text-red-800 px-3 py-2.5 text-sm mb-4">
-          <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
+      {error && <Alert variant="danger" className="mb-4">{error}</Alert>}
 
       {unverified && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 text-amber-900 px-3 py-3 text-sm mb-4 flex flex-col gap-3">
-          <div className="flex items-start gap-2">
-            <MailWarning className="w-4 h-4 mt-0.5 shrink-0" />
-            <span>
-              Please confirm your email address first - open the link we sent when you signed up. Need a new one?
-            </span>
-          </div>
-          <ResendVerificationForm initialEmail={email} />
-        </div>
+        <Alert variant="warning" icon={<MailWarning size={16} />} className="mb-4">
+          <p>Please confirm your email address first - open the link we sent when you signed up. Need a new one?</p>
+          <div className="mt-3"><ResendVerificationForm initialEmail={email} /></div>
+        </Alert>
       )}
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -91,7 +82,7 @@ export const Login = () => {
         <div>
           <div className="flex items-center justify-between">
             <Label htmlFor="password">Password</Label>
-            <Link to="/forgot-password" className="text-xs text-[var(--color-primary-600)] hover:underline">
+            <Link to="/forgot-password" className={authLinkClass}>
               Forgot password?
             </Link>
           </div>

@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
-import { AlertCircle, KeyRound, Loader2, MailCheck } from 'lucide-react';
+import { KeyRound, Loader2, MailCheck } from 'lucide-react';
 import { authApi } from '../api/auth';
+import { AuthState } from '../components/auth/AuthState';
+import { authLinkClass } from '../components/auth/authStyles';
 import { PublicPageShell } from '../components/layout/PublicPageShell';
-import { Button, Input, Label } from '../components/ui';
+import { Alert, Button, Input, Label } from '../components/ui';
 import type { ApiError } from '../types';
 
 // The server answers the same way whether or not the address has an
@@ -18,18 +20,14 @@ export const ForgotPassword = () => {
     request.mutate();
   };
 
-  const footer = <Link to="/login" className="text-[var(--color-primary-600)] hover:underline">Back to sign in</Link>;
+  const footer = <Link to="/login" className={authLinkClass}>Back to sign in</Link>;
 
   if (request.isSuccess) {
     return (
       <PublicPageShell footer={footer}>
-        <div className="flex flex-col items-center text-center py-4 gap-3">
-          <MailCheck className="w-10 h-10 text-[var(--color-success-600)]" />
-          <h1 className="text-lg font-semibold text-[var(--text-primary)]">Check your inbox</h1>
-          <p className="text-sm text-[var(--text-secondary)] max-w-sm">
-            If an account exists for {email}, we&apos;ve sent a link to reset its password. The link expires in 60 minutes.
-          </p>
-        </div>
+        <AuthState tone="success" icon={<MailCheck size={20} />} title="Check your inbox">
+          If an account exists for {email}, we&apos;ve sent a link to reset its password. The link expires in 60 minutes.
+        </AuthState>
       </PublicPageShell>
     );
   }
@@ -52,10 +50,7 @@ export const ForgotPassword = () => {
       </div>
 
       {errorText && (
-        <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 text-red-800 px-3 py-2.5 text-sm mb-4">
-          <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-          <span>{errorText}</span>
-        </div>
+        <Alert variant="danger" className="mb-4">{errorText}</Alert>
       )}
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">

@@ -3,8 +3,10 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { AlertCircle, CheckCircle2, KeyRound, Loader2 } from 'lucide-react';
 import { authApi } from '../api/auth';
+import { AuthState } from '../components/auth/AuthState';
+import { authLinkClass } from '../components/auth/authStyles';
 import { PublicPageShell } from '../components/layout/PublicPageShell';
-import { Button, Input, Label } from '../components/ui';
+import { Alert, Button, Input, Label } from '../components/ui';
 import type { ApiError } from '../types';
 
 const MIN_PASSWORD_LENGTH = 8;
@@ -32,23 +34,21 @@ export const ResetPassword = () => {
     reset.mutate();
   };
 
-  const backToLogin = <Link to="/login" className="text-[var(--color-primary-600)] hover:underline">Back to sign in</Link>;
+  const backToLogin = <Link to="/login" className={authLinkClass}>Back to sign in</Link>;
   const serverError = reset.error as ApiError | null;
   const linkInvalid = !token || serverError?.details?.detail?.reason === 'invalid_or_expired_token';
 
   if (reset.isSuccess) {
     return (
       <PublicPageShell footer={null}>
-        <div className="flex flex-col items-center text-center py-4 gap-3">
-          <CheckCircle2 className="w-10 h-10 text-[var(--color-success-600)]" />
-          <h1 className="text-lg font-semibold text-[var(--text-primary)]">Password updated</h1>
-          <p className="text-sm text-[var(--text-secondary)] max-w-sm">
-            You&apos;ve been signed out everywhere. Sign in with your new password.
-          </p>
-          <Link to="/login" className="text-sm font-medium text-[var(--color-primary-600)] hover:underline mt-2">
-            Sign in
-          </Link>
-        </div>
+        <AuthState
+          tone="success"
+          icon={<CheckCircle2 size={20} />}
+          title="Password updated"
+          action={<Link to="/login" className={authLinkClass}>Sign in</Link>}
+        >
+          You&apos;ve been signed out everywhere. Sign in with your new password.
+        </AuthState>
       </PublicPageShell>
     );
   }
@@ -56,16 +56,14 @@ export const ResetPassword = () => {
   if (linkInvalid) {
     return (
       <PublicPageShell footer={backToLogin}>
-        <div className="flex flex-col items-center text-center gap-3">
-          <AlertCircle className="w-10 h-10 text-[var(--color-danger-600)]" />
-          <h1 className="text-lg font-semibold text-[var(--text-primary)]">This link isn&apos;t valid</h1>
-          <p className="text-sm text-[var(--text-secondary)] max-w-sm">
-            Reset links expire after 60 minutes and can only be used once.
-          </p>
-          <Link to="/forgot-password" className="text-sm font-medium text-[var(--color-primary-600)] hover:underline mt-2">
-            Request a new link
-          </Link>
-        </div>
+        <AuthState
+          tone="danger"
+          icon={<AlertCircle size={20} />}
+          title="This link isn't valid"
+          action={<Link to="/forgot-password" className={authLinkClass}>Request a new link</Link>}
+        >
+          Reset links expire after 60 minutes and can only be used once.
+        </AuthState>
       </PublicPageShell>
     );
   }
@@ -80,10 +78,7 @@ export const ResetPassword = () => {
       </div>
 
       {error && (
-        <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 text-red-800 px-3 py-2.5 text-sm mb-4">
-          <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-          <span>{error}</span>
-        </div>
+        <Alert variant="danger" className="mb-4">{error}</Alert>
       )}
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">

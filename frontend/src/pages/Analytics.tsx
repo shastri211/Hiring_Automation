@@ -1,61 +1,27 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell,
 } from 'recharts';
-import { Loader2, BarChart as BarChartIcon } from 'lucide-react';
 import { jobsApi } from '../api/jobs';
 import { queryKeys } from '../api/queryKeys';
 import { useFunnel, useDecisionBreakdown, useThroughput, useJobVolume, useTimeInStage } from '../hooks/useAnalytics';
-import { formatDurationSeconds } from '../utils/format';
-import { Card, CardContent, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../components/ui';
+import { Card, DataTable, FilterBar, FilterBarSpacer, NativeSelect, PageHeader, PanelBody, PanelHeader, StatTile, type Column } from '../components/ui';
+import { chart } from '../components/charts/chartTheme';
+import { getDecisionBadgeVariant } from '../utils/decision';
+import { decisionLabel, formatDurationSeconds } from '../utils/format';
+import type { JobVolumeItem } from '../types';
 
-/**
- * Chart colors are read once from the CSS custom properties in variables.css
- * (getComputedStyle on <html>) so charts follow the active theme's palette at
- * mount time. Fallback hex values mirror the literals in variables.css in
- * case the property read ever comes back empty (e.g. no DOM yet). This is a
- * one-time read, not theme-reactive mid-session — acceptable since a theme
- * toggle already re-renders the whole page tree.
- */
-function useChartColors() {
-  return useMemo(() => {
-    const styles = getComputedStyle(document.documentElement);
-    const read = (name: string, fallback: string) => styles.getPropertyValue(name).trim() || fallback;
-    return {
-      primary: read('--color-primary-500', '#6366f1'),
-      success: read('--color-success-500', '#22c55e'),
-      warning: read('--color-warning-500', '#f59e0b'),
-      danger: read('--color-danger-500', '#ef4444'),
-      neutral: read('--color-neutral-400', '#94a3b8'),
-    };
-  }, []);
-}
+const DECISION_FILL = {
+  success: chart.success, warning: chart.warning, danger: chart.danger, primary: chart.primary, neutral: chart.neutral,
+};
 
-const ChartSection = ({
-  title, isLoading, isError, isEmpty, emptyMessage, children,
-}: {
-  title: string; isLoading: boolean; isError: boolean; isEmpty: boolean; emptyMessage: string; children: React.ReactNode;
-}) => (
-  <Card>
-    <CardContent className="p-6">
-      <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-4">{title}</h3>
-      {isLoading ? (
-        <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-[var(--color-primary-500)]" /></div>
-      ) : isError ? (
-        <p className="text-sm text-[var(--color-danger-600)] py-8 text-center">Failed to load this chart.</p>
-      ) : isEmpty ? (
-        <p className="text-sm text-[var(--text-tertiary)] italic py-8 text-center">{emptyMessage}</p>
-      ) : (
-        children
-      )}
-    </CardContent>
-  </Card>
+const EmptyNote = ({ children }: { children: string }) => (
+  <p className="text-body px-5 py-10 text-center">{children}</p>
 );
 
 export const Analytics = () => {
   const [jobId, setJobId] = useState<number | undefined>(undefined);
-  const colors = useChartColors();
 
   const { data: jobs } = useQuery({ queryKey: queryKeys.jobs(), queryFn: jobsApi.getJobs });
 
@@ -79,7 +45,7 @@ export const Analytics = () => {
   }, [funnelQuery.data]);
 
   const decisionData = useMemo(
-    () => (decisionsQuery.data?.items || []).map((d) => ({ decision: d.decision || 'Unset', count: d.count })),
+    () => (decisionsQuery.data?.items || []).map((d) => ({ key: d.decision ?? 'none', label: decisionLabel(d.decision), count: d.count, variant: getDecisionBadgeVariant(d.decision) })),
     [decisionsQuery.data]
   );
 
@@ -88,155 +54,154 @@ export const Analytics = () => {
     [throughputQuery.data]
   );
 
+  const time = timeInStageQuery.data;
+  const timeEmpty = !time || (time.resume_to_screened_seconds_approx == null && time.screened_to_interview_seconds_approx == null);
+
+  const volumeColumns: Column<JobVolumeItem>[] = [
+    { id: 'job', header: 'Job', mobile: 'title', cell: (i) => <span className="text-sm font-medium text-[var(--text-primary)]">{i.job_title}</span> },
+    { id: 'count', header: 'Resumes', align: 'right', className: 'w-32', cell: (i) => <span className="tabular text-sm text-[var(--text-secondary)]">{i.resume_count}</span> },
+  ];
+
   return (
-    <div className="p-8 max-w-6xl mx-auto">
-      <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-[var(--color-primary-subtle-bg)] text-[var(--color-primary-subtle-text)] rounded-lg flex items-center justify-center">
-            <BarChartIcon className="w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-[var(--text-primary)]">Analytics</h1>
-            <p className="text-sm text-[var(--text-secondary)]">Pipeline health across your hiring funnel.</p>
-          </div>
-        </div>
-        <div className="w-56">
-          <Select value={jobId ? String(jobId) : 'all'} onValueChange={(v) => setJobId(v === 'all' ? undefined : Number(v))}>
-            <SelectTrigger><SelectValue placeholder="All Jobs" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Jobs</SelectItem>
-              {jobs?.map((job) => <SelectItem key={job.id} value={String(job.id)}>{job.title}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
+    <div className="mx-auto max-w-6xl">
+      <PageHeader className="mb-6" title="Analytics" subtitle="Pipeline health across your hiring funnel." />
+
+      <FilterBar className="mb-6">
+        <NativeSelect
+          aria-label="Filter by job"
+          value={jobId ?? ''}
+          onChange={(e) => setJobId(e.target.value ? Number(e.target.value) : undefined)}
+          className="max-w-[18rem]"
+        >
+          <option value="">All jobs</option>
+          {jobs?.map((job) => <option key={job.id} value={job.id}>{job.title}</option>)}
+        </NativeSelect>
+        <FilterBarSpacer />
+      </FilterBar>
+
+      <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card>
+          <PanelHeader title="Hiring funnel" />
+          <PanelBody
+            isLoading={funnelQuery.isLoading}
+            isError={funnelQuery.isError}
+            onRetry={() => funnelQuery.refetch()}
+            isEmpty={funnelData.every((d) => d.count === 0)}
+            empty={<EmptyNote>No resumes processed yet for this filter.</EmptyNote>}
+            rows={5}
+          >
+            <div className="p-5" role="img" aria-label={`Hiring funnel: ${funnelData.map((d) => `${d.stage} ${d.count}`).join(', ')}`}>
+              <div style={{ width: '100%', height: 280 }}>
+                <ResponsiveContainer>
+                  <BarChart data={funnelData} layout="vertical" margin={{ left: 12 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} horizontal={false} />
+                    <XAxis type="number" allowDecimals={false} tick={chart.axis} axisLine={chart.axisLine} tickLine={false} />
+                    <YAxis type="category" dataKey="stage" width={86} tick={chart.axis} axisLine={chart.axisLine} tickLine={false} />
+                    <Tooltip {...chart.tooltip} />
+                    <Bar dataKey="count" fill={chart.primary} radius={[0, 3, 3, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </PanelBody>
+        </Card>
+
+        <Card>
+          <PanelHeader title="Decision breakdown" />
+          <PanelBody
+            isLoading={decisionsQuery.isLoading}
+            isError={decisionsQuery.isError}
+            onRetry={() => decisionsQuery.refetch()}
+            isEmpty={decisionData.length === 0}
+            empty={<EmptyNote>No screening decisions recorded yet for this filter.</EmptyNote>}
+            rows={5}
+          >
+            <div className="p-5" role="img" aria-label={`Decisions: ${decisionData.map((d) => `${d.label} ${d.count}`).join(', ')}`}>
+              <div style={{ width: '100%', height: 280 }}>
+                <ResponsiveContainer>
+                  <BarChart data={decisionData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
+                    <XAxis dataKey="label" tick={chart.axis} axisLine={chart.axisLine} tickLine={false} />
+                    <YAxis allowDecimals={false} tick={chart.axis} axisLine={false} tickLine={false} />
+                    <Tooltip {...chart.tooltip} />
+                    <Bar dataKey="count" radius={[3, 3, 0, 0]}>
+                      {decisionData.map((d) => <Cell key={d.key} fill={DECISION_FILL[d.variant]} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </PanelBody>
+        </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <ChartSection
-          title="Hiring Funnel"
-          isLoading={funnelQuery.isLoading}
-          isError={funnelQuery.isError}
-          isEmpty={funnelData.every((d) => d.count === 0)}
-          emptyMessage="No resumes processed yet for this filter."
-        >
-          <div style={{ width: '100%', height: 280 }}>
-            <ResponsiveContainer>
-              <BarChart data={funnelData} layout="vertical" margin={{ left: 24 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-light)" />
-                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12 }} />
-                <YAxis type="category" dataKey="stage" width={90} tick={{ fontSize: 12 }} />
-                <Tooltip />
-                <Bar dataKey="count" fill={colors.primary} radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </ChartSection>
-
-        <ChartSection
-          title="Decision Breakdown"
-          isLoading={decisionsQuery.isLoading}
-          isError={decisionsQuery.isError}
-          isEmpty={decisionData.length === 0}
-          emptyMessage="No screening decisions recorded yet for this filter."
-        >
-          <div style={{ width: '100%', height: 280 }}>
-            <ResponsiveContainer>
-              <BarChart data={decisionData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-light)" />
-                <XAxis dataKey="decision" tick={{ fontSize: 12 }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
-                <Tooltip />
-                <Bar dataKey="count" fill={colors.success} radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </ChartSection>
-      </div>
-
-      <div className="mb-6">
-        <ChartSection
-          title="Screening Throughput (last 30 days)"
+      <Card className="mb-6">
+        <PanelHeader title="Screening throughput, last 30 days" />
+        <PanelBody
           isLoading={throughputQuery.isLoading}
           isError={throughputQuery.isError}
-          isEmpty={throughputData.length === 0}
-          emptyMessage="No screening activity in the last 30 days for this filter."
+          onRetry={() => throughputQuery.refetch()}
+          isEmpty={throughputData.length === 0 || throughputData.every((d) => d.count === 0)}
+          empty={<EmptyNote>No screening activity in the last 30 days for this filter.</EmptyNote>}
+          rows={4}
         >
-          <div style={{ width: '100%', height: 260 }}>
-            <ResponsiveContainer>
-              <LineChart data={throughputData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-light)" />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
-                <Tooltip />
-                <Line type="monotone" dataKey="count" stroke={colors.primary} strokeWidth={2} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </ChartSection>
-      </div>
-
-      <div className="mb-6">
-        <ChartSection
-          title="Average Time in Stage"
-          isLoading={timeInStageQuery.isLoading}
-          isError={timeInStageQuery.isError}
-          isEmpty={
-            !timeInStageQuery.data
-            || (timeInStageQuery.data.resume_to_screened_seconds_approx == null
-              && timeInStageQuery.data.screened_to_interview_seconds_approx == null)
-          }
-          emptyMessage="Not enough completed transitions yet for this filter."
-        >
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="rounded-lg border border-[var(--border-light)] p-4">
-              <p className="text-xs text-[var(--text-tertiary)] mb-1">Upload &rarr; Screened</p>
-              <p className="text-2xl font-semibold text-[var(--text-primary)]">
-                {timeInStageQuery.data?.resume_to_screened_seconds_approx != null
-                  ? formatDurationSeconds(timeInStageQuery.data.resume_to_screened_seconds_approx)
-                  : '—'}
-              </p>
-            </div>
-            <div className="rounded-lg border border-[var(--border-light)] p-4">
-              <p className="text-xs text-[var(--text-tertiary)] mb-1">Screened &rarr; Interview Scheduled</p>
-              <p className="text-2xl font-semibold text-[var(--text-primary)]">
-                {timeInStageQuery.data?.screened_to_interview_seconds_approx != null
-                  ? formatDurationSeconds(timeInStageQuery.data.screened_to_interview_seconds_approx)
-                  : '—'}
-              </p>
+          <div className="p-5" role="img" aria-label={`Candidates screened per day over the last 30 days: ${throughputData.reduce((a, d) => a + d.count, 0)} in total`}>
+            <div style={{ width: '100%', height: 240 }}>
+              <ResponsiveContainer>
+                <LineChart data={throughputData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
+                  <XAxis dataKey="date" tick={chart.axisSmall} axisLine={chart.axisLine} tickLine={false} minTickGap={24} />
+                  <YAxis allowDecimals={false} tick={chart.axis} axisLine={false} tickLine={false} />
+                  <Tooltip {...chart.tooltip} />
+                  <Line type="monotone" dataKey="count" stroke={chart.primary} strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
             </div>
           </div>
-        </ChartSection>
-      </div>
-
-      <Card>
-        <CardContent className="p-6">
-          <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1">Volume by Job</h3>
-          <p className="text-xs text-[var(--text-tertiary)] mb-4">Across all jobs — not affected by the job filter above.</p>
-          {jobVolumeQuery.isLoading ? (
-            <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-[var(--color-primary-500)]" /></div>
-          ) : jobVolumeQuery.isError ? (
-            <p className="text-sm text-[var(--color-danger-600)] py-4 text-center">Failed to load job volume.</p>
-          ) : !jobVolumeQuery.data || jobVolumeQuery.data.items.length === 0 ? (
-            <p className="text-sm text-[var(--text-tertiary)] italic py-4 text-center">No jobs with resumes yet.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="text-[var(--text-secondary)] border-b border-[var(--border-light)]">
-                  <tr><th className="py-2 font-medium">Job</th><th className="py-2 font-medium">Resumes</th></tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--border-light)]">
-                  {jobVolumeQuery.data.items.map((item) => (
-                    <tr key={item.job_id}>
-                      <td className="py-2 text-[var(--text-primary)]">{item.job_title}</td>
-                      <td className="py-2 text-[var(--text-secondary)]">{item.resume_count}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
+        </PanelBody>
       </Card>
+
+      <section aria-label="Average time in stage" className="mb-6">
+        <h2 className="text-eyebrow mb-3">Average time in stage <span className="normal-case tracking-normal">(approximate)</span></h2>
+        {timeInStageQuery.isError ? (
+          <p className="text-body">Failed to load stage timings.</p>
+        ) : timeEmpty && !timeInStageQuery.isLoading ? (
+          <p className="text-body">Not enough completed transitions yet for this filter.</p>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <StatTile
+              label="Upload → screened"
+              isLoading={timeInStageQuery.isLoading}
+              value={time?.resume_to_screened_seconds_approx != null ? formatDurationSeconds(time.resume_to_screened_seconds_approx) : undefined}
+            />
+            <StatTile
+              label="Screened → interview scheduled"
+              isLoading={timeInStageQuery.isLoading}
+              value={time?.screened_to_interview_seconds_approx != null ? formatDurationSeconds(time.screened_to_interview_seconds_approx) : undefined}
+            />
+          </div>
+        )}
+      </section>
+
+      <section aria-label="Volume by job">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-eyebrow">Volume by job</h2>
+          <p className="text-caption">Across all jobs — not affected by the job filter above.</p>
+        </div>
+        {jobVolumeQuery.isError ? (
+          <p className="text-body">Failed to load job volume.</p>
+        ) : (
+          <DataTable
+            aria-label="Resumes per job"
+            rows={jobVolumeQuery.data?.items ?? []}
+            columns={volumeColumns}
+            getRowId={(i) => i.job_id}
+            isLoading={jobVolumeQuery.isLoading}
+            skeletonRows={3}
+            empty={<p className="text-body px-5 py-8 text-center">No jobs with resumes yet.</p>}
+          />
+        )}
+      </section>
     </div>
   );
 };

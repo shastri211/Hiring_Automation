@@ -1,10 +1,10 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Loader2, AlertCircle, CheckCircle2, Send } from 'lucide-react';
+import { Loader2, AlertCircle, CheckCircle2, FileText, Send } from 'lucide-react';
 import { publicApplicationApi } from '../api/publicApplication';
-import { Button } from '../components/ui/Button';
-import { Input, Label } from '../components/ui';
+import { Alert, Button, Dropzone, Input, Label } from '../components/ui';
+import { AuthState } from '../components/auth/AuthState';
 import { PublicPageShell } from '../components/layout/PublicPageShell';
 import type { ApiError, PublicApplyErrorReason } from '../types';
 
@@ -33,11 +33,8 @@ const SUBMIT_ERROR_COPY: Partial<Record<PublicApplyErrorReason, string>> = {
 const errorReason = (error: unknown): PublicApplyErrorReason | undefined =>
   (error as ApiError | undefined)?.details?.detail?.reason;
 
-const ACCEPT = '.pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-
 export const ApplyPage = () => {
   const { token } = useParams<{ token: string }>();
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -69,10 +66,10 @@ export const ApplyPage = () => {
 
   if (isLoading) {
     return (
-      <PublicPageShell>
-        <div className="flex flex-col items-center py-8 gap-3 text-[var(--text-secondary)]">
-          <Loader2 className="w-6 h-6 animate-spin" />
-          <p className="text-sm">Loading the role...</p>
+      <PublicPageShell wide>
+        <div role="status" className="flex flex-col items-center gap-3 py-8 text-[var(--text-secondary)]">
+          <Loader2 className="h-6 w-6 animate-spin" aria-hidden="true" />
+          <p className="text-sm">Loading the role…</p>
         </div>
       </PublicPageShell>
     );
@@ -83,11 +80,7 @@ export const ApplyPage = () => {
     const copy = LINK_ERROR_COPY[reason];
     return (
       <PublicPageShell footer={null}>
-        <div className="flex flex-col items-center text-center py-4 gap-3">
-          <AlertCircle className="w-10 h-10 text-[var(--color-danger-600)]" />
-          <h1 className="text-lg font-semibold text-[var(--text-primary)]">{copy.title}</h1>
-          <p className="text-sm text-[var(--text-secondary)] max-w-sm">{copy.description}</p>
-        </div>
+        <AuthState tone="danger" icon={<AlertCircle size={20} />} title={copy.title}>{copy.description}</AuthState>
       </PublicPageShell>
     );
   }
@@ -95,14 +88,10 @@ export const ApplyPage = () => {
   if (applyMutation.isSuccess) {
     return (
       <PublicPageShell footer={null}>
-        <div className="flex flex-col items-center text-center py-4 gap-3">
-          <CheckCircle2 className="w-10 h-10 text-[var(--color-success-600)]" />
-          <h1 className="text-lg font-semibold text-[var(--text-primary)]">Application received</h1>
-          <p className="text-sm text-[var(--text-secondary)] max-w-sm">
-            Thanks for applying for <strong>{job.title}</strong>. The hiring team will review your resume and
-            reach out if there&apos;s a match.
-          </p>
-        </div>
+        <AuthState tone="success" icon={<CheckCircle2 size={20} />} title="Application received">
+          Thanks for applying for <strong className="text-[var(--text-primary)]">{job.title}</strong>. The hiring team will review your resume and
+          reach out if there&apos;s a match.
+        </AuthState>
       </PublicPageShell>
     );
   }
@@ -125,11 +114,11 @@ export const ApplyPage = () => {
   };
 
   return (
-    <PublicPageShell footer="Questions about this role? Contact the recruiter who shared this link.">
+    <PublicPageShell wide footer="Questions about this role? Contact the recruiter who shared this link.">
       <div className="flex flex-col gap-6">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-primary-600)]">Apply for</p>
-          <h1 className="text-xl font-semibold text-[var(--text-primary)] mt-1">{job.title}</h1>
+          <p className="text-eyebrow text-[var(--color-primary-600)]">Apply for</p>
+          <h1 className="text-page-title mt-1 text-2xl">{job.title}</h1>
           {job.role_summary ? (
             <p className="text-sm text-[var(--text-secondary)] mt-2 leading-relaxed">{job.role_summary}</p>
           ) : (
@@ -161,17 +150,28 @@ export const ApplyPage = () => {
               <Input id="apply-phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={50} autoComplete="tel" />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="apply-file">Resume</Label>
-              <input
-                id="apply-file"
-                ref={fileInputRef}
-                type="file"
-                accept={ACCEPT}
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                className="block w-full text-sm text-[var(--text-secondary)] file:mr-3 file:rounded-md file:border file:border-[var(--border-light)] file:bg-[var(--bg-surface)] file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-[var(--text-primary)] hover:file:bg-[var(--bg-app)]"
-                required
-              />
-              <p className="text-xs text-[var(--text-tertiary)]">PDF or DOCX, one file.</p>
+              <Label>Resume</Label>
+              {file ? (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border-light)] bg-[var(--bg-app)] p-3">
+                  <span className="flex min-w-0 items-center gap-2.5">
+                    <FileText size={18} aria-hidden="true" className="shrink-0 text-[var(--text-tertiary)]" />
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium text-[var(--text-primary)]">{file.name}</span>
+                      <span className="text-caption tabular">{(file.size / 1024).toFixed(1)} KB</span>
+                    </span>
+                  </span>
+                  <Button type="button" variant="secondary" size="sm" onClick={() => setFile(null)}>Remove</Button>
+                </div>
+              ) : (
+                <Dropzone
+                  accept={['.pdf', '.docx']}
+                  title="Drop your resume here or click to browse"
+                  hint="PDF or DOCX, one file"
+                  browseLabel="Choose file"
+                  className="py-8"
+                  onFiles={(files) => setFile(files[0])}
+                />
+              )}
             </div>
 
             {/* Honeypot: off-screen and skipped by keyboard/screen readers. */}
@@ -194,18 +194,13 @@ export const ApplyPage = () => {
             </label>
           </fieldset>
 
-          {submitErrorMessage && (
-            <div role="alert" className="flex items-start gap-2 rounded-md bg-[var(--color-danger-subtle-bg)] p-3 text-sm text-[var(--color-danger-subtle-text)]">
-              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-              <span>{submitErrorMessage}</span>
-            </div>
-          )}
+          {submitErrorMessage && <Alert variant="danger">{submitErrorMessage}</Alert>}
 
           <Button type="submit" disabled={!canSubmit} className="w-full justify-center">
             {submitting ? (
-              <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Submitting...</>
+              <><Loader2 size={14} className="animate-spin" aria-hidden="true" /> Submitting…</>
             ) : (
-              <><Send className="w-4 h-4 mr-2" /> Submit application</>
+              <><Send size={14} aria-hidden="true" /> Submit application</>
             )}
           </Button>
         </form>

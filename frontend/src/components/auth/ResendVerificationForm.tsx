@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { authApi } from '../../api/auth';
-import { Button, Input, Label } from '../ui';
+import { Alert, Button, Input, Label } from '../ui';
 import type { ApiError } from '../../types';
 
 // Shared by the login page (unverified-account state) and the
@@ -19,9 +19,9 @@ export const ResendVerificationForm = ({ initialEmail = '' }: { initialEmail?: s
 
   if (resend.isSuccess) {
     return (
-      <p className="text-sm text-[var(--text-secondary)]">
+      <Alert variant="success" icon={null}>
         If that address has an account waiting for confirmation, a new link is on its way.
-      </p>
+      </Alert>
     );
   }
 
@@ -44,7 +44,7 @@ export const ResendVerificationForm = ({ initialEmail = '' }: { initialEmail?: s
           {resend.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Resend link'}
         </Button>
       </div>
-      {errorText && <p className="text-xs text-[var(--color-danger-600)]">{errorText}</p>}
+      {errorText && <Alert variant="danger" className="mt-1">{errorText}</Alert>}
     </form>
   );
 };

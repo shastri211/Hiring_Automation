@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
-import { AlertCircle, Loader2, MailCheck } from 'lucide-react';
+import { Loader2, MailCheck } from 'lucide-react';
 import { authApi } from '../api/auth';
+import { AuthState } from '../components/auth/AuthState';
+import { authLinkClass } from '../components/auth/authStyles';
 import { PublicPageShell } from '../components/layout/PublicPageShell';
-import { Button, Input, Label } from '../components/ui';
+import { Alert, Button, Input, Label } from '../components/ui';
 import type { ApiError } from '../types';
 
 const MIN_PASSWORD_LENGTH = 8;
@@ -53,20 +55,20 @@ export const Signup = () => {
     // account - the server never reveals which.
     return (
       <PublicPageShell footer={null}>
-        <div className="flex flex-col items-center text-center py-4 gap-3">
-          <MailCheck className="w-10 h-10 text-[var(--color-success-600)]" />
-          <h1 className="text-lg font-semibold text-[var(--text-primary)]">Check your inbox</h1>
-          <p className="text-sm text-[var(--text-secondary)] max-w-sm">
-            If <strong>{email.trim()}</strong> can be used to create an account, we&apos;ve sent a link to confirm
+        <AuthState
+          tone="success"
+          icon={<MailCheck size={20} />}
+          title="Check your inbox"
+          action={<Link to="/login" className={authLinkClass}>Go to sign in</Link>}
+        >
+          <p>
+            If <strong className="text-[var(--text-primary)]">{email.trim()}</strong> can be used to create an account, we&apos;ve sent a link to confirm
             it. Open the link to activate your company account, then sign in.
           </p>
-          <p className="text-xs text-[var(--text-tertiary)] max-w-sm">
+          <p className="text-caption mt-2">
             Didn&apos;t get it? You can request a new link from the sign-in page after trying to log in.
           </p>
-          <Link to="/login" className="text-sm font-medium text-[var(--color-primary-600)] hover:underline mt-2">
-            Go to sign in
-          </Link>
-        </div>
+        </AuthState>
       </PublicPageShell>
     );
   }
@@ -75,7 +77,7 @@ export const Signup = () => {
   const submitting = signup.isPending;
 
   return (
-    <PublicPageShell footer={<>Already have an account? <Link to="/login" className="text-[var(--color-primary-600)] hover:underline">Sign in</Link></>}>
+    <PublicPageShell footer={<>Already have an account? <Link to="/login" className={authLinkClass}>Sign in</Link></>}>
       <div className="flex flex-col gap-1 mb-6 text-center">
         <h1 className="text-lg font-semibold text-[var(--text-primary)]">Create a company account</h1>
         <p className="text-sm text-[var(--text-secondary)]">
@@ -84,10 +86,7 @@ export const Signup = () => {
       </div>
 
       {error && (
-        <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 text-red-800 px-3 py-2.5 text-sm mb-4">
-          <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-          <span>{error}</span>
-        </div>
+        <Alert variant="danger" className="mb-4">{error}</Alert>
       )}
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">

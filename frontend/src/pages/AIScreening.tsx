@@ -3,10 +3,10 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import { Loader2, Brain } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useSettings, useUpdateSettings } from '../hooks/useSettings';
 import { ScreeningThresholdFields, type ThresholdFormValues } from '../components/settings/ScreeningThresholdFields';
-import { Button } from '../components/ui';
+import { Button, ErrorState, PageHeader, Section, Skeleton } from '../components/ui';
 import type { AppSettingsUpdate } from '../types';
 
 const numericString = (min: number, max: number) =>
@@ -78,48 +78,41 @@ export const AIScreening = () => {
   };
 
   return (
-    <div className="p-8 max-w-3xl mx-auto">
-      <div className="flex items-center space-x-3 mb-8">
-        <div className="w-10 h-10 bg-[var(--color-primary-subtle-bg)] text-[var(--color-primary-subtle-text)] rounded-lg flex items-center justify-center">
-          <Brain className="w-6 h-6" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">AI Screening Configuration</h1>
-          <p className="text-sm text-[var(--text-secondary)]">
-            Tune the adaptive semantic screening gate. Leave any field blank to use the backend's environment default.
-          </p>
-        </div>
-      </div>
+    <div className="mx-auto max-w-3xl">
+      <PageHeader
+        className="mb-6"
+        title="AI screening configuration"
+        subtitle="Tune the adaptive semantic screening gate. Leave any field blank to use the backend's environment default."
+      />
 
-      <div className="bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-xl shadow-sm p-6">
-        {isLoading ? (
-          <div className="flex justify-center py-12">
-            <Loader2 className="w-8 h-8 animate-spin text-[var(--color-primary-500)]" />
-          </div>
-        ) : isError ? (
-          <div className="text-center py-12">
-            <p className="text-[var(--color-danger-600)] mb-4">Failed to load current settings.</p>
-            <Button variant="secondary" onClick={() => refetch()}>Retry</Button>
-          </div>
-        ) : (
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+      {isLoading ? (
+        <div className="space-y-6" aria-hidden="true">
+          {[0, 1, 2].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
+        </div>
+      ) : isError ? (
+        <div className="rounded-lg border border-[var(--border-light)] bg-[var(--bg-surface)]">
+          <ErrorState title="Failed to load current settings" onRetry={() => refetch()} />
+        </div>
+      ) : (
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+          <Section title="Semantic screening thresholds">
             <ScreeningThresholdFields form={form} />
-            <div className="flex justify-end gap-3 pt-4 border-t border-[var(--border-light)]">
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={!form.formState.isDirty || updateMutation.isPending}
-                onClick={() => settings && form.reset(toFormValues(settings))}
-              >
-                Discard Changes
-              </Button>
-              <Button type="submit" disabled={!form.formState.isDirty || updateMutation.isPending}>
-                {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Thresholds'}
-              </Button>
-            </div>
-          </form>
-        )}
-      </div>
+          </Section>
+          <div className="flex justify-end gap-2 border-t border-[var(--border-light)] pt-5">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={!form.formState.isDirty || updateMutation.isPending}
+              onClick={() => settings && form.reset(toFormValues(settings))}
+            >
+              Discard changes
+            </Button>
+            <Button type="submit" disabled={!form.formState.isDirty || updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : 'Save thresholds'}
+            </Button>
+          </div>
+        </form>
+      )}
     </div>
   );
 };

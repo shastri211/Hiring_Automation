@@ -2,11 +2,12 @@ import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { AlertCircle, KeyRound, Loader2 } from 'lucide-react';
+import { KeyRound, Loader2 } from 'lucide-react';
 import { authApi } from '../api/auth';
 import { useAuth } from '../hooks/useAuth';
+import { authLinkClass } from '../components/auth/authStyles';
 import { PublicPageShell } from '../components/layout/PublicPageShell';
-import { Button, Input, Label } from '../components/ui';
+import { Alert, Button, Input, Label } from '../components/ui';
 import type { ApiError } from '../types';
 
 const MIN_PASSWORD_LENGTH = 8;
@@ -61,11 +62,11 @@ export const ChangePassword = () => {
     <PublicPageShell
       footer={
         forced ? (
-          <button type="button" onClick={() => logout()} className="text-[var(--color-primary-600)] hover:underline">
+          <button type="button" onClick={() => logout()} className={authLinkClass}>
             Sign out
           </button>
         ) : (
-          <Link to="/" className="text-[var(--color-primary-600)] hover:underline">Back to the app</Link>
+          <Link to="/" className={authLinkClass}>Back to the app</Link>
         )
       }
     >
@@ -82,10 +83,7 @@ export const ChangePassword = () => {
       </div>
 
       {error && (
-        <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 text-red-800 px-3 py-2.5 text-sm mb-4">
-          <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-          <span>{error}</span>
-        </div>
+        <Alert variant="danger" className="mb-4">{error}</Alert>
       )}
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">

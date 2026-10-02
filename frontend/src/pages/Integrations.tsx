@@ -1,19 +1,27 @@
+import type { ReactNode } from 'react';
 import { toast } from 'sonner';
-import { Loader2, Puzzle, CheckCircle2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useIntegrationsStatus, useTestIntegration } from '../hooks/useSettings';
-import { Card, CardContent, Badge, Button } from '../components/ui';
+import { Alert, Button, ErrorState, PageHeader, Section, Skeleton, StatusDot } from '../components/ui';
+import { getErrorMessage } from '../utils/errors';
 
-const DetailRow = ({ label, value }: { label: string; value: React.ReactNode }) => (
-  <div className="flex items-center justify-between text-sm py-1.5">
-    <span className="text-[var(--text-secondary)]">{label}</span>
-    <span className="text-[var(--text-primary)] font-medium">{value}</span>
+const DetailRow = ({ label, value }: { label: string; value: ReactNode }) => (
+  <div className="flex items-start justify-between gap-4 border-b border-[var(--border-light)] py-2.5 text-sm last:border-b-0">
+    <dt className="text-[var(--text-secondary)]">{label}</dt>
+    <dd className="min-w-0 break-all text-right font-medium text-[var(--text-primary)]">{value}</dd>
   </div>
 );
 
+const TestButton = ({ onClick, pending }: { onClick: () => void; pending: boolean }) => (
+  <Button variant="secondary" size="sm" className="mt-4" onClick={onClick} disabled={pending}>
+    {pending ? <><Loader2 size={14} className="animate-spin" aria-hidden="true" /> Testing…</> : 'Test connection'}
+  </Button>
+);
+
 export const Integrations = () => {
-  const { data, isLoading, isError, refetch } = useIntegrationsStatus();
+  const { data, isLoading, isError, error, refetch } = useIntegrationsStatus();
   // Two independent mutation instances - a single shared one would disable
-  // and spinner-ize BOTH cards' buttons while only one provider is actually
+  // and spinner-ize BOTH sections' buttons while only one provider is actually
   // being tested.
   const smtpTestMutation = useTestIntegration();
   const dograhTestMutation = useTestIntegration();
@@ -29,78 +37,54 @@ export const Integrations = () => {
   };
 
   return (
-    <div className="p-8 max-w-4xl mx-auto">
-      <div className="flex items-center space-x-3 mb-2">
-        <div className="w-10 h-10 bg-[var(--color-primary-subtle-bg)] text-[var(--color-primary-subtle-text)] rounded-lg flex items-center justify-center">
-          <Puzzle className="w-6 h-6" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Integrations</h1>
-          <p className="text-sm text-[var(--text-secondary)]">Status of external services this platform connects to.</p>
-        </div>
-      </div>
-      <p className="text-xs text-[var(--text-tertiary)] mb-8 bg-[var(--bg-app)] border border-[var(--border-light)] rounded-md px-4 py-2 inline-block">
-        Integrations are configured via environment variables (<code>.env</code>) on the backend — no secrets are entered here.
-      </p>
+    <div className="mx-auto max-w-4xl">
+      <PageHeader className="mb-6" title="Integrations" subtitle="Status of external services this platform connects to." />
+
+      <Alert variant="info" className="mb-8">
+        Integrations are configured via environment variables (<code className="font-mono text-xs">.env</code>) on the backend — no secrets are entered here.
+      </Alert>
 
       {isLoading ? (
-        <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-[var(--color-primary-500)]" /></div>
+        <div className="grid grid-cols-1 gap-10 md:grid-cols-2" aria-hidden="true">
+          {[0, 1].map((i) => <Skeleton key={i} className="h-48 w-full" />)}
+        </div>
       ) : isError ? (
-        <div className="text-center py-12">
-          <p className="text-[var(--color-danger-600)] mb-4">Failed to load integration status.</p>
-          <Button variant="secondary" onClick={() => refetch()}>Retry</Button>
+        <div className="rounded-lg border border-[var(--border-light)] bg-[var(--bg-surface)]">
+          <ErrorState title="Failed to load integration status" message={getErrorMessage(error)} onRetry={() => refetch()} />
         </div>
       ) : data ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card className={!data.smtp.configured ? 'opacity-80' : undefined}>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-[var(--text-primary)]">Email (SMTP)</h3>
-                <Badge variant={data.smtp.configured ? 'success' : 'neutral'}>
-                  {data.smtp.configured ? (
-                    <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Configured</span>
-                  ) : 'Simulated'}
-                </Badge>
-              </div>
-              <DetailRow label="From Email" value={data.smtp.detail.from_email || '—'} />
-              <DetailRow label="SMTP Host" value={data.smtp.detail.host || 'Not set (sends are simulated)'} />
-              <Button
-                variant="secondary"
-                size="sm"
-                className="mt-4"
-                onClick={() => handleTest('smtp', smtpTestMutation)}
-                disabled={smtpTestMutation.isPending}
-              >
-                {smtpTestMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Test Connection'}
-              </Button>
-            </CardContent>
-          </Card>
+        <div className="grid grid-cols-1 gap-x-12 gap-y-10 md:grid-cols-2">
+          <Section
+            title="Email (SMTP)"
+            action={
+              <StatusDot variant={data.smtp.configured ? 'success' : 'neutral'} className="text-xs">
+                {data.smtp.configured ? 'Configured' : 'Simulated'}
+              </StatusDot>
+            }
+          >
+            <dl>
+              <DetailRow label="From email" value={data.smtp.detail.from_email || '—'} />
+              <DetailRow label="SMTP host" value={data.smtp.detail.host || 'Not set (sends are simulated)'} />
+            </dl>
+            <TestButton onClick={() => handleTest('smtp', smtpTestMutation)} pending={smtpTestMutation.isPending} />
+          </Section>
 
-          <Card className={!data.dograh.configured ? 'opacity-80' : undefined}>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-[var(--text-primary)]">Dograh (Voice Interviews)</h3>
-                <Badge variant={data.dograh.configured ? 'success' : 'neutral'}>
-                  {data.dograh.configured ? (
-                    <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Configured</span>
-                  ) : 'Not Configured'}
-                </Badge>
-              </div>
+          <Section
+            title="Dograh (voice interviews)"
+            action={
+              <StatusDot variant={data.dograh.configured ? 'success' : 'neutral'} className="text-xs">
+                {data.dograh.configured ? 'Configured' : 'Not configured'}
+              </StatusDot>
+            }
+          >
+            <dl>
               <DetailRow label="Base URL" value={data.dograh.detail.base_url || '—'} />
               <DetailRow label="Embed token set" value={data.dograh.detail.embed_token_set ? 'Yes' : 'No'} />
               <DetailRow label="Webhook secret set" value={data.dograh.detail.webhook_secret_set ? 'Yes' : 'No'} />
               <DetailRow label="Public app URL" value={data.dograh.detail.public_app_url || '—'} />
-              <Button
-                variant="secondary"
-                size="sm"
-                className="mt-4"
-                onClick={() => handleTest('dograh', dograhTestMutation)}
-                disabled={dograhTestMutation.isPending}
-              >
-                {dograhTestMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Test Connection'}
-              </Button>
-            </CardContent>
-          </Card>
+            </dl>
+            <TestButton onClick={() => handleTest('dograh', dograhTestMutation)} pending={dograhTestMutation.isPending} />
+          </Section>
         </div>
       ) : null}
     </div>

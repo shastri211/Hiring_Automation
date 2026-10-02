@@ -3,7 +3,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import { Loader2, Settings as SettingsIcon, Users, UserPlus, Lock } from 'lucide-react';
+import { Loader2, Users, UserPlus, Lock } from 'lucide-react';
 import { useSettings, useUpdateSettings } from '../hooks/useSettings';
 import { useEmailTemplates } from '../hooks/useEmails';
 import { useAuthUsers, useCreateAuthUser, useUpdateAuthUser } from '../hooks/useAuthUsers';
@@ -11,7 +11,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirm } from '../hooks/useConfirm';
 import { ScreeningThresholdFields } from '../components/settings/ScreeningThresholdFields';
 import {
-  Button, Input, Label, Badge,
+  Alert, Button, ErrorState, Input, Label, Badge, PageHeader, Section, Skeleton, StatusDot,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../components/ui';
 import type { AppSettingsResponse, AppSettingsUpdate, ApiError, UserResponse } from '../types';
@@ -150,7 +150,7 @@ const TeamMemberRow = ({ member, isAdmin, isSelf }: { member: UserResponse; isAd
           <span className="truncate">{member.name}</span>
           {isSelf && <span className="text-xs text-[var(--text-tertiary)]">(you)</span>}
           <Badge variant={member.role === 'admin' ? 'primary' : 'neutral'}>{member.role === 'admin' ? 'Admin' : 'Member'}</Badge>
-          {!member.is_active && <Badge variant="warning">Deactivated</Badge>}
+          {!member.is_active && <StatusDot variant="warning" className="text-xs">Deactivated</StatusDot>}
         </p>
         <p className="text-xs text-[var(--text-secondary)] truncate">{member.email}</p>
       </div>
@@ -172,7 +172,7 @@ const TeamMemberRow = ({ member, isAdmin, isSelf }: { member: UserResponse; isAd
               </SelectContent>
             </Select>
             <Button variant="ghost" size="sm" onClick={toggleActive} disabled={updateMutation.isPending}>
-              {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : member.is_active ? 'Deactivate' : 'Reactivate'}
+              {updateMutation.isPending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : member.is_active ? 'Deactivate' : 'Reactivate'}
             </Button>
           </>
         )}
@@ -199,19 +199,12 @@ const TeamSection = () => {
   };
 
   return (
-    <section className="bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-xl shadow-sm p-6 space-y-6">
-      <div className="flex items-center gap-2">
-        <Users className="w-4 h-4 text-[var(--text-secondary)]" />
-        <h2 className="text-sm font-semibold text-[var(--text-primary)]">Team</h2>
-      </div>
+    <Section title="Team" icon={<Users size={13} />} className="space-y-6">
 
       {isLoading ? (
-        <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-[var(--color-primary-500)]" /></div>
+        <div className="space-y-3" aria-hidden="true">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
       ) : isError ? (
-        <div className="text-center py-8">
-          <p className="text-sm text-[var(--color-danger-600)] mb-3">Failed to load the team list.</p>
-          <Button variant="secondary" size="sm" onClick={() => refetch()}>Retry</Button>
-        </div>
+        <ErrorState className="py-8" title="Failed to load the team list" onRetry={() => refetch()} />
       ) : !users || users.length === 0 ? (
         <p className="text-sm text-[var(--text-secondary)]">No teammates yet.</p>
       ) : (
@@ -224,8 +217,8 @@ const TeamSection = () => {
 
       {isAdmin ? (
         <div className="border-t border-[var(--border-light)] pt-5">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)] mb-1 flex items-center gap-1.5">
-            <UserPlus className="w-3.5 h-3.5" /> Add teammate
+          <h3 className="text-eyebrow mb-1 flex items-center gap-1.5">
+            <UserPlus size={13} aria-hidden="true" /> Add teammate
           </h3>
           <p className="text-xs text-[var(--text-secondary)] mb-3">
             Creates a member account with a temporary password. Nothing is emailed - share the password with them
@@ -258,17 +251,17 @@ const TeamSection = () => {
             </div>
             <div className="sm:col-span-3 flex justify-end">
               <Button type="submit" size="sm" disabled={createUserMutation.isPending}>
-                {createUserMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create account'}
+                {createUserMutation.isPending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : 'Create account'}
               </Button>
             </div>
           </form>
         </div>
       ) : (
-        <p className="text-xs text-[var(--text-tertiary)] border-t border-[var(--border-light)] pt-4">
+        <p className="text-caption border-t border-[var(--border-light)] pt-4">
           Only admins can add or manage teammates.
         </p>
       )}
-    </section>
+    </Section>
   );
 };
 
@@ -304,51 +297,42 @@ export const Settings = () => {
   };
 
   return (
-    <div className="p-8 max-w-3xl mx-auto">
-      <div className="flex items-center space-x-3 mb-8">
-        <div className="w-10 h-10 bg-[var(--color-primary-subtle-bg)] text-[var(--color-primary-subtle-text)] rounded-lg flex items-center justify-center">
-          <SettingsIcon className="w-6 h-6" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Settings</h1>
-          <p className="text-sm text-[var(--text-secondary)]">Organization details, screening thresholds, and outreach automation.</p>
-        </div>
-      </div>
+    <div className="mx-auto max-w-3xl">
+      <PageHeader
+        className="mb-8"
+        title="Settings"
+        subtitle="Organization details, screening thresholds, and outreach automation."
+      />
 
       {isLoading ? (
-        <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-[var(--color-primary-500)]" /></div>
+        <div className="space-y-6" aria-hidden="true">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-24 w-full" />)}</div>
       ) : isError ? (
-        <div className="text-center py-12 bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-xl">
-          <p className="text-[var(--color-danger-600)] mb-4">Failed to load settings.</p>
-          <Button variant="secondary" onClick={() => refetch()}>Retry</Button>
+        <div className="rounded-lg border border-[var(--border-light)] bg-[var(--bg-surface)]">
+          <ErrorState title="Failed to load settings" onRetry={() => refetch()} />
         </div>
       ) : (
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
           {!isAdmin && (
-            <div className="flex items-start gap-2 rounded-lg border border-[var(--border-light)] bg-[var(--bg-surface)] px-4 py-3 text-sm text-[var(--text-secondary)]">
-              <Lock className="w-4 h-4 mt-0.5 shrink-0" />
-              <span>Company settings are managed by your organization&apos;s admins. You can view them here.</span>
-            </div>
+            <Alert variant="info" icon={<Lock size={16} />}>
+              Company settings are managed by your organization&apos;s admins. You can view them here.
+            </Alert>
           )}
           {/* Members get the same view, read-only (the server rejects their changes too). */}
           <fieldset disabled={!isAdmin} className="space-y-8 disabled:opacity-80">
-          <section className="bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-xl shadow-sm p-6">
-            <h2 className="text-sm font-semibold text-[var(--text-primary)] mb-4">Organization</h2>
+          <Section title="Organization">
             <Label htmlFor="organization_name">Organization Name</Label>
             <Input id="organization_name" placeholder="Acme Inc." className="mt-1.5" {...register('organization_name')} />
             {formState.errors.organization_name && (
-              <p className="text-xs text-[var(--color-danger-600)] mt-1">{formState.errors.organization_name.message}</p>
+              <p className="mt-1 text-xs text-[var(--color-danger-600)]">{formState.errors.organization_name.message}</p>
             )}
-          </section>
+          </Section>
 
-          <section className="bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-xl shadow-sm p-6">
-            <h2 className="text-sm font-semibold text-[var(--text-primary)] mb-4">AI Screening Thresholds</h2>
+          <Section title="AI screening thresholds">
             <ScreeningThresholdFields form={form} />
-          </section>
+          </Section>
 
-          <section className="bg-[var(--bg-surface)] border border-[var(--border-light)] rounded-xl shadow-sm p-6 space-y-6">
-            <h2 className="text-sm font-semibold text-[var(--text-primary)]">Outreach Automation</h2>
-            <p className="text-xs text-[var(--text-secondary)] -mt-2">
+          <Section title="Outreach automation" className="space-y-6">
+            <p className="text-caption -mt-1">
               Outbound email always goes to the candidate's own email address, as extracted from their resume.
               There is no test recipient or redirect.
             </p>
@@ -357,12 +341,12 @@ export const Settings = () => {
               <label className="flex items-center gap-2 mb-2">
                 <input
                   type="checkbox"
-                  className="rounded border-[var(--border-strong)] text-[var(--color-primary-600)] focus:ring-[var(--color-primary-500)]"
+                  className="h-4 w-4 rounded"
                   {...register('auto_generate_interview_on_shortlist')}
                 />
                 <span className="text-sm font-medium text-[var(--text-primary)]">Automatically generate an interview link when shortlisted</span>
               </label>
-              <p className="text-xs text-[var(--text-secondary)] ml-6">
+              <p className="text-caption ml-6">
                 Pair this with "Automatically email candidates when an interview is scheduled" below (using a
                 template with the <code>{'{{interview_link}}'}</code> variable) to get the full shortlist &rarr;
                 link &rarr; email flow with no manual steps.
@@ -373,7 +357,7 @@ export const Settings = () => {
               <label className="flex items-center gap-2 mb-2">
                 <input
                   type="checkbox"
-                  className="rounded border-[var(--border-strong)] text-[var(--color-primary-600)] focus:ring-[var(--color-primary-500)]"
+                  className="h-4 w-4 rounded"
                   {...register('auto_email_on_shortlist')}
                 />
                 <span className="text-sm font-medium text-[var(--text-primary)]">Automatically email candidates when shortlisted</span>
@@ -403,7 +387,7 @@ export const Settings = () => {
               <label className="flex items-center gap-2 mb-2">
                 <input
                   type="checkbox"
-                  className="rounded border-[var(--border-strong)] text-[var(--color-primary-600)] focus:ring-[var(--color-primary-500)]"
+                  className="h-4 w-4 rounded"
                   {...register('auto_email_on_interview_scheduled')}
                 />
                 <span className="text-sm font-medium text-[var(--text-primary)]">Automatically email candidates when an interview is scheduled</span>
@@ -428,14 +412,14 @@ export const Settings = () => {
                 <p className="text-xs text-[var(--color-danger-600)] mt-1">{formState.errors.interview_scheduled_email_template_id.message}</p>
               )}
             </div>
-          </section>
+          </Section>
 
           </fieldset>
 
           {isAdmin && (
             <div className="flex justify-end gap-3">
               <Button type="submit" disabled={!formState.isDirty || updateMutation.isPending}>
-                {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Settings'}
+                {updateMutation.isPending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : 'Save Settings'}
               </Button>
             </div>
           )}

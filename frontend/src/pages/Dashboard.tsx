@@ -9,7 +9,7 @@ import { queryKeys } from '../api/queryKeys';
 import { useFunnel, useDecisionBreakdown, useThroughput, useJobVolume, useTimeInStage } from '../hooks/useAnalytics';
 import { useMatchSuggestions } from '../hooks/useCandidateIdentity';
 import {
-  Alert, Card, CardHeader, CardTitle, EmptyState, ErrorState, LinkButton, PageHeader, Skeleton, Sparkline, StatTile, StatusDot,
+  Alert, Card, EmptyState, LinkButton, PageHeader, PanelBody, PanelHeader, Sparkline, StatTile, StatusDot,
 } from '../components/ui';
 import { FunnelBars } from '../components/analytics/FunnelBars';
 import { getDecisionBadgeVariant } from '../utils/decision';
@@ -30,28 +30,6 @@ const PanelLink = ({ to, children }: { to: string; children: React.ReactNode }) 
     {children} <ArrowRight size={14} aria-hidden="true" />
   </Link>
 );
-
-const PanelHeader = ({ title, action }: { title: string; action?: React.ReactNode }) => (
-  <CardHeader className="flex-row items-center justify-between gap-3 py-3">
-    <CardTitle className="text-sm">{title}</CardTitle>
-    {action}
-  </CardHeader>
-);
-
-const PanelBody = ({ isLoading, isError, onRetry, isEmpty, empty, rows = 3, children }: {
-  isLoading: boolean; isError: boolean; onRetry: () => void; isEmpty: boolean; empty: React.ReactNode; rows?: number; children: React.ReactNode;
-}) => {
-  if (isLoading) {
-    return (
-      <div className="space-y-3 p-5" aria-hidden="true">
-        {Array.from({ length: rows }).map((_, i) => <Skeleton key={i} className="h-5 w-full" />)}
-      </div>
-    );
-  }
-  if (isError) return <ErrorState className="py-10" title="Couldn't load this" onRetry={onRetry} />;
-  if (isEmpty) return <>{empty}</>;
-  return <>{children}</>;
-};
 
 export const Dashboard = () => {
   const jobsQuery = useQuery({ queryKey: queryKeys.jobs(), queryFn: api.jobs.getJobs });
