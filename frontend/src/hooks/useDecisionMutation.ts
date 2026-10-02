@@ -47,3 +47,25 @@ export const useRetryEvaluation = (jobId: number) => {
     },
   });
 };
+
+/**
+ * Save a recruiter note and nothing else. Unlike useDecisionMutation it never
+ * sends a decision, so it cannot re-trigger decision side-effects (auto email,
+ * interview link) and so it invalidates only the views that show notes - not
+ * the shortlist or a candidate's outreach history.
+ */
+export const useSaveNotes = (jobId: number) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ resumeId, notes }: { resumeId: number; notes: string }) => jobsApi.updateNotes(jobId, resumeId, notes),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.candidates(jobId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.candidateDetail(jobId, 0).slice(0, 2) });
+      toast.success('Notes saved.');
+    },
+    onError: (error: { message?: string }) => {
+      toast.error(error.message || 'Unable to save the notes.');
+    },
+  });
+};

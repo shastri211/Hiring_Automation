@@ -294,7 +294,7 @@ export const Candidate360 = () => {
 
       {/* LEFT, bottom: notes, timeline, identity (below the evaluation on mobile) */}
       <div className="order-last space-y-7 lg:order-none lg:col-start-1 lg:row-start-2 lg:pr-8">
-        <RecruiterNotes key={resumeId} jobId={jobId} resumeId={resumeId} savedNotes={screening?.notes} decision={screening?.decision} />
+        <RecruiterNotes key={resumeId} jobId={jobId} resumeId={resumeId} savedNotes={screening?.notes} />
         <CandidateTimeline data={data} />
         {screening?.raw_candidate_id != null && (
           <CandidateIdentityPanel candidateId={screening.raw_candidate_id} applicationsCount={screening.applications_count} />

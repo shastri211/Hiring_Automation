@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { CheckCircle2, Clock, Eraser, Loader2, RefreshCw, Save, ShieldOff, XCircle } from 'lucide-react';
 import type { CandidateDecision, ScreeningResultResponse, CandidateProfileDetail } from '../../types';
-import { useDecisionMutation } from '../../hooks/useDecisionMutation';
+import { useSaveNotes } from '../../hooks/useDecisionMutation';
 import { cn } from '../../utils/cn';
 import { variantButtonClasses } from '../../utils/decision';
 import { Alert, Badge, Button, FitScore, Section, Textarea } from '../ui';
@@ -93,18 +93,17 @@ export const DecisionControlBar = ({
 );
 
 // -----------------------------------------------------------------------------
-// Recruiter notes — saved through the same decision endpoint the drawer always
-// used (decision is re-sent unchanged), so nothing new on the API side.
+// Recruiter notes — saved on their own (useSaveNotes sends only the note), so
+// saving never re-submits the decision or re-triggers its side-effects.
 // -----------------------------------------------------------------------------
 export const RecruiterNotes = ({
-  jobId, resumeId, savedNotes, decision,
+  jobId, resumeId, savedNotes,
 }: {
   jobId: number;
   resumeId: number;
   savedNotes?: string | null;
-  decision?: CandidateDecision;
 }) => {
-  const mutation = useDecisionMutation(jobId);
+  const mutation = useSaveNotes(jobId);
   // null = untouched, so the field always reflects the saved value until edited.
   const [draft, setDraft] = useState<string | null>(null);
   const saved = savedNotes || '';
@@ -127,7 +126,7 @@ export const RecruiterNotes = ({
           size="sm"
           disabled={mutation.isPending || !dirty}
           onClick={() =>
-            mutation.mutate({ resumeId, decision: decision || null, notes: value }, { onSuccess: () => setDraft(null) })
+            mutation.mutate({ resumeId, notes: value }, { onSuccess: () => setDraft(null) })
           }
         >
           {mutation.isPending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Save size={14} aria-hidden="true" />}

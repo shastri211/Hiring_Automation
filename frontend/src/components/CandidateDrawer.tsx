@@ -166,7 +166,6 @@ export const CandidateDrawer = ({ jobId, resumeId, isOpen, onClose, onView360 }:
                   jobId={jobId}
                   resumeId={resumeId}
                   savedNotes={screening?.notes}
-                  decision={screening?.decision}
                 />
               )}
             </>

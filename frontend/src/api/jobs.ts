@@ -60,6 +60,13 @@ export const jobsApi = {
     return apiClient.patch<any>(`/jobs/${jobId}/results/${resumeId}/decision`, { decision, notes }) as unknown as Promise<ScreeningResultResponse>;
   },
   
+  // Notes-only edit: the body carries `notes` and deliberately NO `decision`
+  // key. The endpoint applies only the fields present, so this never touches
+  // the decision, writes a decision audit event, or fires shortlist side-effects.
+  updateNotes: (jobId: number, resumeId: number, notes: string) => {
+    return apiClient.patch<any>(`/jobs/${jobId}/results/${resumeId}/decision`, { notes }) as unknown as Promise<ScreeningResultResponse>;
+  },
+
   bulkUpdateDecision: (jobId: number, resumeIds: number[], decision: string | null) => {
     return apiClient.patch<any>(`/jobs/${jobId}/results/bulk-decision`, { resume_ids: resumeIds, decision }) as unknown as Promise<{ message: string; updated_count: number }>;
   },

@@ -480,3 +480,75 @@ async def test_decision_endpoint_survives_outreach_failure_end_to_end(client: As
             assert response.status_code == 200
         finally:
             fastapi_app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_notes_only_update_does_not_touch_decision_or_trigger_outreach(client: AsyncClient):
+    """A PATCH carrying only `notes` (no `decision` key) must be a pure notes
+    edit: the stored decision is untouched, no DecisionAudit/Application
+    preload runs, and the shortlist side-effects (auto email / interview) do
+    not fire - even for an already-SHORTLISTed candidate. The frontend's
+    Save Notes relies on this (DecisionUpdate is applied with exclude_unset)."""
+    from app.api import jobs
+    from app.main import app as fastapi_app
+
+    mock_db = AsyncMock()
+
+    async def mock_get_db():
+        yield mock_db
+
+    fastapi_app.dependency_overrides[jobs.get_db] = mock_get_db
+
+    from app.models.job import Job
+    from app.models.resume import Resume
+    from app.models.screening import ScreeningResult
+    import datetime
+
+    job = MagicMock(spec=Job)
+    job.id = 1
+    job_exec = MagicMock()
+    job_exec.scalar_one_or_none.return_value = job
+
+    resume = MagicMock(spec=Resume)
+    resume.id = 1
+    resume.job_id = 1
+    resume.filename = "test.pdf"
+    resume.status = "READY"
+    resume.error_message = None
+    resume_exec = MagicMock()
+    resume_exec.scalar_one_or_none.return_value = resume
+
+    sr = MagicMock(spec=ScreeningResult)
+    sr.id = 1
+    sr.job_id = 1
+    sr.resume_id = 1
+    sr.score = 85.0
+    sr.semantic_score = 85.0
+    sr.strengths = []
+    sr.gaps = []
+    sr.evidence = []
+    sr.decision = "SHORTLIST"
+    sr.notes = None
+    sr.created_at = datetime.datetime.utcnow()
+    sr_exec = MagicMock()
+    sr_exec.scalar_one_or_none.return_value = sr
+
+    profile_exec = MagicMock()
+    profile_exec.scalar_one_or_none.return_value = None
+
+    # No candidate_lookup_exec here: the audit-context preload only runs when
+    # "decision" is in the payload, so a notes-only update must skip it.
+    mock_db.execute = AsyncMock(side_effect=[job_exec, resume_exec, sr_exec, profile_exec])
+
+    with patch("app.api.jobs.outreach_service.on_decision_shortlisted", new_callable=AsyncMock) as mock_outreach, patch(
+        "app.api.jobs.screening_audit.record_screening_event"
+    ) as mock_audit:
+        try:
+            response = await client.patch("/jobs/1/results/1/decision", json={"notes": "called, left voicemail"})
+            assert response.status_code == 200
+            assert sr.notes == "called, left voicemail"
+            assert sr.decision == "SHORTLIST"
+            mock_outreach.assert_not_awaited()
+            mock_audit.assert_not_called()
+        finally:
+            fastapi_app.dependency_overrides.clear()
