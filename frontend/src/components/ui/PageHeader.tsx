@@ -29,6 +29,6 @@ export const PageHeader = ({ title, subtitle, actions, eyebrow, leading, size = 
         {subtitle && <p className="text-body mt-1">{subtitle}</p>}
       </div>
     </div>
-    {actions && <div className="flex flex-wrap items-center gap-2 shrink-0">{actions}</div>}
+    {actions && <div className="flex max-w-full flex-wrap items-center gap-2 shrink-0">{actions}</div>}
   </div>
 );

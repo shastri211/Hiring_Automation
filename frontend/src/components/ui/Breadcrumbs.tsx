@@ -21,7 +21,7 @@ export const Breadcrumbs = ({ items, className }: { items: Crumb[]; className?: 
         const hiddenOnMobile = i < items.length - 1;
         return (
           <Fragment key={`${item.label}-${i}`}>
-            <li className={cn('min-w-0', last ? 'shrink' : 'shrink-0 max-w-[10rem] truncate sm:max-w-[14rem]', hiddenOnMobile && 'hidden sm:block')}>
+            <li className={cn('min-w-0', last || i === 0 ? 'max-w-[14rem] shrink-0' : 'max-w-[10rem] shrink truncate sm:max-w-[14rem]', hiddenOnMobile && 'hidden sm:block')}>
               {item.to && !last ? (
                 <Link to={item.to} className="transition-base focus-ring rounded text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
                   {item.label}

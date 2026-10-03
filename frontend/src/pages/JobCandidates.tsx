@@ -140,6 +140,7 @@ export const JobCandidates = () => {
       id: 'evaluation',
       header: 'Strengths, gaps & evidence',
       mobile: 'body',
+      hideBelow: 'xl',
       className: 'min-w-[15rem]',
       skeleton: 'text',
       cell: (c) => (

@@ -19,7 +19,7 @@ export const CandidateIdentity = ({ name, fallback, sub, muted }: {
   /** Dim the avatar (failed / pre-screened-out rows). */
   muted?: boolean;
 }) => (
-  <div className="flex min-w-0 items-center md:max-w-[13rem] gap-3">
+  <div className="flex min-w-0 items-center md:max-w-[9rem] xl:max-w-[13rem] gap-3">
     <span
       aria-hidden="true"
       className={cn(
