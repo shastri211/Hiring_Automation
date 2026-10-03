@@ -69,7 +69,7 @@ export const GlobalCandidates = () => {
       header: 'Candidate',
       mobile: 'title',
       skeleton: 'avatar',
-      className: 'w-48',
+      className: 'w-44',
       cell: (c) => (
         <CandidateIdentity
           name={c.display_name}
@@ -97,7 +97,7 @@ export const GlobalCandidates = () => {
       id: 'score',
       header: 'Fit score',
       skeleton: 'score',
-      className: 'w-36',
+      className: 'w-32',
       cell: (c) => <ScoreCell score={c.score} semantic={c.semantic_score} unscoredLabel={c.decision === 'PRE_SCREENED_OUT' ? 'Not scored — pre-screened out' : undefined} />,
     },
     {
@@ -113,15 +113,17 @@ export const GlobalCandidates = () => {
       header: 'Strengths & gaps',
       hideBelow: 'xl',
       mobile: 'hidden',
-      className: 'min-w-[18rem]',
+      className: 'min-w-[12rem]',
       cell: (c) => (
-        <EvaluationSummary
-          strengths={c.strengths}
-          gaps={c.gaps}
-          evidence={null}
-          decision={c.decision}
-          evaluationFailed={c.evaluation_failed}
-        />
+        <div className="max-w-[11rem]">
+          <EvaluationSummary
+            strengths={c.strengths}
+            gaps={c.gaps}
+            evidence={null}
+            decision={c.decision}
+            evaluationFailed={c.evaluation_failed}
+          />
+        </div>
       ),
     },
     { id: 'decision', header: 'Decision', skeleton: 'badge', cell: (c) => <DecisionStatus candidate={c} /> },

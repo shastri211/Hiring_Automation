@@ -10,9 +10,9 @@ export const RequirePlatformAdmin = ({ children }: { children: ReactNode }) => {
   const { isPlatformAdmin } = useAuth();
   if (!isPlatformAdmin) {
     return (
-      <div className="p-8 max-w-3xl mx-auto">
+      <div className="mx-auto max-w-3xl">
         <EmptyState
-          icon={<ShieldAlert className="w-10 h-10 text-[var(--text-tertiary)]" />}
+          icon={<ShieldAlert size={20} />}
           title="Not available"
           description="This page manages platform-wide service configuration and is only available to platform administrators."
         />

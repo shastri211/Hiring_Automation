@@ -146,9 +146,11 @@ export const JobsList = () => {
           >
             {job.title}
           </Link>
-          <p className="text-caption mt-0.5 truncate">
-            {[job.department, job.location, job.employment_type].filter(Boolean).join(' · ') || 'No details'}
-          </p>
+          {[job.department, job.location, job.employment_type].some(Boolean) && (
+            <p className="text-caption mt-0.5 truncate">
+              {[job.department, job.location, job.employment_type].filter(Boolean).join(' · ')}
+            </p>
+          )}
         </div>
       ),
     },
