@@ -16,6 +16,19 @@ const DECISION_FILL = {
   success: chart.success, warning: chart.warning, danger: chart.danger, primary: chart.primary, neutral: chart.neutral,
 };
 
+// Category tick that wraps onto a second line instead of letting Recharts drop
+// overlapping labels - every decision label must stay readable at narrow widths.
+const WrappedTick = ({ x, y, payload }: { x?: number; y?: number; payload?: { value: string } }) => {
+  const words = String(payload?.value ?? '').split(/ |(?<=-)/);
+  return (
+    <text x={x} y={y} textAnchor="middle" style={chart.axisSmall}>
+      {words.map((word, i) => (
+        <tspan key={`${word}-${i}`} x={x} dy={i === 0 ? '0.9em' : '1.15em'}>{word}</tspan>
+      ))}
+    </text>
+  );
+};
+
 const EmptyNote = ({ children }: { children: string }) => (
   <p className="text-body px-5 py-10 text-center">{children}</p>
 );
@@ -121,7 +134,7 @@ export const Analytics = () => {
                 <ResponsiveContainer>
                   <BarChart data={decisionData}>
                     <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
-                    <XAxis dataKey="label" tick={chart.axis} axisLine={chart.axisLine} tickLine={false} />
+                    <XAxis dataKey="label" tick={<WrappedTick />} interval={0} height={56} axisLine={chart.axisLine} tickLine={false} />
                     <YAxis allowDecimals={false} tick={chart.axis} axisLine={false} tickLine={false} />
                     <Tooltip {...chart.tooltip} />
                     <Bar dataKey="count" radius={[3, 3, 0, 0]}>

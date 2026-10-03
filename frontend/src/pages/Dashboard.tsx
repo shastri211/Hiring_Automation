@@ -163,7 +163,9 @@ export const Dashboard = () => {
                     >
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-[var(--text-primary)]">{job.title}</p>
-                        <p className="text-caption truncate">{[job.department, job.location].filter(Boolean).join(' · ') || '—'}</p>
+                        {[job.department, job.location].some(Boolean) && (
+                          <p className="text-caption truncate">{[job.department, job.location].filter(Boolean).join(' · ')}</p>
+                        )}
                       </div>
                       <StatusDot variant={getJobStatusVariant(job.status)} className="hidden sm:inline-flex">
                         {jobStatusLabel(job.status)}
