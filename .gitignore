@@ -67,6 +67,7 @@ uploads/
 dump.rdb
 *.sqlite
 *.sqlite3
+/eval/results/report.md
 
 # Local editor and tool configuration (not part of the app)
 .claude/

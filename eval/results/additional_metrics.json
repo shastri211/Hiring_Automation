@@ -1,0 +1,40 @@
+{
+  "parsing_throughput": {
+    "successful_files": 32,
+    "total_files": 34,
+    "successful_files_per_second": 35.22,
+    "successful_files_per_minute": 2113.28,
+    "total_successful_parse_time_ms": 908.539
+  },
+  "sha256_dedupe_throughput": {
+    "files": 34,
+    "bytes": 7056052,
+    "total_hash_time_ms": 7.597,
+    "p50_ms": 0.063,
+    "p95_ms": 2.645,
+    "files_per_second": 4475.45,
+    "mb_per_second": 928.795
+  },
+  "app_import_time": {
+    "runs": 3,
+    "p50_ms": 5187.416,
+    "p95_ms": 5571.49,
+    "status": "success"
+  },
+  "auth_crypto": {
+    "bcrypt_hash_one_ms": 434.325,
+    "bcrypt_verify_100_p50_ms": 408.915,
+    "bcrypt_verify_100_p95_ms": 451.975,
+    "jwt_decode_100_p50_ms": 0.193,
+    "jwt_decode_100_p95_ms": 0.244,
+    "valid_token_round_trips": 100
+  },
+  "redis": {
+    "ping_100_p50_ms": 0.371,
+    "ping_100_p95_ms": 0.785,
+    "stream_enqueue_read_ack_50_p50_ms": 1.505,
+    "stream_enqueue_read_ack_50_p95_ms": 6.334,
+    "stream_round_trips": 50
+  },
+  "conditions": "Local synthetic files, Redis localhost, bcrypt/JWT in existing venv; no LLM/Qdrant/DB substitution."
+}

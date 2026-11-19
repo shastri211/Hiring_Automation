@@ -1,0 +1,27 @@
+{
+  "full_suite": {
+    "command": "cd backend; python -m pytest -q",
+    "passed": 269,
+    "failed": 123,
+    "errors": 76,
+    "warnings": 42,
+    "duration_seconds": 127.42,
+    "primary_environment_reason": "PostgreSQL listener existed but the expected migrated organizations/schema tables were absent; Qdrant was unavailable."
+  },
+  "focused_coverage": {
+    "command": "cd backend; python -m pytest tests/test_health.py tests/test_llm_provider.py tests/test_extractors.py --cov=app --cov-report=term-missing -q",
+    "tests_passed": 12,
+    "line_coverage_percent": 42,
+    "lowest_modules": [
+      {"module": "app/worker.py", "coverage_percent": 0},
+      {"module": "app/services/screener.py", "coverage_percent": 11},
+      {"module": "app/services/interview.py", "coverage_percent": 19},
+      {"module": "app/services/candidate_identity.py", "coverage_percent": 20},
+      {"module": "app/services/email.py", "coverage_percent": 21}
+    ]
+  },
+  "ci_workflow": {
+    "backend": "Python 3.13, Postgres and Redis services, pip install, migrations, alembic check, pytest",
+    "frontend": "Node 22, npm ci, lint, build"
+  }
+}
