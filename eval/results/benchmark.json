@@ -1,0 +1,445 @@
+{
+  "dataset": {
+    "base_resumes": 30,
+    "files_measured": 34,
+    "jobs": 2,
+    "seed": 0,
+    "labels_per_job": {
+      "STRONG_FIT": 5,
+      "PARTIAL_FIT": 5,
+      "NOT_FIT": 5
+    }
+  },
+  "parsing": {
+    "pdf": {
+      "count": 17,
+      "success_rate": 1.0,
+      "average_parse_ms": 24.211,
+      "failure_reasons": []
+    },
+    "docx": {
+      "count": 15,
+      "success_rate": 1.0,
+      "average_parse_ms": 33.13,
+      "failure_reasons": []
+    },
+    "scanned_ocr": {
+      "count": 2,
+      "success_rate": 0.0,
+      "average_parse_ms": 36.082,
+      "failure_reasons": [
+        "empty extraction; OCR provider unavailable or returned no text",
+        "empty extraction; OCR provider unavailable or returned no text"
+      ]
+    }
+  },
+  "dedupe": {
+    "files": 34,
+    "exact_duplicate_groups": [
+      [
+        "analyst_02.docx",
+        "analyst_02_exact_copy.docx"
+      ],
+      [
+        "backend_01.pdf",
+        "backend_01_exact_copy.pdf"
+      ]
+    ],
+    "exact_duplicates_caught": 2,
+    "near_duplicates_caught_by_sha256": 0,
+    "near_duplicate_note": "Near duplicates intentionally differ in content; exact hash dedupe does not catch them."
+  },
+  "pipeline_metrics": {
+    "ranking": "N/A - Qdrant unavailable and no embedding/LLM key configured",
+    "decisions": "N/A - no LLM provider key configured",
+    "adaptive_gate": "N/A - requires vector search",
+    "retrieval": "N/A - Qdrant unavailable",
+    "score_separation": "N/A - no LLM provider key configured",
+    "consistency": "N/A - no LLM provider key configured",
+    "latency": "N/A - end-to-end pipeline did not run",
+    "throughput": "N/A - end-to-end pipeline did not run",
+    "llm_cost": "N/A - no request tokens; no provider call was made"
+  },
+  "service_status": {
+    "postgres": "available listener; application authentication/migrations not exercised",
+    "redis": "available and ping successful",
+    "qdrant": "unavailable on localhost:6333",
+    "llm": "N/A - GROQ_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY, NVIDIA_API_KEY absent"
+  },
+  "files": [
+    {
+      "id": "backend-01",
+      "job": "backend",
+      "label": "STRONG_FIT",
+      "format": "pdf",
+      "path": "E:\\Hiring_Automation\\eval\\data\\backend_01.pdf",
+      "success": true,
+      "chars": 246,
+      "elapsed_ms": 38.178,
+      "failure": null
+    },
+    {
+      "id": "backend-02",
+      "job": "backend",
+      "label": "STRONG_FIT",
+      "format": "docx",
+      "path": "E:\\Hiring_Automation\\eval\\data\\backend_02.docx",
+      "success": true,
+      "chars": 246,
+      "elapsed_ms": 31.075,
+      "failure": null
+    },
+    {
+      "id": "backend-03",
+      "job": "backend",
+      "label": "STRONG_FIT",
+      "format": "pdf",
+      "path": "E:\\Hiring_Automation\\eval\\data\\backend_03.pdf",
+      "success": true,
+      "chars": 246,
+      "elapsed_ms": 19.361,
+      "failure": null
+    },
+    {
+      "id": "backend-04",
+      "job": "backend",
+      "label": "STRONG_FIT",
+      "format": "docx",
+      "path": "E:\\Hiring_Automation\\eval\\data\\backend_04.docx",
+      "success": true,
+      "chars": 246,
+      "elapsed_ms": 26.743,
+      "failure": null
+    },
+    {
+      "id": "backend-05",
+      "job": "backend",
+      "label": "STRONG_FIT",
+      "format": "pdf",
+      "path": "E:\\Hiring_Automation\\eval\\data\\backend_05.pdf",
+      "success": true,
+      "chars": 246,
+      "elapsed_ms": 22.331,
+      "failure": null
+    },
+    {
+      "id": "backend-06",
+      "job": "backend",
+      "label": "PARTIAL_FIT",
+      "format": "docx",
+      "path": "E:\\Hiring_Automation\\eval\\data\\backend_06.docx",
+      "success": true,
+      "chars": 215,
+      "elapsed_ms": 29.929,
+      "failure": null
+    },
+    {
+      "id": "backend-07",
+      "job": "backend",
+      "label": "PARTIAL_FIT",
+      "format": "pdf",
+      "path": "E:\\Hiring_Automation\\eval\\data\\backend_07.pdf",
+      "success": true,
+      "chars": 215,
+      "elapsed_ms": 20.22,
+      "failure": null
+    },
+    {
+      "id": "backend-08",
+      "job": "backend",
+      "label": "PARTIAL_FIT",
+      "format": "docx",
+      "path": "E:\\Hiring_Automation\\eval\\data\\backend_08.docx",
+      "success": true,
+      "chars": 215,
+      "elapsed_ms": 33.015,
+      "failure": null
+    },
+    {
+      "id": "backend-09",
+      "job": "backend",
+      "label": "PARTIAL_FIT",
+      "format": "pdf",
+      "path": "E:\\Hiring_Automation\\eval\\data\\backend_09.pdf",
+      "success": true,
+      "chars": 215,
+      "elapsed_ms": 22.478,
+      "failure": null
+    },
+    {
+      "id": "backend-10",
+      "job": "backend",
+      "label": "PARTIAL_FIT",
+      "format": "docx",
+      "path": "E:\\Hiring_Automation\\eval\\data\\backend_10.docx",
+      "success": true,
+      "chars": 216,
+      "elapsed_ms": 26.136,
+      "failure": null
+    },
+    {
+      "id": "backend-11",
+      "job": "backend",
+      "label": "NOT_FIT",
+      "format": "pdf",
+      "path": "E:\\Hiring_Automation\\eval\\data\\backend_11.pdf",
+      "success": true,
+      "chars": 230,
+      "elapsed_ms": 23.78,
+      "failure": null
+    },
+    {
+      "id": "backend-12",
+      "job": "backend",
+      "label": "NOT_FIT",
+      "format": "docx",
+      "path": "E:\\Hiring_Automation\\eval\\data\\backend_12.docx",
+      "success": true,
+      "chars": 230,
+      "elapsed_ms": 28.348,
+      "failure": null
+    },
+    {
+      "id": "backend-13",
+      "job": "backend",
+      "label": "NOT_FIT",
+      "format": "pdf",
+      "path": "E:\\Hiring_Automation\\eval\\data\\backend_13.pdf",
+      "success": true,
+      "chars": 230,
+      "elapsed_ms": 23.729,
+      "failure": null
+    },
+    {
+      "id": "backend-14",
+      "job": "backend",
+      "label": "NOT_FIT",
+      "format": "scanned_ocr",
+      "path": "E:\\Hiring_Automation\\eval\\data\\backend_14.scanned_ocr",
+      "success": false,
+      "chars": 0,
+      "elapsed_ms": 32.506,
+      "failure": "empty extraction; OCR provider unavailable or returned no text"
+    },
+    {
+      "id": "backend-15",
+      "job": "backend",
+      "label": "NOT_FIT",
+      "format": "pdf",
+      "path": "E:\\Hiring_Automation\\eval\\data\\backend_15.pdf",
+      "success": true,
+      "chars": 230,
+      "elapsed_ms": 19.91,
+      "failure": null
+    },
+    {
+      "id": "analyst-01",
+      "job": "analyst",
+      "label": "STRONG_FIT",
+      "format": "pdf",
+      "path": "E:\\Hiring_Automation\\eval\\data\\analyst_01.pdf",
+      "success": true,
+      "chars": 238,
+      "elapsed_ms": 18.275,
+      "failure": null
+    },
+    {
+      "id": "analyst-02",
+      "job": "analyst",
+      "label": "STRONG_FIT",
+      "format": "docx",
+      "path": "E:\\Hiring_Automation\\eval\\data\\analyst_02.docx",
+      "success": true,
+      "chars": 238,
+      "elapsed_ms": 31.002,
+      "failure": null
+    },
+    {
+      "id": "analyst-03",
+      "job": "analyst",
+      "label": "STRONG_FIT",
+      "format": "pdf",
+      "path": "E:\\Hiring_Automation\\eval\\data\\analyst_03.pdf",
+      "success": true,
+      "chars": 238,
+      "elapsed_ms": 29.497,
+      "failure": null
+    },
+    {
+      "id": "analyst-04",
+      "job": "analyst",
+      "label": "STRONG_FIT",
+      "format": "docx",
+      "path": "E:\\Hiring_Automation\\eval\\data\\analyst_04.docx",
+      "success": true,
+      "chars": 238,
+      "elapsed_ms": 33.909,
+      "failure": null
+    },
+    {
+      "id": "analyst-05",
+      "job": "analyst",
+      "label": "STRONG_FIT",
+      "format": "pdf",
+      "path": "E:\\Hiring_Automation\\eval\\data\\analyst_05.pdf",
+      "success": true,
+      "chars": 238,
+      "elapsed_ms": 41.756,
+      "failure": null
+    },
+    {
+      "id": "analyst-06",
+      "job": "analyst",
+      "label": "PARTIAL_FIT",
+      "format": "docx",
+      "path": "E:\\Hiring_Automation\\eval\\data\\analyst_06.docx",
+      "success": true,
+      "chars": 206,
+      "elapsed_ms": 41.669,
+      "failure": null
+    },
+    {
+      "id": "analyst-07",
+      "job": "analyst",
+      "label": "PARTIAL_FIT",
+      "format": "pdf",
+      "path": "E:\\Hiring_Automation\\eval\\data\\analyst_07.pdf",
+      "success": true,
+      "chars": 206,
+      "elapsed_ms": 30.75,
+      "failure": null
+    },
+    {
+      "id": "analyst-08",
+      "job": "analyst",
+      "label": "PARTIAL_FIT",
+      "format": "docx",
+      "path": "E:\\Hiring_Automation\\eval\\data\\analyst_08.docx",
+      "success": true,
+      "chars": 206,
+      "elapsed_ms": 37.58,
+      "failure": null
+    },
+    {
+      "id": "analyst-09",
+      "job": "analyst",
+      "label": "PARTIAL_FIT",
+      "format": "pdf",
+      "path": "E:\\Hiring_Automation\\eval\\data\\analyst_09.pdf",
+      "success": true,
+      "chars": 206,
+      "elapsed_ms": 29.191,
+      "failure": null
+    },
+    {
+      "id": "analyst-10",
+      "job": "analyst",
+      "label": "PARTIAL_FIT",
+      "format": "docx",
+      "path": "E:\\Hiring_Automation\\eval\\data\\analyst_10.docx",
+      "success": true,
+      "chars": 207,
+      "elapsed_ms": 38.424,
+      "failure": null
+    },
+    {
+      "id": "analyst-11",
+      "job": "analyst",
+      "label": "NOT_FIT",
+      "format": "pdf",
+      "path": "E:\\Hiring_Automation\\eval\\data\\analyst_11.pdf",
+      "success": true,
+      "chars": 221,
+      "elapsed_ms": 29.883,
+      "failure": null
+    },
+    {
+      "id": "analyst-12",
+      "job": "analyst",
+      "label": "NOT_FIT",
+      "format": "docx",
+      "path": "E:\\Hiring_Automation\\eval\\data\\analyst_12.docx",
+      "success": true,
+      "chars": 221,
+      "elapsed_ms": 37.891,
+      "failure": null
+    },
+    {
+      "id": "analyst-13",
+      "job": "analyst",
+      "label": "NOT_FIT",
+      "format": "pdf",
+      "path": "E:\\Hiring_Automation\\eval\\data\\analyst_13.pdf",
+      "success": true,
+      "chars": 221,
+      "elapsed_ms": 19.486,
+      "failure": null
+    },
+    {
+      "id": "analyst-14",
+      "job": "analyst",
+      "label": "NOT_FIT",
+      "format": "scanned_ocr",
+      "path": "E:\\Hiring_Automation\\eval\\data\\analyst_14.scanned_ocr",
+      "success": false,
+      "chars": 0,
+      "elapsed_ms": 39.659,
+      "failure": "empty extraction; OCR provider unavailable or returned no text"
+    },
+    {
+      "id": "analyst-15",
+      "job": "analyst",
+      "label": "NOT_FIT",
+      "format": "pdf",
+      "path": "E:\\Hiring_Automation\\eval\\data\\analyst_15.pdf",
+      "success": true,
+      "chars": 221,
+      "elapsed_ms": 19.964,
+      "failure": null
+    },
+    {
+      "id": "backend-01-exact-copy",
+      "job": "backend",
+      "label": "STRONG_FIT",
+      "format": "pdf",
+      "path": "E:\\Hiring_Automation\\eval\\data\\backend_01_exact_copy.pdf",
+      "success": true,
+      "chars": 246,
+      "elapsed_ms": 2.799,
+      "failure": null
+    },
+    {
+      "id": "analyst-02-exact-copy",
+      "job": "analyst",
+      "label": "STRONG_FIT",
+      "format": "docx",
+      "path": "E:\\Hiring_Automation\\eval\\data\\analyst_02_exact_copy.docx",
+      "success": true,
+      "chars": 238,
+      "elapsed_ms": 27.276,
+      "failure": null
+    },
+    {
+      "id": "backend-02-near-duplicate",
+      "job": "backend",
+      "label": "STRONG_FIT",
+      "format": "docx",
+      "path": "E:\\Hiring_Automation\\eval\\data\\backend_02_near_duplicate.docx",
+      "success": true,
+      "chars": 266,
+      "elapsed_ms": 35.642,
+      "failure": null
+    },
+    {
+      "id": "analyst-03-near-duplicate",
+      "job": "analyst",
+      "label": "STRONG_FIT",
+      "format": "docx",
+      "path": "E:\\Hiring_Automation\\eval\\data\\analyst_03_near_duplicate.docx",
+      "success": true,
+      "chars": 258,
+      "elapsed_ms": 38.312,
+      "failure": null
+    }
+  ]
+}

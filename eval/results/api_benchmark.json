@@ -1,0 +1,270 @@
+{
+  "base_url": "http://127.0.0.1:5000",
+  "conditions": {
+    "auth": "No auth token supplied; protected routes intentionally measure rejection behavior.",
+    "database": "No data seeded; routes may return environment-dependent 401/5xx statuses.",
+    "percentiles": "Computed only from HTTP 200 responses, as requested."
+  },
+  "sweeps": {
+    "1": {
+      "requests": 400,
+      "concurrency": 1,
+      "duration_seconds": 1.038,
+      "achieved_requests_per_minute": 23131.3,
+      "target_5000_rpm_met": true,
+      "under_200ms_p95_for_200s": false,
+      "status_counts": {
+        "503": 100,
+        "401": 300
+      },
+      "p50_ms_200_only": null,
+      "p95_ms_200_only": null,
+      "p99_ms_200_only": null,
+      "endpoints": {
+        "health": {
+          "path": "/health",
+          "requests": 100,
+          "status_counts": {
+            "503": 100
+          },
+          "p50_ms_200_only": null,
+          "p95_ms_200_only": null,
+          "p99_ms_200_only": null,
+          "successful_200_count": 0,
+          "mean_ms_all_statuses": 3.921
+        },
+        "job_list": {
+          "path": "/jobs/",
+          "requests": 100,
+          "status_counts": {
+            "401": 100
+          },
+          "p50_ms_200_only": null,
+          "p95_ms_200_only": null,
+          "p99_ms_200_only": null,
+          "successful_200_count": 0,
+          "mean_ms_all_statuses": 1.53
+        },
+        "candidate_list": {
+          "path": "/candidates/",
+          "requests": 100,
+          "status_counts": {
+            "401": 100
+          },
+          "p50_ms_200_only": null,
+          "p95_ms_200_only": null,
+          "p99_ms_200_only": null,
+          "successful_200_count": 0,
+          "mean_ms_all_statuses": 1.422
+        },
+        "screening_results": {
+          "path": "/jobs/1/results",
+          "requests": 100,
+          "status_counts": {
+            "401": 100
+          },
+          "p50_ms_200_only": null,
+          "p95_ms_200_only": null,
+          "p99_ms_200_only": null,
+          "successful_200_count": 0,
+          "mean_ms_all_statuses": 1.253
+        }
+      }
+    },
+    "5": {
+      "requests": 400,
+      "concurrency": 5,
+      "duration_seconds": 0.7,
+      "achieved_requests_per_minute": 34292.33,
+      "target_5000_rpm_met": true,
+      "under_200ms_p95_for_200s": false,
+      "status_counts": {
+        "503": 100,
+        "401": 300
+      },
+      "p50_ms_200_only": null,
+      "p95_ms_200_only": null,
+      "p99_ms_200_only": null,
+      "endpoints": {
+        "health": {
+          "path": "/health",
+          "requests": 100,
+          "status_counts": {
+            "503": 100
+          },
+          "p50_ms_200_only": null,
+          "p95_ms_200_only": null,
+          "p99_ms_200_only": null,
+          "successful_200_count": 0,
+          "mean_ms_all_statuses": 14.696
+        },
+        "job_list": {
+          "path": "/jobs/",
+          "requests": 100,
+          "status_counts": {
+            "401": 100
+          },
+          "p50_ms_200_only": null,
+          "p95_ms_200_only": null,
+          "p99_ms_200_only": null,
+          "successful_200_count": 0,
+          "mean_ms_all_statuses": 4.208
+        },
+        "candidate_list": {
+          "path": "/candidates/",
+          "requests": 100,
+          "status_counts": {
+            "401": 100
+          },
+          "p50_ms_200_only": null,
+          "p95_ms_200_only": null,
+          "p99_ms_200_only": null,
+          "successful_200_count": 0,
+          "mean_ms_all_statuses": 4.383
+        },
+        "screening_results": {
+          "path": "/jobs/1/results",
+          "requests": 100,
+          "status_counts": {
+            "401": 100
+          },
+          "p50_ms_200_only": null,
+          "p95_ms_200_only": null,
+          "p99_ms_200_only": null,
+          "successful_200_count": 0,
+          "mean_ms_all_statuses": 4.394
+        }
+      }
+    },
+    "10": {
+      "requests": 400,
+      "concurrency": 10,
+      "duration_seconds": 0.684,
+      "achieved_requests_per_minute": 35077.53,
+      "target_5000_rpm_met": true,
+      "under_200ms_p95_for_200s": false,
+      "status_counts": {
+        "503": 100,
+        "401": 300
+      },
+      "p50_ms_200_only": null,
+      "p95_ms_200_only": null,
+      "p99_ms_200_only": null,
+      "endpoints": {
+        "health": {
+          "path": "/health",
+          "requests": 100,
+          "status_counts": {
+            "503": 100
+          },
+          "p50_ms_200_only": null,
+          "p95_ms_200_only": null,
+          "p99_ms_200_only": null,
+          "successful_200_count": 0,
+          "mean_ms_all_statuses": 25.041
+        },
+        "job_list": {
+          "path": "/jobs/",
+          "requests": 100,
+          "status_counts": {
+            "401": 100
+          },
+          "p50_ms_200_only": null,
+          "p95_ms_200_only": null,
+          "p99_ms_200_only": null,
+          "successful_200_count": 0,
+          "mean_ms_all_statuses": 8.983
+        },
+        "candidate_list": {
+          "path": "/candidates/",
+          "requests": 100,
+          "status_counts": {
+            "401": 100
+          },
+          "p50_ms_200_only": null,
+          "p95_ms_200_only": null,
+          "p99_ms_200_only": null,
+          "successful_200_count": 0,
+          "mean_ms_all_statuses": 9.132
+        },
+        "screening_results": {
+          "path": "/jobs/1/results",
+          "requests": 100,
+          "status_counts": {
+            "401": 100
+          },
+          "p50_ms_200_only": null,
+          "p95_ms_200_only": null,
+          "p99_ms_200_only": null,
+          "successful_200_count": 0,
+          "mean_ms_all_statuses": 8.873
+        }
+      }
+    }
+  },
+  "capacity_5000_requests": {
+    "requests": 5000,
+    "concurrency": 20,
+    "duration_seconds": 8.928,
+    "achieved_requests_per_minute": 33602.6,
+    "target_5000_rpm_met": true,
+    "under_200ms_p95_for_200s": false,
+    "status_counts": {
+      "503": 1250,
+      "401": 3750
+    },
+    "p50_ms_200_only": null,
+    "p95_ms_200_only": null,
+    "p99_ms_200_only": null,
+    "endpoints": {
+      "health": {
+        "path": "/health",
+        "requests": 1250,
+        "status_counts": {
+          "503": 1250
+        },
+        "p50_ms_200_only": null,
+        "p95_ms_200_only": null,
+        "p99_ms_200_only": null,
+        "successful_200_count": 0,
+        "mean_ms_all_statuses": 40.887
+      },
+      "job_list": {
+        "path": "/jobs/",
+        "requests": 1250,
+        "status_counts": {
+          "401": 1250
+        },
+        "p50_ms_200_only": null,
+        "p95_ms_200_only": null,
+        "p99_ms_200_only": null,
+        "successful_200_count": 0,
+        "mean_ms_all_statuses": 30.227
+      },
+      "candidate_list": {
+        "path": "/candidates/",
+        "requests": 1250,
+        "status_counts": {
+          "401": 1250
+        },
+        "p50_ms_200_only": null,
+        "p95_ms_200_only": null,
+        "p99_ms_200_only": null,
+        "successful_200_count": 0,
+        "mean_ms_all_statuses": 32.472
+      },
+      "screening_results": {
+        "path": "/jobs/1/results",
+        "requests": 1250,
+        "status_counts": {
+          "401": 1250
+        },
+        "p50_ms_200_only": null,
+        "p95_ms_200_only": null,
+        "p99_ms_200_only": null,
+        "successful_200_count": 0,
+        "mean_ms_all_statuses": 32.665
+      }
+    }
+  }
+}
