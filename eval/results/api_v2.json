@@ -1,0 +1,85 @@
+{
+  "run_id": "0ff158aa1814",
+  "seeded_records": {
+    "a": {
+      "org_id": 42,
+      "user_id": 61,
+      "job_id": 145,
+      "email": "api-a-0ff158aa1814@example.test"
+    },
+    "b": {
+      "org_id": 43,
+      "user_id": 62,
+      "job_id": 146,
+      "email": "api-b-0ff158aa1814@example.test"
+    }
+  },
+  "security_checks": {
+    "missing_token_jobs": 401,
+    "invalid_token_jobs": 401,
+    "tenant_a_own_jobs": 200,
+    "tenant_a_own_candidates": 200,
+    "tenant_a_own_results": 200,
+    "tenant_b_own_jobs": 200,
+    "tenant_b_own_candidates": 200,
+    "tenant_b_own_results": 200,
+    "tenant_b_read_tenant_a_job": 404,
+    "tenant_b_read_tenant_a_results": 404
+  },
+  "load_sweeps": {
+    "1": {
+      "concurrency": 1,
+      "duration_seconds": 30.07,
+      "requests": 461,
+      "requests_per_minute": 919.86,
+      "status_counts": {
+        "200": 461
+      },
+      "percentiles_meaningful": true,
+      "percentiles_note": "HTTP 200 samples only",
+      "p50_ms_200_only": 11.065,
+      "p95_ms_200_only": 280.257,
+      "p99_ms_200_only": 372.309,
+      "successful_200": 461
+    },
+    "5": {
+      "concurrency": 5,
+      "duration_seconds": 30.015,
+      "requests": 2318,
+      "requests_per_minute": 4633.69,
+      "status_counts": {
+        "200": 2084,
+        "404": 234
+      },
+      "percentiles_meaningful": true,
+      "percentiles_note": "HTTP 200 samples only",
+      "p50_ms_200_only": 16.304,
+      "p95_ms_200_only": 201.621,
+      "p99_ms_200_only": 425.125,
+      "successful_200": 2084
+    },
+    "10": {
+      "concurrency": 10,
+      "duration_seconds": 30.044,
+      "requests": 1997,
+      "requests_per_minute": 3988.15,
+      "status_counts": {
+        "200": 1748,
+        "404": 249
+      },
+      "percentiles_meaningful": true,
+      "percentiles_note": "HTTP 200 samples only",
+      "p50_ms_200_only": 86.432,
+      "p95_ms_200_only": 304.463,
+      "p99_ms_200_only": 554.988,
+      "successful_200": 1748
+    }
+  },
+  "conditions": "Local uvicorn on port 8001, DB_SCHEMA=test_isolation, two synthetic users, no frontend.",
+  "not_exercised": [
+    "candidate cross-tenant object read/write (no candidate fixture seeded)",
+    "webhook processing with a valid interview record",
+    "valid/expired/tampered interview tokens",
+    "worker retry and duplicate result idempotency"
+  ]
+}

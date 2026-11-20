@@ -1,0 +1,35 @@
+{
+  "run_id": "0ff158aa1814",
+  "security": {
+    "tenant_a_jobs": 200,
+    "tenant_b_jobs": 200,
+    "tenant_b_read_a_job": 404,
+    "tenant_b_delete_a_job": 404,
+    "tenant_b_read_a_candidate": 404,
+    "tenant_b_modify_a_candidate": 404,
+    "tenant_b_modify_a_result": 404,
+    "cross_tenant_attempts": "5/5",
+    "missing_token": 401,
+    "invalid_token": 401,
+    "expired_token": 401,
+    "tampered_token": 401,
+    "valid_interview_link": 200,
+    "tampered_interview_link": 404,
+    "expired_interview_link": 410,
+    "webhook_status_no_auth": 200,
+    "webhook_transcript_no_auth": 200,
+    "webhook_evaluation_no_auth": 200,
+    "webhook_status_processed": "COMPLETED",
+    "webhook_transcript_processed": true,
+    "webhook_evaluation_processed": true
+  },
+  "worker": {
+    "retry_attempt_recorded": 1,
+    "retry_backoff_seconds": 59.98659348487854,
+    "retry_wait_observed": false,
+    "mock_failures_before_success": 1,
+    "mock_success_after_retry": true,
+    "duplicate_enqueue_simulated": 2,
+    "screening_result_count": 1
+  }
+}
