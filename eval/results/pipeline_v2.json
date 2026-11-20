@@ -1,0 +1,1295 @@
+{
+  "run_id": "cca865cf5580",
+  "conditions": {
+    "database_schema": "test_isolation",
+    "dataset": "existing eval/data synthetic files; exact copies excluded by DB hash uniqueness",
+    "embedding_model": "gemini-embedding-2",
+    "llm_priority": "groq,gemini,openrouter,nvidia",
+    "qdrant_collection": "resume_candidates_768"
+  },
+  "files": [
+    {
+      "resume_id": 69,
+      "job": "backend",
+      "filename": "backend_01.pdf",
+      "label": "STRONG_FIT",
+      "status": "processed",
+      "total_ms": 3979.07
+    },
+    {
+      "resume_id": 70,
+      "job": "backend",
+      "filename": "backend_02.docx",
+      "label": "STRONG_FIT",
+      "status": "processed",
+      "total_ms": 2467.483
+    },
+    {
+      "resume_id": 71,
+      "job": "backend",
+      "filename": "backend_02_near_duplicate.docx",
+      "label": "STRONG_FIT",
+      "status": "processed",
+      "total_ms": 2177.289
+    },
+    {
+      "resume_id": 72,
+      "job": "backend",
+      "filename": "backend_03.pdf",
+      "label": "STRONG_FIT",
+      "status": "processed",
+      "total_ms": 9561.817
+    },
+    {
+      "resume_id": 73,
+      "job": "backend",
+      "filename": "backend_04.docx",
+      "label": "STRONG_FIT",
+      "status": "processed",
+      "total_ms": 18797.888
+    },
+    {
+      "resume_id": 74,
+      "job": "backend",
+      "filename": "backend_05.pdf",
+      "label": "STRONG_FIT",
+      "status": "processed",
+      "total_ms": 17435.746
+    },
+    {
+      "resume_id": 75,
+      "job": "backend",
+      "filename": "backend_06.docx",
+      "label": "PARTIAL_FIT",
+      "status": "processed",
+      "total_ms": 16996.795
+    },
+    {
+      "resume_id": 76,
+      "job": "backend",
+      "filename": "backend_07.pdf",
+      "label": "PARTIAL_FIT",
+      "status": "processed",
+      "total_ms": 14634.941
+    },
+    {
+      "resume_id": 77,
+      "job": "backend",
+      "filename": "backend_08.docx",
+      "label": "PARTIAL_FIT",
+      "status": "processed",
+      "total_ms": 16375.81
+    },
+    {
+      "resume_id": 78,
+      "job": "backend",
+      "filename": "backend_09.pdf",
+      "label": "PARTIAL_FIT",
+      "status": "processed",
+      "total_ms": 15850.17
+    },
+    {
+      "resume_id": 79,
+      "job": "backend",
+      "filename": "backend_10.docx",
+      "label": "PARTIAL_FIT",
+      "status": "processed",
+      "total_ms": 18380.051
+    },
+    {
+      "resume_id": 80,
+      "job": "backend",
+      "filename": "backend_11.pdf",
+      "label": "NOT_FIT",
+      "status": "processed",
+      "total_ms": 16273.283
+    },
+    {
+      "resume_id": 81,
+      "job": "backend",
+      "filename": "backend_12.docx",
+      "label": "NOT_FIT",
+      "status": "processed",
+      "total_ms": 18110.451
+    },
+    {
+      "resume_id": 82,
+      "job": "backend",
+      "filename": "backend_13.pdf",
+      "label": "NOT_FIT",
+      "status": "processed",
+      "total_ms": 17210.642
+    },
+    {
+      "resume_id": 83,
+      "job": "backend",
+      "filename": "backend_15.pdf",
+      "label": "NOT_FIT",
+      "status": "processed",
+      "total_ms": 17760.912
+    },
+    {
+      "resume_id": 84,
+      "job": "analyst",
+      "filename": "analyst_01.pdf",
+      "label": "STRONG_FIT",
+      "status": "processed",
+      "total_ms": 15897.615
+    },
+    {
+      "resume_id": 85,
+      "job": "analyst",
+      "filename": "analyst_02.docx",
+      "label": "STRONG_FIT",
+      "status": "processed",
+      "total_ms": 23079.59
+    },
+    {
+      "resume_id": 86,
+      "job": "analyst",
+      "filename": "analyst_03.pdf",
+      "label": "STRONG_FIT",
+      "status": "processed",
+      "total_ms": 10695.4
+    },
+    {
+      "resume_id": 87,
+      "job": "analyst",
+      "filename": "analyst_03_near_duplicate.docx",
+      "label": "STRONG_FIT",
+      "status": "processed",
+      "total_ms": 18512.594
+    },
+    {
+      "resume_id": 88,
+      "job": "analyst",
+      "filename": "analyst_04.docx",
+      "label": "STRONG_FIT",
+      "status": "processed",
+      "total_ms": 16602.305
+    },
+    {
+      "resume_id": 89,
+      "job": "analyst",
+      "filename": "analyst_05.pdf",
+      "label": "STRONG_FIT",
+      "status": "processed",
+      "total_ms": 18276.673
+    },
+    {
+      "resume_id": 90,
+      "job": "analyst",
+      "filename": "analyst_06.docx",
+      "label": "PARTIAL_FIT",
+      "status": "processed",
+      "total_ms": 17104.464
+    },
+    {
+      "resume_id": 91,
+      "job": "analyst",
+      "filename": "analyst_07.pdf",
+      "label": "PARTIAL_FIT",
+      "status": "processed",
+      "total_ms": 17104.611
+    },
+    {
+      "resume_id": 92,
+      "job": "analyst",
+      "filename": "analyst_08.docx",
+      "label": "PARTIAL_FIT",
+      "status": "processed",
+      "total_ms": 17095.448
+    },
+    {
+      "resume_id": 93,
+      "job": "analyst",
+      "filename": "analyst_09.pdf",
+      "label": "PARTIAL_FIT",
+      "status": "processed",
+      "total_ms": 16886.998
+    },
+    {
+      "resume_id": 94,
+      "job": "analyst",
+      "filename": "analyst_10.docx",
+      "label": "PARTIAL_FIT",
+      "status": "processed",
+      "total_ms": 19276.228
+    },
+    {
+      "resume_id": 95,
+      "job": "analyst",
+      "filename": "analyst_11.pdf",
+      "label": "NOT_FIT",
+      "status": "processed",
+      "total_ms": 17353.395
+    },
+    {
+      "resume_id": 96,
+      "job": "analyst",
+      "filename": "analyst_12.docx",
+      "label": "NOT_FIT",
+      "status": "processed",
+      "total_ms": 16386.729
+    },
+    {
+      "resume_id": 97,
+      "job": "analyst",
+      "filename": "analyst_13.pdf",
+      "label": "NOT_FIT",
+      "status": "processed",
+      "total_ms": 18055.637
+    },
+    {
+      "resume_id": 98,
+      "job": "analyst",
+      "filename": "analyst_15.pdf",
+      "label": "NOT_FIT",
+      "status": "processed",
+      "total_ms": 17219.977
+    }
+  ],
+  "searches": {
+    "backend": {
+      "search_latency_recorded": true
+    },
+    "analyst": {
+      "search_latency_recorded": true
+    }
+  },
+  "llm_attempts": [
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "success": true
+    }
+  ],
+  "latencies_ms": {
+    "parse": [
+      48.38370007928461,
+      42.13810001965612,
+      22.405600058846176,
+      4.295999999158084,
+      21.941399900242686,
+      2.904499997384846,
+      23.41400005389005,
+      3.8749000523239374,
+      6.070400006137788,
+      1.3589999871328473,
+      21.223600022494793,
+      3.808200010098517,
+      7.018100004643202,
+      1.8261000514030457,
+      4.150999942794442,
+      4.022800014354289,
+      7.313900045119226,
+      6.126599968411028,
+      29.331499943509698,
+      21.772900014184415,
+      3.790799994021654,
+      23.7531999591738,
+      4.1065000696107745,
+      6.831199978478253,
+      3.8605999434366822,
+      15.541599947027862,
+      4.8538000555709,
+      23.703300044871867,
+      4.564700066111982,
+      4.155499977059662
+    ],
+    "embedding": [
+      846.7072000494227,
+      702.6410000398755,
+      489.1483000246808,
+      516.0798000870273,
+      703.7728000432253,
+      867.8351000417024,
+      533.889599959366,
+      604.5685999561101,
+      1381.9689999800175,
+      860.1320999441668,
+      1505.8252000017092,
+      621.3576999725774,
+      662.3838000232354,
+      1209.4373999862,
+      656.7101998953149,
+      924.478100030683,
+      5401.021900004707,
+      562.0464000385255,
+      861.6946999682114,
+      557.2327000554651,
+      891.5918000275269,
+      765.0768000166863,
+      658.6272000567988,
+      692.5866999663413,
+      568.6521000461653,
+      1232.9295000527054,
+      588.8465000316501,
+      777.5455999653786,
+      1379.3018000433221,
+      1318.5392000013962,
+      794.1333999624476,
+      1283.4643999813125
+    ],
+    "vector_search": [
+      197.10970006417483,
+      1041.8079999508336
+    ],
+    "llm": [
+      4871.030499925837,
+      8891.20960002765,
+      9177.113600075245,
+      8819.327799952589,
+      7847.277699969709,
+      11986.459400039166,
+      19620.813600020483,
+      10750.203800038435,
+      9919.790300074965,
+      16868.438699981198,
+      15249.594800057821,
+      14371.265199966729,
+      18211.804799968377,
+      16369.280699989758,
+      16075.033299974166,
+      14944.147000089288,
+      16829.86199995503,
+      14921.705499989912,
+      15410.465999972075,
+      13206.549700000323,
+      16049.002500018105,
+      16763.064000057057,
+      11967.910400009714,
+      17929.180499981157,
+      14102.036700001918,
+      18946.656299987808,
+      13101.365000009537,
+      17934.49839996174,
+      16733.057499979623,
+      13248.806399991736,
+      15981.700300006196,
+      18113.66040003486,
+      11881.057700025849,
+      13419.773299945518,
+      17290.878899977542,
+      17936.447500018403,
+      17873.775299987756,
+      17435.94390002545,
+      15340.065299998969,
+      21114.98199997004,
+      16992.097200010903,
+      13111.42829991877,
+      14333.227299968712,
+      14127.33789999038,
+      15053.850300027989,
+      13001.808000029996,
+      18942.658399930224,
+      13312.36149999313,
+      14335.211500059813,
+      18018.13400001265,
+      15257.360700052232,
+      16081.036000046879
+    ],
+    "total": [
+      3979.07,
+      2467.483,
+      2177.289,
+      9561.817,
+      18797.888,
+      17435.746,
+      16996.795,
+      14634.941,
+      16375.81,
+      15850.17,
+      18380.051,
+      16273.283,
+      18110.451,
+      17210.642,
+      17760.912,
+      15897.615,
+      23079.59,
+      10695.4,
+      18512.594,
+      16602.305,
+      18276.673,
+      17104.464,
+      17104.611,
+      17095.448,
+      16886.998,
+      19276.228,
+      17353.395,
+      16386.729,
+      18055.637,
+      17219.977
+    ]
+  },
+  "screening_backend": {
+    "result_count": 15,
+    "llm_result_count": 11,
+    "decisions": {
+      "74": "SHORTLIST",
+      "72": "SHORTLIST",
+      "69": "SHORTLIST",
+      "70": "SHORTLIST",
+      "73": "SHORTLIST",
+      "71": "SHORTLIST",
+      "75": "REJECT",
+      "78": "REJECT",
+      "79": "REJECT",
+      "76": "REJECT",
+      "77": "REJECT",
+      "81": "PRE_SCREENED_OUT",
+      "82": "PRE_SCREENED_OUT",
+      "83": "PRE_SCREENED_OUT",
+      "80": "PRE_SCREENED_OUT"
+    }
+  },
+  "screening_analyst": {
+    "result_count": 15,
+    "llm_result_count": 11,
+    "decisions": {
+      "86": "SHORTLIST",
+      "87": "SHORTLIST",
+      "89": "SHORTLIST",
+      "85": "SHORTLIST",
+      "84": "REVIEW",
+      "88": "SHORTLIST",
+      "94": "REVIEW",
+      "90": "REVIEW",
+      "92": "REJECT",
+      "93": "REVIEW",
+      "91": "REVIEW",
+      "95": "PRE_SCREENED_OUT",
+      "98": "PRE_SCREENED_OUT",
+      "97": "PRE_SCREENED_OUT",
+      "96": "PRE_SCREENED_OUT"
+    }
+  },
+  "screening_results": [
+    {
+      "resume_id": 74,
+      "job": "backend",
+      "filename": "backend_05.pdf",
+      "label": "STRONG_FIT",
+      "score": 95.0,
+      "decision": "SHORTLIST",
+      "semantic_score": 0.8092756,
+      "notes": null
+    },
+    {
+      "resume_id": 72,
+      "job": "backend",
+      "filename": "backend_03.pdf",
+      "label": "STRONG_FIT",
+      "score": 85.0,
+      "decision": "SHORTLIST",
+      "semantic_score": 0.8062248,
+      "notes": null
+    },
+    {
+      "resume_id": 69,
+      "job": "backend",
+      "filename": "backend_01.pdf",
+      "label": "STRONG_FIT",
+      "score": 95.0,
+      "decision": "SHORTLIST",
+      "semantic_score": 0.8035594,
+      "notes": null
+    },
+    {
+      "resume_id": 70,
+      "job": "backend",
+      "filename": "backend_02.docx",
+      "label": "STRONG_FIT",
+      "score": 85.0,
+      "decision": "SHORTLIST",
+      "semantic_score": 0.80026317,
+      "notes": null
+    },
+    {
+      "resume_id": 73,
+      "job": "backend",
+      "filename": "backend_04.docx",
+      "label": "STRONG_FIT",
+      "score": 90.0,
+      "decision": "SHORTLIST",
+      "semantic_score": 0.7982936,
+      "notes": null
+    },
+    {
+      "resume_id": 71,
+      "job": "backend",
+      "filename": "backend_02_near_duplicate.docx",
+      "label": "STRONG_FIT",
+      "score": 95.0,
+      "decision": "SHORTLIST",
+      "semantic_score": 0.79543054,
+      "notes": null
+    },
+    {
+      "resume_id": 75,
+      "job": "backend",
+      "filename": "backend_06.docx",
+      "label": "PARTIAL_FIT",
+      "score": 30.0,
+      "decision": "REJECT",
+      "semantic_score": 0.7816108,
+      "notes": null
+    },
+    {
+      "resume_id": 78,
+      "job": "backend",
+      "filename": "backend_09.pdf",
+      "label": "PARTIAL_FIT",
+      "score": 35.0,
+      "decision": "REJECT",
+      "semantic_score": 0.7796632,
+      "notes": null
+    },
+    {
+      "resume_id": 79,
+      "job": "backend",
+      "filename": "backend_10.docx",
+      "label": "PARTIAL_FIT",
+      "score": 45.0,
+      "decision": "REJECT",
+      "semantic_score": 0.7785517,
+      "notes": null
+    },
+    {
+      "resume_id": 76,
+      "job": "backend",
+      "filename": "backend_07.pdf",
+      "label": "PARTIAL_FIT",
+      "score": 40.0,
+      "decision": "REJECT",
+      "semantic_score": 0.7774986,
+      "notes": null
+    },
+    {
+      "resume_id": 77,
+      "job": "backend",
+      "filename": "backend_08.docx",
+      "label": "PARTIAL_FIT",
+      "score": 45.0,
+      "decision": "REJECT",
+      "semantic_score": 0.7769068,
+      "notes": null
+    },
+    {
+      "resume_id": 81,
+      "job": "backend",
+      "filename": "backend_12.docx",
+      "label": "NOT_FIT",
+      "score": null,
+      "decision": "PRE_SCREENED_OUT",
+      "semantic_score": 0.7110398,
+      "notes": null
+    },
+    {
+      "resume_id": 82,
+      "job": "backend",
+      "filename": "backend_13.pdf",
+      "label": "NOT_FIT",
+      "score": null,
+      "decision": "PRE_SCREENED_OUT",
+      "semantic_score": 0.71086,
+      "notes": null
+    },
+    {
+      "resume_id": 83,
+      "job": "backend",
+      "filename": "backend_15.pdf",
+      "label": "NOT_FIT",
+      "score": null,
+      "decision": "PRE_SCREENED_OUT",
+      "semantic_score": 0.7096498,
+      "notes": null
+    },
+    {
+      "resume_id": 80,
+      "job": "backend",
+      "filename": "backend_11.pdf",
+      "label": "NOT_FIT",
+      "score": null,
+      "decision": "PRE_SCREENED_OUT",
+      "semantic_score": 0.70774347,
+      "notes": null
+    },
+    {
+      "resume_id": 86,
+      "job": "analyst",
+      "filename": "analyst_03.pdf",
+      "label": "STRONG_FIT",
+      "score": 85,
+      "decision": "SHORTLIST",
+      "semantic_score": 0.8338239,
+      "notes": null
+    },
+    {
+      "resume_id": 87,
+      "job": "analyst",
+      "filename": "analyst_03_near_duplicate.docx",
+      "label": "STRONG_FIT",
+      "score": 95,
+      "decision": "SHORTLIST",
+      "semantic_score": 0.81940764,
+      "notes": null
+    },
+    {
+      "resume_id": 89,
+      "job": "analyst",
+      "filename": "analyst_05.pdf",
+      "label": "STRONG_FIT",
+      "score": 95,
+      "decision": "SHORTLIST",
+      "semantic_score": 0.8179347,
+      "notes": null
+    },
+    {
+      "resume_id": 85,
+      "job": "analyst",
+      "filename": "analyst_02.docx",
+      "label": "STRONG_FIT",
+      "score": 95,
+      "decision": "SHORTLIST",
+      "semantic_score": 0.8177102,
+      "notes": null
+    },
+    {
+      "resume_id": 84,
+      "job": "analyst",
+      "filename": "analyst_01.pdf",
+      "label": "STRONG_FIT",
+      "score": 85,
+      "decision": "REVIEW",
+      "semantic_score": 0.8164837,
+      "notes": null
+    },
+    {
+      "resume_id": 88,
+      "job": "analyst",
+      "filename": "analyst_04.docx",
+      "label": "STRONG_FIT",
+      "score": 85,
+      "decision": "SHORTLIST",
+      "semantic_score": 0.8143494,
+      "notes": null
+    },
+    {
+      "resume_id": 94,
+      "job": "analyst",
+      "filename": "analyst_10.docx",
+      "label": "PARTIAL_FIT",
+      "score": 65,
+      "decision": "REVIEW",
+      "semantic_score": 0.8044503,
+      "notes": null
+    },
+    {
+      "resume_id": 90,
+      "job": "analyst",
+      "filename": "analyst_06.docx",
+      "label": "PARTIAL_FIT",
+      "score": 45,
+      "decision": "REVIEW",
+      "semantic_score": 0.801762,
+      "notes": null
+    },
+    {
+      "resume_id": 92,
+      "job": "analyst",
+      "filename": "analyst_08.docx",
+      "label": "PARTIAL_FIT",
+      "score": 45,
+      "decision": "REJECT",
+      "semantic_score": 0.80082995,
+      "notes": null
+    },
+    {
+      "resume_id": 93,
+      "job": "analyst",
+      "filename": "analyst_09.pdf",
+      "label": "PARTIAL_FIT",
+      "score": 55,
+      "decision": "REVIEW",
+      "semantic_score": 0.7993362,
+      "notes": null
+    },
+    {
+      "resume_id": 91,
+      "job": "analyst",
+      "filename": "analyst_07.pdf",
+      "label": "PARTIAL_FIT",
+      "score": 55,
+      "decision": "REVIEW",
+      "semantic_score": 0.7989416,
+      "notes": null
+    },
+    {
+      "resume_id": 95,
+      "job": "analyst",
+      "filename": "analyst_11.pdf",
+      "label": "NOT_FIT",
+      "score": null,
+      "decision": "PRE_SCREENED_OUT",
+      "semantic_score": 0.76747787,
+      "notes": null
+    },
+    {
+      "resume_id": 98,
+      "job": "analyst",
+      "filename": "analyst_15.pdf",
+      "label": "NOT_FIT",
+      "score": null,
+      "decision": "PRE_SCREENED_OUT",
+      "semantic_score": 0.76619256,
+      "notes": null
+    },
+    {
+      "resume_id": 97,
+      "job": "analyst",
+      "filename": "analyst_13.pdf",
+      "label": "NOT_FIT",
+      "score": null,
+      "decision": "PRE_SCREENED_OUT",
+      "semantic_score": 0.7630614,
+      "notes": null
+    },
+    {
+      "resume_id": 96,
+      "job": "analyst",
+      "filename": "analyst_12.docx",
+      "label": "NOT_FIT",
+      "score": null,
+      "decision": "PRE_SCREENED_OUT",
+      "semantic_score": 0.7623409,
+      "notes": null
+    }
+  ],
+  "consistency": [
+    {
+      "resume_id": 69,
+      "label": "STRONG_FIT",
+      "scores": [
+        95.0,
+        95.0,
+        95.0
+      ],
+      "score_stddev": 0.0,
+      "decision_agreement": true
+    },
+    {
+      "resume_id": 70,
+      "label": "STRONG_FIT",
+      "scores": [
+        92.0,
+        92.0,
+        88.0
+      ],
+      "score_stddev": 1.885618,
+      "decision_agreement": true
+    },
+    {
+      "resume_id": 71,
+      "label": "STRONG_FIT",
+      "scores": [
+        95.0,
+        92.0,
+        95.0
+      ],
+      "score_stddev": 1.414214,
+      "decision_agreement": true
+    },
+    {
+      "resume_id": 72,
+      "label": "STRONG_FIT",
+      "scores": [
+        92.0,
+        92.0,
+        90.0
+      ],
+      "score_stddev": 0.942809,
+      "decision_agreement": true
+    },
+    {
+      "resume_id": 73,
+      "label": "STRONG_FIT",
+      "scores": [
+        88.0,
+        85.0,
+        88.0
+      ],
+      "score_stddev": 1.414214,
+      "decision_agreement": true
+    },
+    {
+      "resume_id": 74,
+      "label": "STRONG_FIT",
+      "scores": [
+        92.0,
+        95.0,
+        85.0
+      ],
+      "score_stddev": 4.189935,
+      "decision_agreement": true
+    },
+    {
+      "resume_id": 75,
+      "label": "PARTIAL_FIT",
+      "scores": [
+        45.0,
+        55.0,
+        45.0
+      ],
+      "score_stddev": 4.714045,
+      "decision_agreement": true
+    },
+    {
+      "resume_id": 76,
+      "label": "PARTIAL_FIT",
+      "scores": [
+        45.0,
+        35.0,
+        20.0
+      ],
+      "score_stddev": 10.274023,
+      "decision_agreement": true
+    },
+    {
+      "resume_id": 77,
+      "label": "PARTIAL_FIT",
+      "scores": [
+        45.0,
+        40.0,
+        40.0
+      ],
+      "score_stddev": 2.357023,
+      "decision_agreement": true
+    },
+    {
+      "resume_id": 78,
+      "label": "PARTIAL_FIT",
+      "scores": [
+        45.0,
+        35.0,
+        45.0
+      ],
+      "score_stddev": 4.714045,
+      "decision_agreement": true
+    }
+  ],
+  "organization_id": 2,
+  "job_ids": {
+    "backend": 69,
+    "analyst": 70
+  },
+  "batch_ids": {
+    "backend": 68,
+    "analyst": 69
+  }
+}

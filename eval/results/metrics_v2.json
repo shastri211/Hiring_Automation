@@ -1,0 +1,140 @@
+{
+  "dataset": {
+    "files": 30,
+    "jobs": 2,
+    "labels": {
+      "STRONG_FIT": 12,
+      "PARTIAL_FIT": 10,
+      "NOT_FIT": 8
+    }
+  },
+  "ranking_by_job": {
+    "backend": {
+      "nDCG@5": 1.0,
+      "nDCG@10": 1.0,
+      "Precision@5_STRONG_FIT": 1.0,
+      "Recall@5_STRONG_FIT": 0.833333,
+      "MRR_first_STRONG_FIT": 1.0
+    },
+    "analyst": {
+      "nDCG@5": 1.0,
+      "nDCG@10": 1.0,
+      "Precision@5_STRONG_FIT": 1.0,
+      "Recall@5_STRONG_FIT": 0.833333,
+      "MRR_first_STRONG_FIT": 1.0
+    }
+  },
+  "retrieval_by_job": {
+    "backend": {
+      "nDCG@5": 1.0,
+      "nDCG@10": 1.0,
+      "Precision@5_STRONG_FIT": 1.0,
+      "Recall@5_STRONG_FIT": 0.833333,
+      "MRR_first_STRONG_FIT": 1.0
+    },
+    "analyst": {
+      "nDCG@5": 1.0,
+      "nDCG@10": 1.0,
+      "Precision@5_STRONG_FIT": 1.0,
+      "Recall@5_STRONG_FIT": 0.833333,
+      "MRR_first_STRONG_FIT": 1.0
+    }
+  },
+  "adaptive_gate_by_job": {
+    "backend": {
+      "strong_fit_total": 6,
+      "strong_fit_survived_adaptive_gate": 6,
+      "adaptive_gate_recall": 1.0,
+      "fixed_top10_strong_fit_recall": 1.0,
+      "candidates_sent_to_llm": 11
+    },
+    "analyst": {
+      "strong_fit_total": 6,
+      "strong_fit_survived_adaptive_gate": 6,
+      "adaptive_gate_recall": 1.0,
+      "fixed_top10_strong_fit_recall": 1.0,
+      "candidates_sent_to_llm": 11
+    }
+  },
+  "average_candidates_sent_to_llm": 11.0,
+  "decision_confusion_matrix": {
+    "STRONG_FIT": {
+      "SHORTLIST": 11,
+      "REVIEW": 1,
+      "REJECT": 0
+    },
+    "PARTIAL_FIT": {
+      "SHORTLIST": 0,
+      "REVIEW": 4,
+      "REJECT": 6
+    },
+    "NOT_FIT": {
+      "SHORTLIST": 0,
+      "REVIEW": 0,
+      "REJECT": 8
+    }
+  },
+  "false_shortlist_rate_not_fit": 0.0,
+  "false_reject_rate_strong_fit": 0.0,
+  "score_separation": {
+    "STRONG_FIT": {
+      "count": 12,
+      "mean": 90.416667,
+      "p50": 90.0
+    },
+    "PARTIAL_FIT": {
+      "count": 10,
+      "mean": 46.0,
+      "p50": 45.0
+    },
+    "NOT_FIT": {
+      "count": 0,
+      "mean": null,
+      "p50": null
+    }
+  },
+  "spearman_llm_score_vs_ground_truth": 0.879883,
+  "consistency": {
+    "resumes": 10,
+    "runs_per_resume": 3,
+    "mean_score_stddev": 3.190593,
+    "decision_agreement_rate": 1.0
+  },
+  "llm_reliability": {
+    "provider_attempts": 82,
+    "successful_valid_json_attempts": 82,
+    "valid_json_rate": 1.0,
+    "providers_used": [
+      "groq"
+    ],
+    "fallback_provider_usage": 0
+  },
+  "latency_ms": {
+    "parse": {
+      "count": 30,
+      "p50_ms": 6.07,
+      "p95_ms": 42.138
+    },
+    "embedding": {
+      "count": 32,
+      "p50_ms": 765.077,
+      "p95_ms": 1505.825
+    },
+    "vector_search": {
+      "count": 2,
+      "p50_ms": 197.11,
+      "p95_ms": 1041.808
+    },
+    "llm": {
+      "count": 52,
+      "p50_ms": 15249.595,
+      "p95_ms": 18946.656
+    },
+    "total": {
+      "count": 30,
+      "p50_ms": 17095.448,
+      "p95_ms": 19276.228
+    }
+  },
+  "processed_resumes_per_minute": 3.866311
+}
